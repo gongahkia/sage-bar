@@ -96,18 +96,32 @@ class PollingService: ObservableObject {
             )
             CacheManager.shared.append(snap)
         case .anthropicAPI:
-            guard let key = try? KeychainManager.retrieve(
-                service: AppConstants.keychainService, account: account.id.uuidString
-            ) else { return }
+            let key: String
+            do {
+                key = try KeychainManager.retrieve(service: AppConstants.keychainService, account: account.id.uuidString)
+            } catch {
+                ErrorLogger.shared.log("Keychain failure for account \(account.id): \(error.localizedDescription)")
+                return
+            }
             let client = AnthropicAPIClient(apiKey: key)
             let end = Date()
             let start = Calendar.current.date(byAdding: .day, value: -1, to: end)!
-            guard let response = try? await client.fetchUsage(startDate: start, endDate: end) else { return }
-            for snap in client.convertToSnapshots(response, accountId: account.id) {
-                CacheManager.shared.append(snap)
+            do {
+                let response = try await client.fetchUsage(startDate: start, endDate: end)
+                for snap in client.convertToSnapshots(response, accountId: account.id) {
+                    CacheManager.shared.append(snap)
+                }
+            } catch APIError.invalidKey {
+                ErrorLogger.shared.log("Invalid API key for account \(account.id.uuidString)")
+            } catch APIError.rateLimited(let retryAfter) {
+                ErrorLogger.shared.log("Rate limited for account \(account.id.uuidString); retry after \(retryAfter ?? 0)s")
+            } catch APIError.networkError(let underlying) {
+                ErrorLogger.shared.log("Network error for account \(account.id.uuidString): \(underlying.localizedDescription)")
+            } catch {
+                ErrorLogger.shared.log("Unexpected error for account \(account.id.uuidString): \(error.localizedDescription)")
             }
         case .claudeAI:
-            break // unsupported
+            break // stub — implemented in task 50
         }
     }
 
