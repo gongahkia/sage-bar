@@ -32,12 +32,10 @@ let package = Package(
         .testTarget(
             name: "ClaudeUsageTests",
             dependencies: [
+                "ClaudeUsage",
                 "TOMLKit",
-                .product(name: "LaunchAtLogin", package: "LaunchAtLogin-Modern"),
-                .product(name: "Sparkle", package: "Sparkle"),
             ],
-            path: "Tests/ClaudeUsageTests",
-            sources: ["."]
+            path: "Tests/ClaudeUsageTests"
         ),
     ]
 )
