@@ -3,8 +3,7 @@ import Foundation
 enum AccountType: String, Codable, CaseIterable {
     case claudeCode = "claudeCode"     // no credentials needed
     case anthropicAPI = "anthropicAPI" // requires keychain key
-    case claudeAI = "claudeAI"        // unsupported/deferred
-    var isSupported: Bool { self != .claudeAI }
+    case claudeAI = "claudeAI"        // session-based web account
 }
 
 struct Account: Codable, Identifiable {
