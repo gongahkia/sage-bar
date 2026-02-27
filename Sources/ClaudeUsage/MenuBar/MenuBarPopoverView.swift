@@ -1,0 +1,162 @@
+import SwiftUI
+import Charts
+
+struct MenuBarPopoverView: View {
+    @State private var config = ConfigManager.shared.load()
+    @State private var selectedAccountIndex = 0
+    @State private var showHistory = false
+    @ObservedObject private var polling = PollingService.shared
+
+    private var activeAccounts: [Account] { config.accounts.filter { $0.isActive } }
+    private var currentAccount: Account? { activeAccounts.indices.contains(selectedAccountIndex) ? activeAccounts[selectedAccountIndex] : activeAccounts.first }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            header
+            Divider()
+            if activeAccounts.count > 1 {
+                accountPicker
+            }
+            if let account = currentAccount {
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        todayStatsSection(account: account)
+                        if config.forecast.showInPopover && config.forecast.enabled {
+                            forecastSection(account: account)
+                        }
+                        chartSection(account: account)
+                        if let hint = modelHint(account: account),
+                           config.modelOptimizer.enabled && config.modelOptimizer.showInPopover {
+                            modelHintBanner(hint: hint, account: account)
+                        }
+                    }
+                }
+            }
+            Divider()
+            footer
+        }
+        .frame(width: 340)
+        .sheet(isPresented: $showHistory) {
+            HistoryView(account: currentAccount)
+        }
+    }
+
+    // MARK: – Header
+    private var header: some View {
+        HStack {
+            Text("Claude Usage").font(.headline)
+            Spacer()
+            if polling.isPolling { ProgressView().scaleEffect(0.6) }
+            if let date = polling.lastPollDate {
+                Text(date, style: .relative).font(.caption).foregroundColor(.secondary)
+                Text("ago").font(.caption).foregroundColor(.secondary)
+            }
+        }.padding(.horizontal, 12).padding(.vertical, 8)
+    }
+
+    // MARK: – Account picker
+    private var accountPicker: some View {
+        Picker("", selection: $selectedAccountIndex) {
+            ForEach(activeAccounts.indices, id: \.self) { i in
+                Text(activeAccounts[i].name).tag(i)
+            }
+        }.pickerStyle(.segmented).padding(.horizontal, 12).padding(.vertical, 4)
+    }
+
+    // MARK: – Today stats
+    private func todayStatsSection(account: Account) -> some View {
+        let agg = CacheManager.shared.todayAggregate(forAccount: account.id)
+        return VStack(alignment: .leading, spacing: 4) {
+            statRow("Input Tokens", value: "\(agg.totalInputTokens.formatted())")
+            statRow("Output Tokens", value: "\(agg.totalOutputTokens.formatted())")
+            statRow("Cache Tokens", value: "\((CacheManager.shared.todayAggregate(forAccount: account.id).snapshots.reduce(0) { $0 + $1.cacheReadTokens + $1.cacheCreationTokens }).formatted())")
+            statRow("Cost Today", value: String(format: "$%.4f", agg.totalCostUSD))
+        }.padding(12)
+    }
+
+    // MARK: – Forecast
+    private func forecastSection(account: Account) -> some View {
+        Group {
+            if let f = CacheManager.shared.latestForecast(forAccount: account.id) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Label("Projected Spend", systemImage: "chart.line.uptrend.xyaxis")
+                        .font(.caption).foregroundColor(.secondary)
+                    statRow("EOD", value: String(format: "$%.2f", f.projectedEODCostUSD))
+                    statRow("EOW", value: String(format: "$%.2f", f.projectedEOWCostUSD))
+                    statRow("EOM", value: String(format: "$%.2f", f.projectedEOMCostUSD))
+                }.padding(.horizontal, 12).padding(.bottom, 8)
+            } else {
+                Text("Not enough data yet").font(.caption).foregroundColor(.secondary)
+                    .padding(.horizontal, 12).padding(.bottom, 8)
+            }
+        }
+    }
+
+    // MARK: – 7-day chart
+    private func chartSection(account: Account) -> some View {
+        let snaps = CacheManager.shared.history(forAccount: account.id, days: 7)
+        let cal = Calendar.current
+        let byDay: [(Date, Double)] = Dictionary(grouping: snaps, by: {
+            cal.startOfDay(for: $0.timestamp)
+        }).map { ($0.key, $0.value.reduce(0) { $0 + $1.totalCostUSD }) }
+        .sorted { $0.0 < $1.0 }
+        return Group {
+            if !byDay.isEmpty {
+                Chart(byDay, id: \.0) { d in
+                    BarMark(x: .value("Day", d.0, unit: .day), y: .value("Cost", d.1))
+                }
+                .chartXAxis { AxisMarks(values: .stride(by: .day)) { _ in AxisTick(); AxisGridLine() } }
+                .frame(height: 80).padding(.horizontal, 12).padding(.bottom, 12)
+            }
+        }
+    }
+
+    // MARK: – Model hint banner
+    private func modelHint(account: Account) -> ModelHint? {
+        guard let data = try? Data(contentsOf: AppConstants.sharedContainerURL.appendingPathComponent("model_hints.json")),
+              let hints = try? JSONDecoder().decode([ModelHint].self, from: data) else { return nil }
+        return hints.first(where: { $0.accountId == account.id && $0.cheaperAlternativeExists })
+    }
+
+    private func modelHintBanner(hint: ModelHint, account: Account) -> some View {
+        let dismissKey = "modelHintDismissed_\(account.id.uuidString)"
+        let dismissed = UserDefaults.standard.object(forKey: dismissKey) as? Date
+        let shouldShow = dismissed.map { Date().timeIntervalSince($0) > 7 * 86400 } ?? true
+        return Group {
+            if shouldShow {
+                HStack {
+                    Image(systemName: "lightbulb").foregroundColor(.yellow)
+                    Text("↓ ~\(String(format: "$%.2f", hint.estimatedSavingsUSD))/day switching to \(hint.recommendedModel)")
+                        .font(.caption)
+                    Spacer()
+                    Button(action: { UserDefaults.standard.set(Date(), forKey: dismissKey) }) {
+                        Image(systemName: "xmark").font(.caption2)
+                    }.buttonStyle(.plain)
+                }.padding(.horizontal, 12).padding(.vertical, 6)
+                .background(Color.yellow.opacity(0.1)).cornerRadius(6).padding(.horizontal, 12)
+            }
+        }
+    }
+
+    // MARK: – Footer
+    private var footer: some View {
+        HStack {
+            Button("Refresh Now") { PollingService.shared.forceRefresh() }.buttonStyle(.plain).font(.caption)
+            Spacer()
+            if config.analytics.enabled {
+                Button("History") { showHistory = true }.buttonStyle(.plain).font(.caption)
+            }
+            Button("Settings…") {
+                SettingsWindowController.shared.showWindow()
+            }.buttonStyle(.plain).font(.caption)
+        }.padding(.horizontal, 12).padding(.vertical, 8)
+    }
+
+    private func statRow(_ label: String, value: String) -> some View {
+        HStack {
+            Text(label).foregroundColor(.secondary)
+            Spacer()
+            Text(value).monospacedDigit()
+        }.font(.system(size: 12))
+    }
+}
