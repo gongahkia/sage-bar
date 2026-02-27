@@ -77,6 +77,7 @@ struct AddAccountSheet: View {
     @State private var name = ""
     @State private var type: AccountType = .claudeCode
     @State private var apiKey = ""
+    @State private var sessionToken = ""
     @State private var validating = false
     @State private var validationError: String?
 
@@ -96,19 +97,29 @@ struct AddAccountSheet: View {
                 }
             }
             if type == .claudeAI {
-                Text("(coming soon)").foregroundColor(.secondary).font(.caption)
+                SecureField("Session Token (from claude.ai cookie)", text: $sessionToken)
+                Text("To get your session token: open claude.ai in browser → DevTools (⌥⌘I) → Application → Cookies → copy the value of 'sessionKey'.")
+                    .font(.caption).foregroundColor(.secondary)
             }
             HStack {
                 Spacer()
                 Button("Cancel") { dismiss() }
                 Button("Save") { save() }
-                    .disabled(name.isEmpty || type == .claudeAI || (type == .anthropicAPI && apiKey.isEmpty))
+                    .disabled(name.isEmpty || (type == .anthropicAPI && apiKey.isEmpty) || (type == .claudeAI && sessionToken.isEmpty))
             }
         }.padding().frame(width: 360)
     }
 
     private func save() {
-        guard type != .claudeAI else { return }
+        if type == .claudeAI {
+            let a = Account(name: name, type: type)
+            if !sessionToken.isEmpty {
+                try? KeychainManager.store(key: sessionToken, service: AppConstants.keychainSessionTokenService, account: a.id.uuidString)
+            }
+            onSave(a, nil)
+            dismiss()
+            return
+        }
         if type == .anthropicAPI {
             validating = true
             Task {
