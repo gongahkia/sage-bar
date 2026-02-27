@@ -5,6 +5,7 @@ struct MenuBarPopoverView: View {
     @State private var config = ConfigManager.shared.load()
     @State private var selectedAccountIndex = 0
     @State private var showHistory = false
+    @State private var needsReAuth: Bool = false
     @ObservedObject private var polling = PollingService.shared
     @ObservedObject private var errorLogger = ErrorLogger.shared
 
@@ -19,13 +20,22 @@ struct MenuBarPopoverView: View {
                 accountPicker
             }
             if let account = currentAccount {
+                if needsReAuth && account.type == .claudeAI {
+                    reAuthBanner
+                }
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        todayStatsSection(account: account)
-                        if config.forecast.showInPopover && config.forecast.enabled {
+                        if account.type == .claudeAI {
+                            claudeAIStatsSection(account: account)
+                        } else {
+                            todayStatsSection(account: account)
+                        }
+                        if account.type != .claudeAI && config.forecast.showInPopover && config.forecast.enabled {
                             forecastSection(account: account)
                         }
-                        chartSection(account: account)
+                        if account.type != .claudeAI {
+                            chartSection(account: account)
+                        }
                         if let hint = modelHint(account: account),
                            config.modelOptimizer.enabled && config.modelOptimizer.showInPopover {
                             modelHintBanner(hint: hint, account: account)
@@ -40,6 +50,9 @@ struct MenuBarPopoverView: View {
         .frame(width: 340)
         .sheet(isPresented: $showHistory) {
             HistoryView(account: currentAccount)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .claudeAISessionExpired)) { _ in
+            needsReAuth = true
         }
     }
 
@@ -138,6 +151,34 @@ struct MenuBarPopoverView: View {
                 .background(Color.yellow.opacity(0.1)).cornerRadius(6).padding(.horizontal, 12)
             }
         }
+    }
+
+    // MARK: – ClaudeAI stats
+    private func claudeAIStatsSection(account: Account) -> some View {
+        let snap = CacheManager.shared.latest(forAccount: account.id)
+        let remaining = snap?.modelBreakdown.first(where: { $0.modelId == "claude-ai-web" })?.inputTokens
+        return VStack(alignment: .leading, spacing: 4) {
+            if let r = remaining {
+                statRow("Messages remaining", value: "\(r)")
+            } else {
+                Text("No data yet").font(.caption).foregroundColor(.secondary)
+            }
+        }.padding(12)
+    }
+
+    // MARK: – Re-auth banner
+    private var reAuthBanner: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "key.fill").foregroundColor(.orange)
+            Text("claude.ai session expired — update your session token in Settings.")
+                .font(.caption).lineLimit(2)
+            Spacer()
+            Button { needsReAuth = false } label: {
+                Image(systemName: "xmark").font(.caption2)
+            }.buttonStyle(.plain)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 6)
+        .background(Color.orange.opacity(0.15))
     }
 
     // MARK: – Last Error
