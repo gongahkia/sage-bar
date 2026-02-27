@@ -121,7 +121,36 @@ class PollingService: ObservableObject {
                 ErrorLogger.shared.log("Unexpected error for account \(account.id.uuidString): \(error.localizedDescription)")
             }
         case .claudeAI:
-            break // stub — implemented in task 50
+            let token: String
+            do {
+                token = try KeychainManager.retrieve(service: AppConstants.keychainSessionTokenService, account: account.id.uuidString)
+            } catch {
+                ErrorLogger.shared.log("No session token for claudeAI account \(account.id): \(error.localizedDescription)")
+                return
+            }
+            let aiClient = ClaudeAIClient(sessionToken: token)
+            do {
+                let usage = try await aiClient.fetchRemainingUsage()
+                let remaining = usage.messageLimit.remaining
+                let snap = UsageSnapshot(
+                    accountId: account.id,
+                    timestamp: Date(),
+                    inputTokens: 0,
+                    outputTokens: 0,
+                    cacheCreationTokens: 0,
+                    cacheReadTokens: 0,
+                    totalCostUSD: 0,
+                    modelBreakdown: [ModelUsage(modelId: "claude-ai-web", inputTokens: remaining, outputTokens: 0, costUSD: 0)]
+                )
+                CacheManager.shared.append(snap)
+            } catch ClaudeAIError.unauthorized, ClaudeAIError.forbidden {
+                ErrorLogger.shared.log("claudeAI session expired for account \(account.id.uuidString) — re-authenticate")
+                NotificationCenter.default.post(name: .claudeAISessionExpired, object: account.id)
+            } catch ClaudeAIError.networkError(let err) {
+                ErrorLogger.shared.log("claudeAI network error for account \(account.id.uuidString): \(err.localizedDescription)")
+            } catch {
+                ErrorLogger.shared.log("claudeAI unexpected error for account \(account.id.uuidString): \(error.localizedDescription)")
+            }
         }
     }
 
@@ -152,4 +181,5 @@ class PollingService: ObservableObject {
 
 extension Notification.Name {
     static let usageDidUpdate = Notification.Name("UsageDidUpdate")
+    static let claudeAISessionExpired = Notification.Name("ClaudeAISessionExpired")
 }
