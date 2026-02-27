@@ -29,5 +29,15 @@ let package = Package(
             dependencies: ["TOMLKit"],
             path: "Sources/ClaudeUsageCLI"
         ),
+        .testTarget(
+            name: "ClaudeUsageTests",
+            dependencies: [
+                "TOMLKit",
+                .product(name: "LaunchAtLogin", package: "LaunchAtLogin-Modern"),
+                .product(name: "Sparkle", package: "Sparkle"),
+            ],
+            path: "Tests/ClaudeUsageTests",
+            sources: ["."]
+        ),
     ]
 )
