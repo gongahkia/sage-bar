@@ -47,8 +47,11 @@ class ClaudeCodeLogParser {
     }
 
     func parseFile(_ url: URL) -> [ClaudeCodeEntry] {
-        guard let text = try? String(contentsOf: url, encoding: .utf8) else {
-            log.error("Cannot read \(url.lastPathComponent, privacy: .public)")
+        let text: String
+        do {
+            text = try String(contentsOf: url, encoding: .utf8)
+        } catch {
+            ErrorLogger.shared.log("Cannot read log file at \(url.path): \(error.localizedDescription)")
             return []
         }
         return text.split(separator: "\n", omittingEmptySubsequences: true).compactMap { line in
