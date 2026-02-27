@@ -72,6 +72,24 @@ jobs:
             --wait
           xcrun stapler staple ClaudeUsage-${{ github.ref_name }}.dmg
 
+      - name: Generate Sparkle appcast
+        run: |
+          # download generate_appcast from Sparkle release
+          curl -L https://github.com/sparkle-project/Sparkle/releases/latest/download/Sparkle-for-Swift-Package-Manager.zip \
+            -o sparkle_tools.zip
+          unzip -j sparkle_tools.zip '*/generate_appcast' -d sparkle_bin/
+          chmod +x sparkle_bin/generate_appcast
+          mkdir -p docs
+          ./sparkle_bin/generate_appcast --link "https://github.com/${{ github.repository }}/releases" \
+            --download-url-prefix "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/" \
+            --output-path docs/appcast.xml \
+            ClaudeUsage-${{ github.ref_name }}.dmg
+
+      - name: Upload appcast to GitHub Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/
+
       - name: Upload DMG to release
         uses: softprops/action-gh-release@v2
         with:
