@@ -8,14 +8,23 @@ let package = Package(
         .executable(name: "ClaudeUsage", targets: ["ClaudeUsage"]),
         .executable(name: "claude-usage", targets: ["ClaudeUsageCLI"]),
     ],
+    dependencies: [
+        .package(url: "https://github.com/LebJe/TOMLKit.git", from: "0.5.0"),
+        .package(url: "https://github.com/sindresorhus/LaunchAtLogin-Modern", from: "1.0.0"),
+    ],
     targets: [
         .executableTarget(
             name: "ClaudeUsage",
+            dependencies: [
+                "TOMLKit",
+                .product(name: "LaunchAtLogin", package: "LaunchAtLogin-Modern"),
+            ],
             path: "Sources/ClaudeUsage",
             resources: [.process("Resources")]
         ),
         .executableTarget(
             name: "ClaudeUsageCLI",
+            dependencies: ["TOMLKit"],
             path: "Sources/ClaudeUsageCLI"
         ),
     ]
