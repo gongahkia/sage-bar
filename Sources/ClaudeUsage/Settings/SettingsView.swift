@@ -12,6 +12,7 @@ struct SettingsView: View {
             AutomationsTab().tabItem { Label("Automations", systemImage: "gearshape.2") }
             SyncTab().tabItem { Label("Sync", systemImage: "icloud") }
             CLITab().tabItem { Label("CLI", systemImage: "terminal") }
+            DiagnosticsView().tabItem { Label("Diagnostics", systemImage: "ladybug") }
             AboutTab().tabItem { Label("About", systemImage: "info.circle") }
         }.frame(width: 600, height: 480)
     }
