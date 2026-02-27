@@ -59,6 +59,19 @@ jobs:
           xcrun codesign --force --sign "$DEVELOPER_ID_APPLICATION" \
             ClaudeUsage-${{ github.ref_name }}.dmg
 
+      - name: Notarize DMG
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          xcrun notarytool submit ClaudeUsage-${{ github.ref_name }}.dmg \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_PASSWORD" \
+            --wait
+          xcrun stapler staple ClaudeUsage-${{ github.ref_name }}.dmg
+
       - name: Upload DMG to release
         uses: softprops/action-gh-release@v2
         with:
