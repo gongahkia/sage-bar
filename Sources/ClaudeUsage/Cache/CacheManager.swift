@@ -1,4 +1,7 @@
 import Foundation
+import OSLog
+
+private let log = Logger(subsystem: "dev.claudeusage", category: "CacheManager")
 
 class CacheManager {
     static let shared = CacheManager()
@@ -44,6 +47,7 @@ class CacheManager {
             }
         }
         if let e = err { ErrorLogger.shared.log("NSFileCoordinator cache read error: \(e.localizedDescription)") }
+        log.debug("Cache loaded: \(result.count) snapshots")
         return result
     }
 
@@ -62,6 +66,7 @@ class CacheManager {
             }
         }
         if let e = err { ErrorLogger.shared.log("NSFileCoordinator cache write error: \(e.localizedDescription)") }
+        log.debug("Cache saved: \(snapshots.count) snapshots")
     }
 
     func append(_ snapshot: UsageSnapshot) {

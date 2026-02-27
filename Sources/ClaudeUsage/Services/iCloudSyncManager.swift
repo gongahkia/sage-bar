@@ -1,5 +1,8 @@
 import Foundation
 import Combine
+import OSLog
+
+private let log = Logger(subsystem: "dev.claudeusage", category: "iCloudSync")
 
 enum SyncState {
     case disabled, idle, syncing, error(String)
@@ -37,16 +40,19 @@ class iCloudSyncManager: ObservableObject {
         let config = ConfigManager.shared.load().iCloudSync
         guard config.enabled, !config.localOnly else { syncState = .disabled; return }
         guard isICloudAvailable() else {
+            log.warning("iCloud not available — sync disabled")
             ErrorLogger.shared.log("iCloud not available — sync disabled", level: "WARN")
             syncState = .error("iCloud unavailable")
             return
         }
+        log.info("iCloud sync started")
         syncState = .syncing
         defer {
             syncState = .idle
             lastSyncDate = Date()
             UserDefaults.standard.set(Date(), forKey: "lastCloudSyncDate")
             NotificationCenter.default.post(name: .iCloudSyncDidComplete, object: nil)
+            log.info("iCloud sync completed")
         }
         guard let remoteURL = containerURL(config: config) else {
             syncState = .error("iCloud container unavailable"); return

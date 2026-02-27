@@ -1,6 +1,9 @@
 import Foundation
 import Combine
 import Network
+import OSLog
+
+private let log = Logger(subsystem: "dev.claudeusage", category: "PollingService")
 
 @MainActor
 class PollingService: ObservableObject {
@@ -48,12 +51,14 @@ class PollingService: ObservableObject {
 
     func pollOnce() async {
         guard networkAvailable else {
+            log.warning("Network unavailable, skipping poll")
             ErrorLogger.shared.log("Network unavailable, skipping poll", level: "WARN")
             return
         }
         let config = ConfigManager.shared.load()
+        log.info("Poll started: \(config.accounts.filter { $0.isActive }.count) active accounts")
         isPolling = true
-        defer { isPolling = false; lastPollDate = Date() }
+        defer { isPolling = false; lastPollDate = Date(); log.info("Poll completed") }
 
         let activeAccounts = config.accounts.filter { $0.isActive }
         var updatedIds: [UUID] = []
