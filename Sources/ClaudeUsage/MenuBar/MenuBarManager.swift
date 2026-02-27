@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import Combine
+import Sparkle
 
 class MenuBarManager {
     static let shared = MenuBarManager()
@@ -9,10 +10,12 @@ class MenuBarManager {
     private var monitor: Any?
     private var throttleWorkItem: DispatchWorkItem?
     private var secondStatusItem: NSStatusItem? // dual icon support
+    private(set) var updaterController: SPUStandardUpdaterController?
 
     private init() {}
 
-    func setup() {
+    func setup(updaterController: SPUStandardUpdaterController? = nil) {
+        self.updaterController = updaterController
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let btn = statusItem.button {
             btn.image = NSImage(systemSymbolName: "chart.bar.fill", accessibilityDescription: "Claude Usage")

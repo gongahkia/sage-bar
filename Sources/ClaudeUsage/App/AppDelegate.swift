@@ -1,12 +1,28 @@
 import AppKit
 import Foundation
+import Sparkle
 
 class AppDelegate: NSObject, NSApplicationDelegate {
+    private let updaterController = SPUStandardUpdaterController(
+        startingUpdater: true,
+        updaterDelegate: nil,
+        userDriverDelegate: nil
+    )
+    private var updateTimer: Timer?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory) // suppress Dock icon
 
+        // check for updates immediately on launch
+        updaterController.updater.checkForUpdatesInBackground()
+
+        // daily update check timer
+        updateTimer = Timer.scheduledTimer(withTimeInterval: 86400, repeats: true) { [weak self] _ in
+            self?.updaterController.updater.checkForUpdatesInBackground()
+        }
+
         // setup menu bar
-        MenuBarManager.shared.setup()
+        MenuBarManager.shared.setup(updaterController: updaterController)
 
         // request notification permission once
         NotificationManager.shared.requestPermission()
@@ -32,6 +48,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        updateTimer?.invalidate()
         HotkeyManager.shared.unregister()
         PollingService.shared.stop()
     }
