@@ -1,0 +1,67 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_15.4.app
+
+      - name: Build x86_64
+        run: swift build -c release --arch x86_64
+
+      - name: Build arm64
+        run: swift build -c release --arch arm64
+
+      - name: Create universal binary (ClaudeUsage)
+        run: |
+          lipo -create \
+            .build/x86_64-apple-macosx/release/ClaudeUsage \
+            .build/arm64-apple-macosx/release/ClaudeUsage \
+            -output ClaudeUsage-universal
+
+      - name: Create universal binary (claude-usage CLI)
+        run: |
+          lipo -create \
+            .build/x86_64-apple-macosx/release/claude-usage \
+            .build/arm64-apple-macosx/release/claude-usage \
+            -output claude-usage-universal
+
+      - name: Bundle .app
+        run: |
+          APP=ClaudeUsage.app
+          mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+          cp ClaudeUsage-universal "$APP/Contents/MacOS/ClaudeUsage"
+          cp Sources/ClaudeUsage/Resources/Info.plist "$APP/Contents/"
+
+      - name: Code sign app
+        env:
+          DEVELOPER_ID_APPLICATION: ${{ secrets.DEVELOPER_ID_APPLICATION }}
+        run: |
+          xcrun codesign --force --deep --sign "$DEVELOPER_ID_APPLICATION" \
+            --options runtime ClaudeUsage.app
+
+      - name: Create DMG
+        run: |
+          hdiutil create -volname ClaudeUsage -srcfolder ClaudeUsage.app \
+            -ov -format UDZO ClaudeUsage-${{ github.ref_name }}.dmg
+
+      - name: Code sign DMG
+        env:
+          DEVELOPER_ID_APPLICATION: ${{ secrets.DEVELOPER_ID_APPLICATION }}
+        run: |
+          xcrun codesign --force --sign "$DEVELOPER_ID_APPLICATION" \
+            ClaudeUsage-${{ github.ref_name }}.dmg
+
+      - name: Upload DMG to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ClaudeUsage-${{ github.ref_name }}.dmg
+            claude-usage-universal
