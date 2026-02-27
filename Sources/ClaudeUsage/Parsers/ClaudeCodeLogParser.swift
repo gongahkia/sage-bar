@@ -29,7 +29,7 @@ struct ClaudeUsageField: Codable {
 class ClaudeCodeLogParser {
     static let shared = ClaudeCodeLogParser()
     private let claudeDir: URL
-    private var modDates: [URL: Date] = [:] // cache for skip-unchanged optimisation
+    private var fileChecksums: [URL: (Date, Int)] = [:] // mtime+size cache for skip-unchanged
     private var fsEventStream: FSEventStreamRef?
     private var debounceWork: DispatchWorkItem?
 
@@ -88,13 +88,12 @@ class ClaudeCodeLogParser {
         let todayComps = cal.dateComponents([.year,.month,.day], from: Date())
         var input = 0, output = 0, cacheCreate = 0, cacheRead = 0
         for url in discoverSessionFiles() {
-            // skip files not modified today
             let attrs = try? FileManager.default.attributesOfItem(atPath: url.path)
             guard let mod = attrs?[.modificationDate] as? Date,
                   cal.dateComponents([.year,.month,.day], from: mod) == todayComps else { continue }
-            // skip unchanged
-            if let prev = modDates[url], prev == mod { continue }
-            modDates[url] = mod
+            let size = (attrs?[.size] as? Int) ?? -1
+            if let prev = fileChecksums[url], prev.0 == mod, prev.1 == size { continue }
+            fileChecksums[url] = (mod, size)
             for entry in parseFile(url) {
                 let u = entry.usage ?? entry.message?.usage
                 input += u?.input_tokens ?? 0
