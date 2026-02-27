@@ -1,5 +1,6 @@
 import Foundation
 import OSLog
+import CoreServices
 
 private let log = Logger(subsystem: "dev.claudeusage", category: "LogParser")
 
@@ -29,7 +30,8 @@ class ClaudeCodeLogParser {
     static let shared = ClaudeCodeLogParser()
     private let claudeDir: URL
     private var modDates: [URL: Date] = [:] // cache for skip-unchanged optimisation
-    private var fsEventsSource: DispatchSourceFileSystemObject?
+    private var fsEventStream: FSEventStreamRef?
+    private var debounceWork: DispatchWorkItem?
 
     private init() {
         self.claudeDir = FileManager.default.homeDirectoryForCurrentUser
@@ -128,17 +130,43 @@ class ClaudeCodeLogParser {
     // MARK: – FSEvents watcher
 
     func startWatching() {
+        stopWatching()
         let projectsPath = claudeDir.appendingPathComponent("projects").path
-        guard let fd = open(projectsPath, O_EVTONLY) as? Int32, fd >= 0 else { return }
-        let src = DispatchSource.makeFileSystemObjectSource(
-            fileDescriptor: fd, eventMask: .write, queue: .global(qos: .utility)
+        let paths = [projectsPath] as CFArray
+        var ctx = FSEventStreamContext(
+            version: 0,
+            info: Unmanaged.passUnretained(self).toOpaque(),
+            retain: nil, release: nil, copyDescription: nil
         )
-        src.setEventHandler {
+        let cb: FSEventStreamCallback = { _, info, _, _, _, _ in
+            guard let p = info else { return }
+            Unmanaged<ClaudeCodeLogParser>.fromOpaque(p).takeUnretainedValue().debounceLogsChanged()
+        }
+        let flags = FSEventStreamCreateFlags(
+            kFSEventStreamCreateFlagFileEvents | kFSEventStreamCreateFlagUseCFTypes
+        )
+        guard let stream = FSEventStreamCreate(
+            nil, cb, &ctx, paths,
+            FSEventStreamEventId(kFSEventStreamEventIdSinceNow), 0.0, flags
+        ) else { return }
+        FSEventStreamScheduleWithRunLoop(stream, CFRunLoopGetMain(), CFRunLoopMode.defaultMode.rawValue)
+        FSEventStreamStart(stream)
+        fsEventStream = stream
+    }
+
+    func stopWatching() {
+        guard let s = fsEventStream else { return }
+        FSEventStreamStop(s); FSEventStreamInvalidate(s); FSEventStreamRelease(s)
+        fsEventStream = nil
+    }
+
+    private func debounceLogsChanged() { // 500ms debounce
+        debounceWork?.cancel()
+        let w = DispatchWorkItem {
             NotificationCenter.default.post(name: .claudeCodeLogsChanged, object: nil)
         }
-        src.setCancelHandler { close(fd) }
-        src.resume()
-        fsEventsSource = src
+        debounceWork = w
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: w)
     }
 }
 
