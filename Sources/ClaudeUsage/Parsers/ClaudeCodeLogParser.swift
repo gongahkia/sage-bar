@@ -38,8 +38,17 @@ class ClaudeCodeLogParser {
             .appendingPathComponent(".claude")
     }
 
+    private var missingDirLogged = false
     func discoverSessionFiles() -> [URL] {
         let projectsDir = claudeDir.appendingPathComponent("projects")
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: projectsDir.path, isDirectory: &isDir), isDir.boolValue else {
+            if !missingDirLogged {
+                ErrorLogger.shared.log("Claude Code log directory not found at \(projectsDir.path)", level: "WARN")
+                missingDirLogged = true
+            }
+            return []
+        }
         guard let enumerator = FileManager.default.enumerator(
             at: projectsDir,
             includingPropertiesForKeys: [.contentModificationDateKey],
