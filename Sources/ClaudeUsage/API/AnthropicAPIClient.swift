@@ -32,16 +32,21 @@ struct AnthropicUsagePeriod: Codable {
 
 // MARK: – Client
 
+private struct PriceEntry: Decodable {
+    let inputPer1M: Double
+    let outputPer1M: Double
+}
+
 class AnthropicAPIClient {
-    // pricing per 1M tokens: (input, output) in USD
-    static let pricingConstants: [String: (inputPer1M: Double, outputPer1M: Double)] = [
-        "claude-3-5-sonnet": (3.0, 15.0),
-        "claude-3-opus":     (15.0, 75.0),
-        "claude-3-haiku":    (0.25, 1.25),
-        "claude-opus-4-6":   (15.0, 75.0),
-        "claude-sonnet-4-6": (3.0, 15.0),
-        "claude-haiku-4-5":  (0.25, 1.25),
-    ]
+    static let pricingConstants: [String: (inputPer1M: Double, outputPer1M: Double)] = {
+        guard let url = Bundle.module.url(forResource: "prices", withExtension: "json"),
+              let data = try? Data(contentsOf: url),
+              let raw = try? JSONDecoder().decode([String: PriceEntry].self, from: data) else {
+            ErrorLogger.shared.log("Failed to load prices.json from bundle", level: "WARN")
+            return [:]
+        }
+        return raw.mapValues { ($0.inputPer1M, $0.outputPer1M) }
+    }()
 
     private let apiKey: String
     private let session: URLSession
@@ -103,6 +108,8 @@ class AnthropicAPIClient {
             let price = Self.pricingConstants.first(where: { period.model.hasPrefix($0.key) })?.value ?? (0, 0)
             let costIn = Double(period.input_tokens) / 1_000_000 * price.inputPer1M
             let costOut = Double(period.output_tokens) / 1_000_000 * price.outputPer1M
+            let costCacheCreate = Double(period.cache_creation_input_tokens) / 1_000_000 * price.inputPer1M * 1.25
+            let costCacheRead = Double(period.cache_read_input_tokens) / 1_000_000 * price.inputPer1M * 0.1
             let date = fmt.date(from: period.start_time) ?? Date()
             return UsageSnapshot(
                 accountId: accountId,
@@ -111,7 +118,7 @@ class AnthropicAPIClient {
                 outputTokens: period.output_tokens,
                 cacheCreationTokens: period.cache_creation_input_tokens,
                 cacheReadTokens: period.cache_read_input_tokens,
-                totalCostUSD: costIn + costOut,
+                totalCostUSD: costIn + costOut + costCacheCreate + costCacheRead,
                 modelBreakdown: [ModelUsage(modelId: period.model, inputTokens: period.input_tokens, outputTokens: period.output_tokens, costUSD: costIn + costOut)]
             )
         }
