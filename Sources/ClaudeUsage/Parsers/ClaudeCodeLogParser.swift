@@ -70,9 +70,17 @@ class ClaudeCodeLogParser {
             ErrorLogger.shared.log("Cannot read log file at \(url.path): \(error.localizedDescription)")
             return []
         }
-        return text.split(separator: "\n", omittingEmptySubsequences: true).compactMap { line in
-            try? JSONDecoder().decode(ClaudeCodeEntry.self, from: Data(line.utf8))
+        let dec = JSONDecoder()
+        var results: [ClaudeCodeEntry] = []
+        for (i, line) in text.split(separator: "\n", omittingEmptySubsequences: true).enumerated() {
+            do {
+                results.append(try dec.decode(ClaudeCodeEntry.self, from: Data(line.utf8)))
+            } catch {
+                let preview = String(line.prefix(200))
+                ErrorLogger.shared.log("Malformed JSONL line \(i+1) in \(url.lastPathComponent): \(preview)", level: "WARN")
+            }
         }
+        return results
     }
 
     func aggregateToday() -> UsageSnapshot {
