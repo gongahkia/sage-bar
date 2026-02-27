@@ -40,6 +40,7 @@ struct MenuBarPopoverView: View {
                            config.modelOptimizer.enabled && config.modelOptimizer.showInPopover {
                             modelHintBanner(hint: hint, account: account)
                         }
+                        pollHealthRow
                     }
                 }
             }
@@ -151,6 +152,19 @@ struct MenuBarPopoverView: View {
                 .background(Color.yellow.opacity(0.1)).cornerRadius(6).padding(.horizontal, 12)
             }
         }
+    }
+
+    // MARK: – Poll health
+    private var pollHealthRow: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            if let last = polling.lastPollDate {
+                statRow("Last synced", value: last.formatted(.relative(presentation: .named)))
+                let next = last.addingTimeInterval(TimeInterval(config.pollIntervalSeconds))
+                statRow("Next poll", value: next.formatted(.relative(presentation: .named)))
+            } else {
+                statRow("Last synced", value: "Never")
+            }
+        }.padding(.horizontal, 12).padding(.bottom, 6)
     }
 
     // MARK: – ClaudeAI stats
