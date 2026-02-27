@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE dictionary SYSTEM "file://localhost/System/Library/DTDs/sdef.dtd">
+<dictionary title="Claude Usage Suite">
+    <suite name="Claude Usage Suite" code="CLUH" description="Claude usage data access">
+        <class name="usage record" code="CUSR" description="Daily usage record" plural="usage records">
+            <property name="account name" code="acnm" type="text" access="r" description="Account name"/>
+            <property name="input tokens" code="intf" type="integer" access="r" description="Input tokens today"/>
+            <property name="output tokens" code="outf" type="integer" access="r" description="Output tokens today"/>
+            <property name="cost usd" code="cosd" type="real" access="r" description="Cost today in USD"/>
+            <property name="last updated" code="lupd" type="date" access="r" description="Last update timestamp"/>
+        </class>
+        <command name="get today usage" code="CLUHgtus" description="Get today's usage for all active accounts">
+            <result type="usage record" description="List of usage records"/>
+        </command>
+        <command name="get forecast" code="CLUHgfct" description="Get spend forecast">
+            <result type="any" description="Forecast record with projectedEOD, projectedEOW, projectedEOM"/>
+        </command>
+        <command name="refresh" code="CLUHrefr" description="Force refresh usage data"/>
+    </suite>
+</dictionary>
