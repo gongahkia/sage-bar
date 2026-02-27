@@ -22,7 +22,9 @@ class MenuBarManager {
             btn.image?.isTemplate = true
             btn.action = #selector(togglePopover)
             btn.target = self
+            btn.sendAction(on: [.leftMouseUp, .rightMouseUp])
         }
+        statusItem.menu = buildContextMenu()
         popover = NSPopover()
         popover.contentSize = NSSize(width: 340, height: 480)
         popover.behavior = .transient
@@ -38,6 +40,21 @@ class MenuBarManager {
         ) { [weak self] _ in
             Task { await PollingService.shared.pollOnce() }
         }
+    }
+
+    private func buildContextMenu() -> NSMenu {
+        let menu = NSMenu()
+        let checkItem = NSMenuItem(title: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "")
+        checkItem.target = self
+        menu.addItem(checkItem)
+        menu.addItem(.separator())
+        let quitItem = NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        menu.addItem(quitItem)
+        return menu
+    }
+
+    @objc private func checkForUpdates() {
+        updaterController?.checkForUpdates(nil)
     }
 
     @objc func togglePopover() {
