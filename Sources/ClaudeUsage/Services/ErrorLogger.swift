@@ -3,8 +3,14 @@ import OSLog
 
 private let log = Logger(subsystem: "dev.claudeusage", category: "ErrorLogger")
 
-final class ErrorLogger {
+struct AppError {
+    let timestamp: Date
+    let message: String
+}
+
+final class ErrorLogger: ObservableObject {
     static let shared = ErrorLogger()
+    @Published var lastError: AppError?
     private let logFile: URL
     private let queue = DispatchQueue(label: "dev.claudeusage.errorlog", qos: .utility)
     private let maxBytes = 1_048_576 // 1MB
@@ -23,6 +29,8 @@ final class ErrorLogger {
             self.append(entry)
             self.rotateIfNeeded()
         }
+        let err = AppError(timestamp: Date(), message: message)
+        DispatchQueue.main.async { [weak self] in self?.lastError = err }
     }
 
     func readLast(_ n: Int = 500) -> [String] {

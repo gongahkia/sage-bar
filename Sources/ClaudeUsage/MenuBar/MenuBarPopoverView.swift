@@ -6,6 +6,7 @@ struct MenuBarPopoverView: View {
     @State private var selectedAccountIndex = 0
     @State private var showHistory = false
     @ObservedObject private var polling = PollingService.shared
+    @ObservedObject private var errorLogger = ErrorLogger.shared
 
     private var activeAccounts: [Account] { config.accounts.filter { $0.isActive } }
     private var currentAccount: Account? { activeAccounts.indices.contains(selectedAccountIndex) ? activeAccounts[selectedAccountIndex] : activeAccounts.first }
@@ -33,6 +34,7 @@ struct MenuBarPopoverView: View {
                 }
             }
             Divider()
+            if let err = errorLogger.lastError { lastErrorBanner(err) }
             footer
         }
         .frame(width: 340)
@@ -136,6 +138,23 @@ struct MenuBarPopoverView: View {
                 .background(Color.yellow.opacity(0.1)).cornerRadius(6).padding(.horizontal, 12)
             }
         }
+    }
+
+    // MARK: – Last Error
+    private func lastErrorBanner(_ err: AppError) -> some View {
+        HStack(alignment: .top, spacing: 6) {
+            Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.red).font(.caption)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(err.message).font(.caption).lineLimit(2)
+                Text(err.timestamp, style: .relative).font(.caption2).foregroundColor(.secondary)
+            }
+            Spacer()
+            Button { errorLogger.lastError = nil } label: {
+                Image(systemName: "xmark").font(.caption2)
+            }.buttonStyle(.plain)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 6)
+        .background(Color.red.opacity(0.1))
     }
 
     // MARK: – Footer
