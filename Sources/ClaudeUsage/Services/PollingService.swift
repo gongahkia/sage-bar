@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import Network
 
 @MainActor
 class PollingService: ObservableObject {
@@ -10,8 +11,19 @@ class PollingService: ObservableObject {
     private var timer: Timer?
     private var currentTask: Task<Void, Never>?
     private let maxConcurrency = 3
+    private let pathMonitor = NWPathMonitor()
+    private var networkAvailable = true
 
-    private init() {}
+    private init() {
+        pathMonitor.pathUpdateHandler = { [weak self] path in
+            let available = path.status == .satisfied
+            self?.networkAvailable = available
+            if !available {
+                ErrorLogger.shared.log("Network unavailable, skipping polls until reconnect", level: "WARN")
+            }
+        }
+        pathMonitor.start(queue: DispatchQueue(label: "dev.claudeusage.netmon"))
+    }
 
     func start(config: Config) {
         stop()
@@ -35,6 +47,10 @@ class PollingService: ObservableObject {
     }
 
     func pollOnce() async {
+        guard networkAvailable else {
+            ErrorLogger.shared.log("Network unavailable, skipping poll", level: "WARN")
+            return
+        }
         let config = ConfigManager.shared.load()
         isPolling = true
         defer { isPolling = false; lastPollDate = Date() }
