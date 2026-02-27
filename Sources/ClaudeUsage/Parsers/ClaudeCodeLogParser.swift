@@ -49,6 +49,11 @@ class ClaudeCodeLogParser {
     }
 
     func parseFile(_ url: URL) -> [ClaudeCodeEntry] {
+        if let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
+           let size = attrs[.size] as? Int, size > 50 * 1024 * 1024 {
+            ErrorLogger.shared.log("Skipping oversized log file \(url.lastPathComponent) (\(size / 1024 / 1024)MB)", level: "WARN")
+            return []
+        }
         let text: String
         do {
             text = try String(contentsOf: url, encoding: .utf8)
