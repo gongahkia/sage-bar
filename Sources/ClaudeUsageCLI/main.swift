@@ -13,6 +13,10 @@ let forecastFile = sharedContainer.appendingPathComponent("forecast_cache.json")
 let configDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".config/claude-usage")
 let configFile = configDir.appendingPathComponent("config.toml")
 
+// MARK: – Version
+
+let appVersion = "1.0.0"
+
 // MARK: – Arg parsing
 
 var accountFilter: String? = nil
@@ -21,11 +25,17 @@ var formatJSON = false
 var showForecast = false
 var showHistory = false
 var showHeatmap = false
+var showErrors = false
+var errorsCount = 20
+var showConfig = false
 
 var args = CommandLine.arguments.dropFirst()
 var iter = args.makeIterator()
 while let arg = iter.next() {
     switch arg {
+    case "--version":
+        print("claude-usage \(appVersion)")
+        exit(0)
     case "--account": accountFilter = iter.next()
     case "--no-color": noColor = true
     case "--format":
@@ -33,11 +43,48 @@ while let arg = iter.next() {
     case "--forecast": showForecast = true
     case "--history": showHistory = true
     case "--heatmap": showHeatmap = true
+    case "--config": showConfig = true
+    case "--errors": showErrors = true
     case "--help":
-        print("claude-usage [--account NAME] [--no-color] [--format json] [--forecast] [--history] [--heatmap]")
+        print("claude-usage [--account NAME] [--no-color] [--format json] [--forecast] [--history] [--heatmap] [--config] [--errors[=N]] [--version]")
         exit(0)
-    default: break
+    default:
+        if arg.hasPrefix("--errors="), let n = Int(arg.dropFirst("--errors=".count)) {
+            showErrors = true; errorsCount = n
+        }
     }
+}
+
+// MARK: – --config
+
+if showConfig {
+    let cfgPath = configDir.appendingPathComponent("config.toml")
+    if let raw = try? Data(contentsOf: cfgPath),
+       var obj = (try? JSONSerialization.jsonObject(with: raw)) as? [String: Any] {
+        if var wh = obj["webhook"] as? [String: Any], let url = wh["url"] as? String, !url.isEmpty {
+            wh["url"] = "***"; obj["webhook"] = wh
+        }
+        let out = (try? JSONSerialization.data(withJSONObject: obj, options: .prettyPrinted))
+            .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+        print(out)
+    } else {
+        print("{}")
+    }
+    exit(0)
+}
+
+// MARK: – --errors
+
+if showErrors {
+    let logFile = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent(".claude-usage/errors.log")
+    guard let text = try? String(contentsOf: logFile, encoding: .utf8) else {
+        print("No error log found at \(logFile.path)")
+        exit(0)
+    }
+    let lines = text.components(separatedBy: "\n").filter { !$0.isEmpty }
+    lines.suffix(errorsCount).forEach { print($0) }
+    exit(0)
 }
 
 // MARK: – Load cache
@@ -59,9 +106,22 @@ guard var snapshots = try? decoder.decode([UsageSnapshot].self, from: data) else
     exit(2)
 }
 
-// filter by account name (match by id stored in snapshot; account filter by name requires config lookup)
+// filter by account name/id; validate filter against config accounts
 if let filter = accountFilter {
-    snapshots = snapshots.filter { $0.accountId.uuidString.lowercased().hasPrefix(filter.lowercased()) }
+    let cfgPath = configDir.appendingPathComponent("config.toml")
+    var knownIds: [String] = []
+    if let raw = try? Data(contentsOf: cfgPath),
+       let obj = (try? JSONSerialization.jsonObject(with: raw)) as? [String: Any],
+       let accounts = obj["accounts"] as? [[String: Any]] {
+        knownIds = accounts.compactMap { $0["id"] as? String }
+    }
+    let filterLow = filter.lowercased()
+    let matched = knownIds.filter { $0.lowercased().hasPrefix(filterLow) }
+    if matched.isEmpty {
+        fputs("Account '\(filter)' not found in config\n", stderr)
+        exit(1)
+    }
+    snapshots = snapshots.filter { matched.contains($0.accountId.uuidString) }
 }
 
 // default TUI config
@@ -104,6 +164,7 @@ if showHistory {
 }
 
 if showHeatmap {
+    guard !snapshots.isEmpty else { print("No data available"); exit(0) }
     print("Heatmap (7×24 average cost)")
     // 7 weekdays × 24 hours grid
     var grid = Array(repeating: Array(repeating: 0.0, count: 24), count: 7)
@@ -139,6 +200,7 @@ let renderer = TUIRenderer(snapshots: todaySnaps.isEmpty ? Array(snapshots.suffi
 print(renderer.render())
 
 if showForecast {
+    guard !snapshots.isEmpty else { print("No data available"); exit(0) }
     if let fdata = try? Data(contentsOf: forecastFile),
        let forecasts = try? decoder.decode([ForecastSnapshot].self, from: fdata),
        let forecast = forecasts.first {
