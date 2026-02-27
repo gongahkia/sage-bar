@@ -65,4 +65,29 @@ final class ClaudeCodeLogParserTests: XCTestCase {
         let url = writeJSONL("")
         XCTAssertTrue(parser.parseFile(url).isEmpty)
     }
+
+    // MARK: - aggregatePeriod
+
+    func testAggregatePeriodReturnsOnlyWithinWindow() {
+        // aggregatePeriod reads real ~/.claude/projects; result should not include dates outside window
+        let snaps = parser.aggregatePeriod(days: 7)
+        let cutoff = Calendar.current.date(byAdding: .day, value: -7, to: Date())!
+        for s in snaps {
+            XCTAssertGreaterThanOrEqual(s.timestamp, cutoff)
+        }
+    }
+
+    func testAggregatePeriodSortedAscending() {
+        let snaps = parser.aggregatePeriod(days: 30)
+        for i in 1..<snaps.count {
+            XCTAssertLessThanOrEqual(snaps[i-1].timestamp, snaps[i].timestamp)
+        }
+    }
+
+    func testAggregatePeriodNonNegativeTokens() {
+        for snap in parser.aggregatePeriod(days: 30) {
+            XCTAssertGreaterThanOrEqual(snap.inputTokens, 0)
+            XCTAssertGreaterThanOrEqual(snap.outputTokens, 0)
+        }
+    }
 }
