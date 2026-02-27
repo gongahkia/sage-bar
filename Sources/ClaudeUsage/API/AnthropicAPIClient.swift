@@ -47,9 +47,9 @@ class AnthropicAPIClient {
     private let session: URLSession
     private let baseURL = URL(string: "https://api.anthropic.com")!
 
-    init(apiKey: String) {
+    init(apiKey: String, session: URLSession? = nil) {
         self.apiKey = apiKey
-        self.session = URLSession(configuration: .ephemeral)
+        self.session = session ?? URLSession(configuration: .ephemeral)
     }
 
     private func request(path: String, queryItems: [URLQueryItem] = []) -> URLRequest {
