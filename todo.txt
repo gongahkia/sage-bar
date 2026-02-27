@@ -1,0 +1,79 @@
+(B) Add Sparkle 2.x dependency to Package.swift under the ClaudeUsage target +infra +distribution
+(B) Wire SPUStandardUpdaterController in AppDelegate.swift — check for updates on launch and on a daily timer +infra +distribution
+(B) Add SUFeedURL key to Info.plist pointing to the GitHub releases appcast XML URL +infra +distribution
+(B) Add CFBundleShortVersionString and NSHumanReadableCopyright keys to Info.plist — required for Sparkle and DMG distribution +infra +distribution
+(B) Add "Check for Updates..." NSMenuItem in MenuBarManager.swift that triggers the Sparkle updater controller +feature +distribution
+(B) Create .github/workflows/ci.yml — build and test on push to main and on all PRs using xcodebuild or swift build +infra +ci
+(B) Add SwiftLint step to ci.yml — fail CI if lint errors are present +infra +ci
+(B) Create .github/workflows/release.yml — triggered on version tag push, builds universal binary via lipo, produces signed DMG, uploads as GitHub Release asset +infra +cd
+(B) Add code signing step to release.yml using DEVELOPER_ID_APPLICATION secret and xcrun codesign +infra +cd +security
+(B) Add notarization step to release.yml using xcrun notarytool submit with APPLE_ID, APPLE_TEAM_ID, APPLE_APP_PASSWORD secrets +infra +cd +security
+(B) Add Sparkle appcast.xml generation step to release.yml — output appcast at a stable GitHub Pages or releases URL +infra +cd +distribution
+(B) Create Homebrew Cask formula homebrew/Casks/claude-usage.rb for the GUI app DMG with sha256, version, and app stanza +infra +distribution
+(B) Create Homebrew formula homebrew/Formula/claude-usage-cli.rb for the claude-usage CLI binary +infra +distribution
+(B) Add test target ClaudeUsageTests to Package.swift with testTarget pointing to Tests/ClaudeUsageTests/ +infra +testing
+(B) Create Tests/ClaudeUsageTests/ directory and placeholder XCTestCase file to satisfy the target +infra +testing
+(B) Write unit tests for ForecastEngine — cover EOD/EOW/EOM math, zero-snapshot input, single-snapshot input, and zero burn rate edge case +testing
+(B) Write unit tests for CacheManager — cover append, read, 30-day pruning boundary, concurrent write safety +testing
+(B) Write unit tests for ClaudeCodeLogParser.aggregateToday — cover valid JSONL, malformed lines, empty directory, missing ~/.claude/projects directory +testing
+(B) Write unit tests for ClaudeCodeLogParser.aggregatePeriod — cover multi-day aggregation, date boundary, duplicate entries +testing
+(B) Write unit tests for AnthropicAPIClient.convertToSnapshots — cover known model prefix match, unknown model (zero cost), cache token cost, multi-period response +testing
+(B) Write unit tests for AnthropicAPIClient.fetchUsage — mock URLSession returning 200, 401, 429 with Retry-After header, 500, and malformed JSON +testing
+(B) Write unit tests for AnalyticsEngine — cover MTD aggregation, rolling average, 7x24 heatmap normalization, empty input +testing
+(B) Write unit tests for ModelOptimizerAnalyzer — cover below threshold triggering hint, above threshold no hint, no usage input +testing
+(B) Write unit tests for AutomationEngine.evaluate — cover cost_gt true, cost_gt false, tokens_gt, disabled rule, unknown triggerType +testing
+(B) Write unit tests for AutomationEngine.fire — cover allowlist rejection, injection-character rejection, env var injection verification +testing
+(B) Write unit tests for ConfigManager — cover load defaults when no file exists, load from TOML, save and reload roundtrip +testing
+(B) Write unit tests for iCloudSyncManager merge logic — cover dedup by accountId+timestamp within 1s, prefer higher token count, no-op on identical records +testing
+(B) Write unit tests for KeychainManager — cover store, retrieve, delete, and retrieve-missing returning nil +testing
+(B) Write unit tests for WebhookService — cover payload template substitution, missing template field fallback, network error propagation +testing
+(B) Create ErrorLogger.swift in Sources/ClaudeUsage/Services/ — singleton with structured append-only log at ~/.claude-usage/errors.log, rotate at 1MB keeping last 500 lines, thread-safe +feature +observability
+(B) Replace all silent try? in PollingService.fetchAndStore — on APIError.invalidKey log "invalid API key for account {id}", on APIError.rateLimited log with retryAfter, on networkError log the underlying error; use ErrorLogger +refactor +observability
+(B) Replace silent try? KeychainManager.retrieve in PollingService.swift:99 with explicit do/catch that logs a keychain failure via ErrorLogger and skips the account with a visible reason +refactor +observability
+(B) Replace silent try? in iCloudSyncManager — catch NSFileCoordinator errors, log to ErrorLogger with operation context +refactor +observability
+(B) Replace silent try? in CacheManager read/write paths — log coordinator errors and JSON decode failures to ErrorLogger +refactor +observability
+(B) Replace silent try? in ClaudeCodeLogParser.parseFile — log file read failure to ErrorLogger with file path +refactor +observability
+(B) Add @Published var lastError: AppError? to a shared AppState or ErrorLogger observable — MenuBarPopoverView observes and renders a "Last Error" row showing timestamp + short message when non-nil, with a dismiss button +feature +observability
+(B) Add "Export Diagnostics" NSMenuItem in MenuBarManager.swift — writes last 100 ErrorLogger entries plus sanitized config (API keys replaced with "***") to ~/Desktop/claude-usage-diagnostics-<ISO date>.txt +feature +observability
+(B) Add DiagnosticsView.swift tab in SettingsView — scrollable list of last 50 error log entries, "Copy All" button, "Clear Log" button +feature +observability
+(B) Fix FSEvents watcher bug in ClaudeCodeLogParser.startWatching — replace DispatchSourceFileSystemObject on projects/ with FSEventStream (FSEventStreamCreate) using kFSEventStreamCreateFlagFileEvents and recursive path so nested .jsonl writes fire the callback +fix +stability
+(B) Add 500ms debounce to the FSEventStream callback in ClaudeCodeLogParser — coalesce rapid successive writes before posting claudeCodeLogsChanged notification to avoid re-parse storms +fix +stability
+(B) Add file size guard in ClaudeCodeLogParser.parseFile — skip files larger than 50MB, log a warning to ErrorLogger with filename and size +fix +stability
+(B) Add ~/.claude/projects directory existence check in ClaudeCodeLogParser.discoverSessionFiles — when directory is missing log a one-time ErrorLogger entry "Claude Code log directory not found at {path}" instead of silently returning empty +fix +stability
+(B) Wrap each JSONL line decode in ClaudeCodeLogParser.parseFile in individual do/catch instead of compactMap with try? — log malformed lines to ErrorLogger with line number and raw content truncated to 200 chars, continue parsing remaining lines +fix +stability
+(B) Add mtime+size checksum cache in ClaudeCodeLogParser — store [URL: (Date, Int)] of last parsed mtime and byte count; skip files where both match to avoid redundant re-parsing on poll +refactor +stability
+(B) Remove isSupported computed property from AccountType in Account.swift — it becomes dead code once claudeAI is implemented +refactor
+(B) Create Sources/ClaudeUsage/API/ClaudeAIClient.swift — implement fetchRemainingUsage() async throws using claude.ai internal session API; authenticate via session token from keychain; parse response fields messageLimit.remaining and messageLimit.resetAt +feature
+(B) Add ClaudeAISessionToken as a new KeychainManager item type — store and retrieve the claude.ai browser session cookie/token separately from Anthropic API keys, keyed by account UUID +feature +security
+(B) Add session token input field in SettingsView Accounts tab for claudeAI account type — labelled "Session Token (from claude.ai cookie)", stored via KeychainManager on save +feature
+(B) Add instructions in the session token field UI explaining how to extract the sessionKey cookie from claude.ai using browser DevTools — show as a help text below the field +feature
+(B) Wire ClaudeAIClient.fetchRemainingUsage into PollingService.fetchAndStore for the .claudeAI case — replace the break stub with an actual fetch + cache write +feature +fix
+(B) Map ClaudeAI remaining usage response to UsageSnapshot — store messagesRemaining in a dedicated field or encode as inputTokens=0, outputTokens=0, totalCostUSD=0 with a custom modelId "claude-ai-web" and messagesRemaining metadata +feature
+(B) Add staleness/expiry handling for claudeAI session token — when ClaudeAIClient returns 401 or 403, post an ErrorLogger entry and surface a "Re-authenticate claude.ai" prompt in MenuBarPopoverView +feature +observability
+(B) Add claudeAI-specific display in MenuBarPopoverView — show "X messages remaining, resets <date>" instead of token/cost rows when account type is claudeAI +feature
+(B) Create Sources/ClaudeUsage/Resources/prices.json — JSON dict of modelId to {inputPer1M, outputPer1M} for all current models +fix +stability
+(B) Set claude-haiku-4-5 pricing in prices.json to inputPer1M=1.00 outputPer1M=5.00 — corrects the 4x underreport bug in AnthropicAPIClient.swift:43 +fix
+(B) Add claude-opus-4-5 entry to prices.json with inputPer1M=5.00 outputPer1M=25.00 +fix
+(B) Add claude-sonnet-4-5 entry to prices.json with inputPer1M=3.00 outputPer1M=15.00 +fix
+(B) Update AnthropicAPIClient.swift to load pricingConstants from bundled prices.json at init using Bundle.module.url(forResource:withExtension:) instead of the hard-coded static dict +refactor +fix
+(B) Add prompt caching token cost calculation in AnthropicAPIClient.convertToSnapshots — cache_creation_input_tokens cost = inputPer1M * 1.25 / 1_000_000; cache_read_input_tokens cost = inputPer1M * 0.1 / 1_000_000 +fix +stability
+(B) Replace /bin/sh -c shell execution in AutomationEngine.fire with direct Process launch — set process.executableURL to the resolved binary path from the first whitespace-delimited token of shellCommand, set process.arguments to remaining tokens; no shell interpreter +fix +security
+(B) Replace /bin/sh -c in AutomationEngine.testRun with the same direct Process launch approach +fix +security
+(B) Add injection-character guard in AutomationEngine before process launch — reject shellCommand strings containing any of: $( ) ` && || ; | > < — log rejection to ErrorLogger with rule name +fix +security
+(B) Define AllowedCommands allowlist in AutomationEngine — a Set<String> of permitted binary names (e.g. osascript, open, say, curl, afplay, terminal-notifier) — reject commands whose first token is not in the set +fix +security
+(B) Add shellCommand path validation in AutomationEngine — verify the resolved executable path exists and is executable via FileManager before storing the rule; show validation error in SettingsView Automations tab if check fails +fix +security
+(B) Add AutomationRule field allowedEnvKeys: [String] in SubConfigs.swift — restrict env var injection to only listed keys; default to ["CLAUDE_COST", "CLAUDE_TOKENS", "CLAUDE_ACCOUNT"] +refactor +security
+(B) Replace Carbon HIToolbox global hotkey in HotkeyManager.swift with CGEventTap-based implementation — create tap at kCGSessionEventTap listening for kCGEventKeyDown, match modifiers and keyCode from config +fix +stability
+(B) Add accessibility permission check in HotkeyManager — call AXIsProcessTrusted(); if false, log to ErrorLogger and surface a "Grant Accessibility Access" prompt in SettingsView Hotkey tab with a button that opens System Settings Privacy pane +fix +stability
+(B) Add fallback in HotkeyManager — if CGEventTap creation fails, disable hotkey and log one ErrorLogger entry instead of crashing or silently no-oping +fix +stability
+(B) Add NSFileCoordinator timeout handling in iCloudSyncManager — wrap coordinator.coordinate calls with a 5-second DispatchSemaphore timeout; on timeout log to ErrorLogger and skip sync for this cycle +fix +stability
+(B) Add iCloud availability check in iCloudSyncManager.start — call FileManager.default.ubiquityIdentityToken; if nil, log to ErrorLogger "iCloud not available — sync disabled" and return without starting NSMetadataQuery +fix +stability
+(B) Add exponential backoff retry in iCloudSyncManager for failed sync writes — max 3 retries with delays of 1s, 2s, 4s; log final failure to ErrorLogger +fix +stability
+(B) Add NWPathMonitor in PollingService — skip poll and log "network unavailable, skipping poll" to ErrorLogger when path.status != .satisfied; resume polling automatically on reconnect via pathUpdateHandler +fix +stability
+(B) Add polling health indicator in MenuBarPopoverView — show "Last synced: <relative time>" and "Next poll: <relative time>" below the stats rows +feature +observability
+(B) Add --version flag to ClaudeUsageCLI/main.swift — reads CFBundleShortVersionString from a Version.swift constant or Info.plist and prints to stdout +feature
+(B) Add --errors flag to ClaudeUsageCLI/main.swift — reads last N lines from ~/.claude-usage/errors.log and prints to stdout; default N=20, configurable via --errors=N +feature
+(B) Add --config flag to ClaudeUsageCLI/main.swift — prints parsed config as JSON with API key and session token values replaced by "***" +feature
+(B) Add --account flag validation in ClaudeUsageCLI/main.swift — if the provided account ID or name is not found in config, print a clear error message and exit with code 1 instead of silently producing empty output +fix
+(B) Add graceful empty-cache handling in ClaudeUsageCLI/main.swift for --heatmap and --forecast — print "No data available" and exit 0 instead of crashing or printing empty tables +fix +stability
+(B) Add os_log structured logging calls throughout PollingService, iCloudSyncManager, CacheManager using existing Logger subsystem pattern from AutomationEngine and ClaudeCodeLogParser — replace any remaining bare print() calls +refactor +observability
