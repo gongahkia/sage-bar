@@ -10,6 +10,7 @@ struct SettingsView: View {
             AnalyticsTab().tabItem { Label("Analytics", systemImage: "chart.bar") }
             IntegrationsTab().tabItem { Label("Integrations", systemImage: "link") }
             AutomationsTab().tabItem { Label("Automations", systemImage: "gearshape.2") }
+            HotkeyTab().tabItem { Label("Hotkey", systemImage: "keyboard") }
             SyncTab().tabItem { Label("Sync", systemImage: "icloud") }
             CLITab().tabItem { Label("CLI", systemImage: "terminal") }
             DiagnosticsView().tabItem { Label("Diagnostics", systemImage: "ladybug") }
@@ -375,6 +376,57 @@ struct AddAutomationSheet: View {
                 }.disabled(commandError != nil)
             }
         }.padding().frame(width: 380)
+    }
+}
+
+// MARK: – Hotkey Tab
+
+struct HotkeyTab: View {
+    @State private var config = ConfigManager.shared.load()
+    @State private var hasAccessibility = AXIsProcessTrusted()
+
+    var body: some View {
+        Form {
+            Toggle("Enable global hotkey", isOn: $config.hotkey.enabled)
+            if !hasAccessibility {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Accessibility access required for global hotkey.")
+                        .foregroundColor(.orange).font(.caption)
+                    Button("Grant Accessibility Access…") {
+                        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
+                    }
+                }
+            }
+            if config.hotkey.enabled {
+                TextField("Key", text: $config.hotkey.key)
+                MultiPicker(label: "Modifiers", options: ["command","option","shift","control"], selection: $config.hotkey.modifiers)
+            }
+        }
+        .onAppear { hasAccessibility = AXIsProcessTrusted() }
+        .onChange(of: config.hotkey) { _ in
+            ConfigManager.shared.save(config)
+            HotkeyManager.shared.register(config: config.hotkey)
+        }
+        .padding()
+    }
+}
+
+struct MultiPicker: View {
+    let label: String
+    let options: [String]
+    @Binding var selection: [String]
+    var body: some View {
+        VStack(alignment: .leading) {
+            Text(label).font(.caption).foregroundColor(.secondary)
+            HStack {
+                ForEach(options, id: \.self) { opt in
+                    Toggle(opt, isOn: Binding(
+                        get: { selection.contains(opt) },
+                        set: { v in if v { selection.append(opt) } else { selection.removeAll { $0 == opt } } }
+                    )).toggleStyle(.checkbox)
+                }
+            }
+        }
     }
 }
 
