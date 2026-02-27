@@ -47,6 +47,9 @@ class MenuBarManager {
         let checkItem = NSMenuItem(title: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "")
         checkItem.target = self
         menu.addItem(checkItem)
+        let diagItem = NSMenuItem(title: "Export Diagnostics…", action: #selector(exportDiagnostics), keyEquivalent: "")
+        diagItem.target = self
+        menu.addItem(diagItem)
         menu.addItem(.separator())
         let quitItem = NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         menu.addItem(quitItem)
@@ -55,6 +58,26 @@ class MenuBarManager {
 
     @objc private func checkForUpdates() {
         updaterController?.checkForUpdates(nil)
+    }
+
+    @objc private func exportDiagnostics() {
+        let errors = ErrorLogger.shared.readLast(100).joined(separator: "\n")
+        var config = ConfigManager.shared.load()
+        // sanitize sensitive fields
+        if !config.webhook.url.isEmpty { config.webhook.url = "***" }
+        let enc = JSONEncoder(); enc.outputFormatting = [.prettyPrinted, .sortedKeys]; enc.dateEncodingStrategy = .iso8601
+        let configJSON = (try? String(data: enc.encode(config), encoding: .utf8)) ?? "{}"
+        let isoDate = ISO8601DateFormatter().string(from: Date()).prefix(10)
+        let content = "# claude-usage diagnostics \(isoDate)\n\n## Errors (last 100)\n\(errors)\n\n## Config\n\(configJSON)\n"
+        let dest = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Desktop")
+            .appendingPathComponent("claude-usage-diagnostics-\(isoDate).txt")
+        do {
+            try content.write(to: dest, atomically: true, encoding: .utf8)
+            NSWorkspace.shared.activateFileViewerSelecting([dest])
+        } catch {
+            ErrorLogger.shared.log("Export diagnostics failed: \(error.localizedDescription)")
+        }
     }
 
     @objc func togglePopover() {
