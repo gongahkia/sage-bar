@@ -100,6 +100,7 @@ struct AutomationRule: Codable, Identifiable {
     var shellCommand: String
     var lastFiredAt: Date?
     var enabled: Bool
+    var allowedEnvKeys: [String] // restrict env vars injected into process
 
     init(name: String, triggerType: String, threshold: Double, shellCommand: String) {
         self.id = UUID()
@@ -109,5 +110,6 @@ struct AutomationRule: Codable, Identifiable {
         self.shellCommand = shellCommand
         self.lastFiredAt = nil
         self.enabled = true
+        self.allowedEnvKeys = ["CLAUDE_COST", "CLAUDE_TOKENS", "CLAUDE_ACCOUNT"]
     }
 }

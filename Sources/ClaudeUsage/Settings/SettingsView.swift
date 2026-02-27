@@ -334,6 +334,7 @@ struct AddAutomationSheet: View {
     @State private var threshold = ""
     @State private var shellCommand = ""
     @State private var testOutput = ""
+    @State private var commandError: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -345,6 +346,12 @@ struct AddAutomationSheet: View {
             }.pickerStyle(.segmented)
             TextField("Threshold", text: $threshold)
             TextField("Shell command", text: $shellCommand)
+                .onChange(of: shellCommand) { cmd in
+                    commandError = AutomationEngine.validateShellCommand(cmd)
+                }
+            if let err = commandError {
+                Text(err).foregroundColor(.red).font(.caption)
+            }
             if !testOutput.isEmpty {
                 ScrollView { Text(testOutput).font(.system(.caption, design: .monospaced)) }
                     .frame(height: 60).border(Color.gray)
@@ -357,15 +364,15 @@ struct AddAutomationSheet: View {
                         let out = await AutomationEngine.testRun(rule: rule)
                         await MainActor.run { testOutput = out }
                     }
-                }.disabled(shellCommand.isEmpty)
+                }.disabled(shellCommand.isEmpty || commandError != nil)
                 Spacer()
                 Button("Cancel") { dismiss() }
                 Button("Save") {
-                    guard let d = Double(threshold), !name.isEmpty, !shellCommand.isEmpty else { return }
+                    guard let d = Double(threshold), !name.isEmpty, !shellCommand.isEmpty, commandError == nil else { return }
                     let rule = AutomationRule(name: name, triggerType: triggerType, threshold: d, shellCommand: shellCommand)
                     onSave(rule)
                     dismiss()
-                }
+                }.disabled(commandError != nil)
             }
         }.padding().frame(width: 380)
     }
