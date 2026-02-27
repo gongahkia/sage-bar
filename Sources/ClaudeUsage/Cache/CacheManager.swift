@@ -33,18 +33,35 @@ class CacheManager {
         var result: [UsageSnapshot] = []
         var err: NSError?
         coordinator.coordinate(readingItemAt: cacheFile, options: [], error: &err) { url in
-            guard let data = try? Data(contentsOf: url) else { return }
-            result = (try? decoder().decode([UsageSnapshot].self, from: data)) ?? []
+            do {
+                let data = try Data(contentsOf: url)
+                result = (try? decoder().decode([UsageSnapshot].self, from: data)) ?? {
+                    ErrorLogger.shared.log("JSON decode failed for usage_cache.json")
+                    return []
+                }()
+            } catch {
+                ErrorLogger.shared.log("Cache read failed: \(error.localizedDescription)")
+            }
         }
+        if let e = err { ErrorLogger.shared.log("NSFileCoordinator cache read error: \(e.localizedDescription)") }
         return result
     }
 
     func save(_ snapshots: [UsageSnapshot]) {
         var err: NSError?
         coordinator.coordinate(writingItemAt: cacheFile, options: .forReplacing, error: &err) { url in
-            guard let data = try? encoder().encode(snapshots) else { return }
-            try? data.write(to: url, options: .atomic)
+            do {
+                let data = try encoder().encode(snapshots)
+                do {
+                    try data.write(to: url, options: .atomic)
+                } catch {
+                    ErrorLogger.shared.log("Cache write failed: \(error.localizedDescription)")
+                }
+            } catch {
+                ErrorLogger.shared.log("Cache encode failed: \(error.localizedDescription)")
+            }
         }
+        if let e = err { ErrorLogger.shared.log("NSFileCoordinator cache write error: \(e.localizedDescription)") }
     }
 
     func append(_ snapshot: UsageSnapshot) {
@@ -80,20 +97,40 @@ class CacheManager {
     // MARK: – ForecastSnapshot
 
     func latestForecast(forAccount id: UUID) -> ForecastSnapshot? {
-        guard let data = try? Data(contentsOf: forecastFile),
-              let forecasts = try? decoder().decode([ForecastSnapshot].self, from: data) else { return nil }
-        return forecasts.filter { $0.accountId == id }.max(by: { $0.generatedAt < $1.generatedAt })
+        do {
+            let data = try Data(contentsOf: forecastFile)
+            do {
+                let forecasts = try decoder().decode([ForecastSnapshot].self, from: data)
+                return forecasts.filter { $0.accountId == id }.max(by: { $0.generatedAt < $1.generatedAt })
+            } catch {
+                ErrorLogger.shared.log("Forecast decode failed: \(error.localizedDescription)")
+                return nil
+            }
+        } catch {
+            ErrorLogger.shared.log("Forecast read failed: \(error.localizedDescription)")
+            return nil
+        }
     }
 
     func saveForecast(_ forecast: ForecastSnapshot) {
         var forecasts: [ForecastSnapshot] = []
-        if let data = try? Data(contentsOf: forecastFile) {
+        do {
+            let data = try Data(contentsOf: forecastFile)
             forecasts = (try? decoder().decode([ForecastSnapshot].self, from: data)) ?? []
+        } catch {
+            ErrorLogger.shared.log("Forecast read for save failed: \(error.localizedDescription)")
         }
         forecasts.removeAll { $0.accountId == forecast.accountId }
         forecasts.append(forecast)
-        if let data = try? encoder().encode(forecasts) {
-            try? data.write(to: forecastFile, options: .atomic)
+        do {
+            let data = try encoder().encode(forecasts)
+            do {
+                try data.write(to: forecastFile, options: .atomic)
+            } catch {
+                ErrorLogger.shared.log("Forecast write failed: \(error.localizedDescription)")
+            }
+        } catch {
+            ErrorLogger.shared.log("Forecast encode failed: \(error.localizedDescription)")
         }
     }
 }
