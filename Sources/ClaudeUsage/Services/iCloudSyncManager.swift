@@ -20,8 +20,13 @@ class iCloudSyncManager: ObservableObject {
 
     private var metadataQuery: NSMetadataQuery?
     private let coordinator = NSFileCoordinator()
+    private let coordTimeout: TimeInterval = 5
 
     private init() {}
+
+    private func isICloudAvailable() -> Bool {
+        FileManager.default.ubiquityIdentityToken != nil
+    }
 
     private func containerURL(config: iCloudSyncConfig) -> URL? {
         FileManager.default.url(forUbiquityContainerIdentifier: config.containerIdentifier)?
@@ -31,6 +36,11 @@ class iCloudSyncManager: ObservableObject {
     func syncNow() async {
         let config = ConfigManager.shared.load().iCloudSync
         guard config.enabled, !config.localOnly else { syncState = .disabled; return }
+        guard isICloudAvailable() else {
+            ErrorLogger.shared.log("iCloud not available — sync disabled", level: "WARN")
+            syncState = .error("iCloud unavailable")
+            return
+        }
         syncState = .syncing
         defer {
             syncState = .idle
@@ -42,36 +52,17 @@ class iCloudSyncManager: ObservableObject {
             syncState = .error("iCloud container unavailable"); return
         }
         let localSnaps = CacheManager.shared.load()
+        let remoteData = await coordinateRead(at: remoteURL)
         var remoteSnaps: [UsageSnapshot] = []
-        var coordErr: NSError?
-        coordinator.coordinate(readingItemAt: remoteURL, options: [], error: &coordErr) { url in
-            do {
-                let data = try Data(contentsOf: url)
-                let dec = JSONDecoder(); dec.dateDecodingStrategy = .iso8601
-                remoteSnaps = (try? dec.decode([UsageSnapshot].self, from: data)) ?? []
-            } catch {
-                ErrorLogger.shared.log("iCloud read failed at \(url.lastPathComponent): \(error.localizedDescription)")
-            }
-        }
-        if let err = coordErr {
-            ErrorLogger.shared.log("NSFileCoordinator read error: \(err.localizedDescription)")
-            return
+        if let data = remoteData {
+            let dec = JSONDecoder(); dec.dateDecodingStrategy = .iso8601
+            remoteSnaps = (try? dec.decode([UsageSnapshot].self, from: data)) ?? []
         }
         let merged = merge(local: localSnaps, remote: remoteSnaps)
         CacheManager.shared.save(merged)
         let enc = JSONEncoder(); enc.dateEncodingStrategy = .iso8601
         guard let data = try? enc.encode(merged) else { return }
-        coordErr = nil
-        coordinator.coordinate(writingItemAt: remoteURL, options: .forReplacing, error: &coordErr) { url in
-            do {
-                try data.write(to: url, options: .atomic)
-            } catch {
-                ErrorLogger.shared.log("iCloud write failed at \(url.lastPathComponent): \(error.localizedDescription)")
-            }
-        }
-        if let err = coordErr {
-            ErrorLogger.shared.log("NSFileCoordinator write error: \(err.localizedDescription)")
-        }
+        await writeWithBackoff(data: data, to: remoteURL)
     }
 
     /// dedup by (accountId, timestamp within 1s), prefer higher total tokens
@@ -83,9 +74,7 @@ class iCloudSyncManager: ObservableObject {
             })
             if let i = match {
                 let existing = result[i]
-                let existingTotal = existing.inputTokens + existing.outputTokens
-                let newTotal = r.inputTokens + r.outputTokens
-                if newTotal > existingTotal { result[i] = r }
+                if r.inputTokens + r.outputTokens > existing.inputTokens + existing.outputTokens { result[i] = r }
             } else {
                 result.append(r)
             }
@@ -95,6 +84,10 @@ class iCloudSyncManager: ObservableObject {
 
     func startMetadataQuery(config: iCloudSyncConfig) {
         guard config.enabled, !config.localOnly else { return }
+        guard isICloudAvailable() else {
+            ErrorLogger.shared.log("iCloud not available — sync disabled", level: "WARN")
+            return
+        }
         let q = NSMetadataQuery()
         q.predicate = NSPredicate(format: "%K LIKE '*usage_cache.json'", NSMetadataItemFSNameKey)
         q.searchScopes = [NSMetadataQueryUbiquitousDocumentsScope]
@@ -103,6 +96,60 @@ class iCloudSyncManager: ObservableObject {
         }
         q.start()
         metadataQuery = q
+    }
+
+    // MARK: – Coordinator helpers with 5s timeout
+
+    private func coordinateRead(at url: URL) async -> Data? {
+        await Task.detached(priority: .utility) { [coordinator, coordTimeout] in
+            let sem = DispatchSemaphore(value: 0)
+            var result: Data? = nil
+            DispatchQueue.global(qos: .utility).async {
+                var err: NSError?
+                coordinator.coordinate(readingItemAt: url, options: [], error: &err) { u in
+                    do { result = try Data(contentsOf: u) }
+                    catch { ErrorLogger.shared.log("iCloud read failed: \(error.localizedDescription)") }
+                }
+                if let e = err { ErrorLogger.shared.log("NSFileCoordinator read error: \(e.localizedDescription)") }
+                sem.signal()
+            }
+            if sem.wait(timeout: .now() + coordTimeout) == .timedOut {
+                ErrorLogger.shared.log("NSFileCoordinator read timed out for \(url.lastPathComponent)")
+            }
+            return result
+        }.value
+    }
+
+    private func coordinateWrite(data: Data, to url: URL) async -> Bool {
+        await Task.detached(priority: .utility) { [coordinator, coordTimeout] in
+            let sem = DispatchSemaphore(value: 0)
+            var success = false
+            DispatchQueue.global(qos: .utility).async {
+                var err: NSError?
+                coordinator.coordinate(writingItemAt: url, options: .forReplacing, error: &err) { u in
+                    do { try data.write(to: u, options: .atomic); success = true }
+                    catch { ErrorLogger.shared.log("iCloud write failed: \(error.localizedDescription)") }
+                }
+                if let e = err { ErrorLogger.shared.log("NSFileCoordinator write error: \(e.localizedDescription)") }
+                sem.signal()
+            }
+            if sem.wait(timeout: .now() + coordTimeout) == .timedOut {
+                ErrorLogger.shared.log("NSFileCoordinator write timed out for \(url.lastPathComponent)")
+            }
+            return success
+        }.value
+    }
+
+    private func writeWithBackoff(data: Data, to url: URL) async {
+        let delays: [UInt64] = [1_000_000_000, 2_000_000_000, 4_000_000_000] // 1s, 2s, 4s
+        for (i, delay) in delays.enumerated() {
+            if await coordinateWrite(data: data, to: url) { return }
+            if i < delays.count - 1 {
+                try? await Task.sleep(nanoseconds: delay)
+            } else {
+                ErrorLogger.shared.log("iCloud sync write failed after \(delays.count) retries")
+            }
+        }
     }
 }
 
