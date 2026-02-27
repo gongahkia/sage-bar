@@ -59,7 +59,7 @@ class iCloudSyncManager: ObservableObject {
     }
 
     /// dedup by (accountId, timestamp within 1s), prefer higher total tokens
-    private func merge(local: [UsageSnapshot], remote: [UsageSnapshot]) -> [UsageSnapshot] {
+    func merge(local: [UsageSnapshot], remote: [UsageSnapshot]) -> [UsageSnapshot] {
         var result: [UsageSnapshot] = local
         for r in remote {
             let match = result.firstIndex(where: {
