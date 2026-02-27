@@ -45,16 +45,32 @@ class iCloudSyncManager: ObservableObject {
         var remoteSnaps: [UsageSnapshot] = []
         var coordErr: NSError?
         coordinator.coordinate(readingItemAt: remoteURL, options: [], error: &coordErr) { url in
-            guard let data = try? Data(contentsOf: url) else { return }
-            let dec = JSONDecoder(); dec.dateDecodingStrategy = .iso8601
-            remoteSnaps = (try? dec.decode([UsageSnapshot].self, from: data)) ?? []
+            do {
+                let data = try Data(contentsOf: url)
+                let dec = JSONDecoder(); dec.dateDecodingStrategy = .iso8601
+                remoteSnaps = (try? dec.decode([UsageSnapshot].self, from: data)) ?? []
+            } catch {
+                ErrorLogger.shared.log("iCloud read failed at \(url.lastPathComponent): \(error.localizedDescription)")
+            }
+        }
+        if let err = coordErr {
+            ErrorLogger.shared.log("NSFileCoordinator read error: \(err.localizedDescription)")
+            return
         }
         let merged = merge(local: localSnaps, remote: remoteSnaps)
         CacheManager.shared.save(merged)
         let enc = JSONEncoder(); enc.dateEncodingStrategy = .iso8601
         guard let data = try? enc.encode(merged) else { return }
+        coordErr = nil
         coordinator.coordinate(writingItemAt: remoteURL, options: .forReplacing, error: &coordErr) { url in
-            try? data.write(to: url, options: .atomic)
+            do {
+                try data.write(to: url, options: .atomic)
+            } catch {
+                ErrorLogger.shared.log("iCloud write failed at \(url.lastPathComponent): \(error.localizedDescription)")
+            }
+        }
+        if let err = coordErr {
+            ErrorLogger.shared.log("NSFileCoordinator write error: \(err.localizedDescription)")
         }
     }
 
