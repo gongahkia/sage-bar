@@ -4,6 +4,7 @@ enum AppConstants {
     static let appGroupIdentifier = "group.dev.claudeusage"
     static let bundleIdentifier = "dev.claudeusage.ClaudeUsage"
     static let keychainService = "claude-usage"
+    static let keychainSessionTokenService = "claude-usage-session-token" // for claudeAI account session cookies
 
     /// shared container URL between ClaudeUsage.app and claude-usage CLI
     static let sharedContainerURL: URL = {
