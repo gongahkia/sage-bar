@@ -1,8 +1,14 @@
 import Foundation
 
+struct ClaudeAIUsage {
+    var messagesRemaining: Int
+    var messagesUsed: Int
+}
+
 struct ClaudeAIUsageResponse: Decodable {
     struct MessageLimit: Decodable {
         let remaining: Int
+        let used: Int?
         let resetAt: Date?
     }
     let messageLimit: MessageLimit
@@ -24,6 +30,14 @@ struct ClaudeAIClient {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 15
         self.session = URLSession(configuration: config)
+    }
+
+    func fetchUsage() async -> ClaudeAIUsage? {
+        guard let response = try? await fetchRemainingUsage() else { return nil }
+        return ClaudeAIUsage(
+            messagesRemaining: response.messageLimit.remaining,
+            messagesUsed: response.messageLimit.used ?? 0
+        )
     }
 
     func fetchRemainingUsage() async throws -> ClaudeAIUsageResponse {
