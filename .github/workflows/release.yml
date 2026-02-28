@@ -60,6 +60,10 @@ jobs:
             --entitlements ClaudeUsage.entitlements \
             ClaudeUsage.app
 
+      - name: Verify signed app
+        run: |
+          spctl --assess --type execute --verbose=4 ClaudeUsage.app
+
       - name: Create DMG
         run: |
           hdiutil create -volname ClaudeUsage -srcfolder ClaudeUsage.app \
@@ -71,6 +75,10 @@ jobs:
         run: |
           xcrun codesign --force --sign "$DEVELOPER_ID_APPLICATION" \
             ClaudeUsage-${{ github.ref_name }}.dmg
+
+      - name: Verify signed DMG
+        run: |
+          spctl --assess --type open --verbose=4 ClaudeUsage-${{ github.ref_name }}.dmg
 
       - name: Notarize DMG
         env:
