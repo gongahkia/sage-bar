@@ -661,11 +661,11 @@ struct CLITab: View {
             let result = runInstallCommand(source: cliBinary, destination: dest)
             DispatchQueue.main.async {
                 isInstalling = false
-                switch result {
-                case .success:
+                if result.success {
                     lastInstallError = nil
                     UserDefaults.standard.removeObject(forKey: "lastCLIInstallError")
-                case .failure(let message):
+                } else {
+                    let message = result.message ?? "CLI install failed."
                     lastInstallError = message
                     UserDefaults.standard.set(message, forKey: "lastCLIInstallError")
                 }
@@ -685,7 +685,7 @@ struct CLITab: View {
             .first(where: { fm.isExecutableFile(atPath: $0.path) })
     }
 
-    private func runInstallCommand(source: URL, destination: URL) -> Result<Void, String> {
+    private func runInstallCommand(source: URL, destination: URL) -> (success: Bool, message: String?) {
         let script = "cp '\(source.path)' '\(destination.path)' && chmod +x '\(destination.path)'"
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/bin/sh")
@@ -698,17 +698,17 @@ struct CLITab: View {
             try task.run()
             task.waitUntilExit()
         } catch {
-            return .failure("CLI install failed to start: \(error.localizedDescription)")
+            return (false, "CLI install failed to start: \(error.localizedDescription)")
         }
 
         let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
         let output = String(data: outputData, encoding: .utf8)?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard task.terminationStatus == 0 else {
-            if !output.isEmpty { return .failure(output) }
-            return .failure("CLI install failed with exit code \(task.terminationStatus).")
+            if !output.isEmpty { return (false, output) }
+            return (false, "CLI install failed with exit code \(task.terminationStatus).")
         }
-        return .success(())
+        return (true, nil)
     }
 }
 
