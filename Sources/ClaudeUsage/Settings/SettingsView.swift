@@ -74,6 +74,12 @@ struct AccountsTab: View {
                     for i in idx {
                         let a = config.accounts[i]
                         try? KeychainManager.delete(service: AppConstants.keychainService, account: a.id.uuidString)
+                        if a.type == .claudeAI {
+                            try? KeychainManager.delete(
+                                service: AppConstants.keychainSessionTokenService,
+                                account: a.id.uuidString
+                            )
+                        }
                     }
                     config.accounts.remove(atOffsets: idx)
                     ConfigManager.shared.save(config)
