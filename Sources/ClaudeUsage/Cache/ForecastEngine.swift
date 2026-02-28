@@ -15,7 +15,7 @@ struct ForecastEngine {
         let last = todaySnaps.last!
         let elapsed = last.timestamp.timeIntervalSince(first.timestamp) / 3600.0
         guard elapsed > 0 else { return nil }
-        let cumulativeCost = last.totalCostUSD
+        let cumulativeCost = todaySnaps.reduce(0) { $0 + $1.totalCostUSD }
         let burnPerHour = cumulativeCost / elapsed
 
         let startOfDay = cal.startOfDay(for: now)

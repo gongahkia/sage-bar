@@ -40,6 +40,16 @@ final class ForecastEngineTests: XCTestCase {
         XCTAssertEqual(result.projectedEODCostUSD, 2.0 + 2.0 * 12.0, accuracy: 0.01)
     }
 
+    func testCumulativeCostUsesSumOfTodaySnapshots() {
+        let cal = Calendar.current
+        var comps = cal.dateComponents([.year, .month, .day], from: Date())
+        comps.hour = 12; comps.minute = 0; comps.second = 0
+        let noon = cal.date(from: comps)!
+        let snaps = [snap(1.0, at: noon.addingTimeInterval(-3600)), snap(2.0, at: noon)]
+        let result = ForecastEngine.compute(history: snaps, now: noon)!
+        XCTAssertEqual(result.burnRatePerHour, 3.0, accuracy: 0.001)
+    }
+
     // MARK: - Task 57: all-zero snapshots → zero projections
 
     func testAllZeroSnapshotsReturnZeroCosts() {
@@ -76,14 +86,14 @@ final class ForecastEngineTests: XCTestCase {
         var comps = cal.dateComponents([.year,.month,.day], from: Date())
         comps.hour = 12; comps.minute = 0; comps.second = 0
         let noon = cal.date(from: comps)!
-        // first half: 6h elapsed, cost=12 → burnRate=2
-        let firstHalfOnly = [snap(0, at: noon.addingTimeInterval(-6*3600)), snap(12.0, at: noon.addingTimeInterval(-3600))]
+        // first half: 5h elapsed, summed cost=12 → burnRate=2.4
+        let firstHalfOnly = [snap(4.0, at: noon.addingTimeInterval(-6*3600)), snap(8.0, at: noon.addingTimeInterval(-3600))]
         let r1 = ForecastEngine.compute(history: firstHalfOnly, now: noon.addingTimeInterval(-3600))!
-        // all day: 12h elapsed, cost=13 (slow second half) → burnRate=13/12 ≈ 1.08
+        // all day: 12h elapsed, summed cost=13 (slow second half) → burnRate=13/12 ≈ 1.08
         let allDay = [
-            snap(0, at: noon.addingTimeInterval(-12*3600)),
-            snap(12.0, at: noon.addingTimeInterval(-6*3600)),
-            snap(13.0, at: noon),
+            snap(4.0, at: noon.addingTimeInterval(-12*3600)),
+            snap(8.0, at: noon.addingTimeInterval(-6*3600)),
+            snap(1.0, at: noon),
         ]
         let r2 = ForecastEngine.compute(history: allDay, now: noon)!
         XCTAssertLessThan(r2.burnRatePerHour, r1.burnRatePerHour, "slower second-half spend should produce lower overall burn rate")
