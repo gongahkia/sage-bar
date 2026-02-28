@@ -16,5 +16,11 @@
             <result type="any" description="Forecast record with projectedEOD, projectedEOW, projectedEOM"/>
         </command>
         <command name="refresh" code="CLUHrefr" description="Force refresh usage data"/>
+        <command name="get current usage" code="CLUHgcus" description="Get current usage for the active account">
+            <result type="record" description="Record with accountName (text), totalInputTokens (integer), totalOutputTokens (integer), totalCostUSD (real)"/>
+        </command>
+        <command name="trigger poll" code="CLUHtpol" description="Trigger an immediate poll for all active accounts">
+            <result type="boolean" description="True if poll completed without error"/>
+        </command>
     </suite>
 </dictionary>

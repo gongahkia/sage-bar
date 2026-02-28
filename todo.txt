@@ -1,3 +1,0 @@
-(B) Add GetCurrentUsage AppIntent in AppIntents.swift returning a struct with totalInputTokens, totalOutputTokens, totalCostUSD, accountName for the currently active account +feature
-(B) Add TriggerPoll AppIntent in AppIntents.swift that calls PollingService.shared.pollNow() asynchronously and returns a Bool indicating whether the poll completed without error +feature
-(B) Update ClaudeUsage.sdef to declare getCurrentUsage and triggerPoll AppleScript commands matching the new AppIntents with correct return type annotations +feature

@@ -43,6 +43,62 @@ struct GetTodayUsageIntent: AppIntent {
     }
 }
 
+// MARK: – Task 93: GetCurrentUsage
+
+struct CurrentUsageResult: AppEntity {
+    static let typeDisplayRepresentation: TypeDisplayRepresentation = "Current Usage"
+    static let defaultQuery = CurrentUsageResultQuery()
+    var id: UUID
+    var accountName: String
+    var totalInputTokens: Int
+    var totalOutputTokens: Int
+    var totalCostUSD: Double
+    var displayRepresentation: DisplayRepresentation {
+        DisplayRepresentation(title: "\(accountName): \(String(format: "$%.4f", totalCostUSD))")
+    }
+}
+
+struct CurrentUsageResultQuery: EntityQuery {
+    func entities(for identifiers: [UUID]) async throws -> [CurrentUsageResult] { [] }
+    func suggestedEntities() async throws -> [CurrentUsageResult] { [] }
+}
+
+struct GetCurrentUsage: AppIntent {
+    static let title: LocalizedStringResource = "Get Current Usage"
+    static let description = IntentDescription("Returns current usage for the first active account.")
+
+    @MainActor
+    func perform() async throws -> some ReturnsValue<CurrentUsageResult> {
+        let config = ConfigManager.shared.load()
+        guard let account = config.accounts.first(where: { $0.isActive }) else {
+            throw APIError.unsupported
+        }
+        let agg = CacheManager.shared.todayAggregate(forAccount: account.id)
+        return .result(value: CurrentUsageResult(
+            id: account.id,
+            accountName: account.name,
+            totalInputTokens: agg.totalInputTokens,
+            totalOutputTokens: agg.totalOutputTokens,
+            totalCostUSD: agg.totalCostUSD
+        ))
+    }
+}
+
+// MARK: – Task 94: TriggerPoll
+
+struct TriggerPoll: AppIntent {
+    static let title: LocalizedStringResource = "Trigger Poll"
+    static let description = IntentDescription("Triggers an immediate poll and returns true if no error occurred.")
+
+    @MainActor
+    func perform() async throws -> some ReturnsValue<Bool> {
+        await PollingService.shared.pollOnce()
+        return .result(value: PollingService.shared.lastFetchError == nil)
+    }
+}
+
+// MARK: –
+
 struct GetForecastIntent: AppIntent {
     static let title: LocalizedStringResource = "Get Claude Spend Forecast"
     static let description = IntentDescription("Returns projected Claude spend for EOD, EOW, EOM.")
