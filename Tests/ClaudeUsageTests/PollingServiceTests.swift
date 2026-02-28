@@ -123,6 +123,44 @@ final class PollingServiceTests: XCTestCase {
         XCTAssertEqual(comps.second, 0)
     }
 
+    func testAnthropicConsecutivePollsDoNotInflateDuplicateSnapshots() async {
+        let account = Account(name: "Anthropic Billing", type: .anthropicAPI, isActive: true)
+        try? KeychainManager.store(key: "test-api-key", service: AppConstants.keychainService, account: account.id.uuidString)
+        defer { try? KeychainManager.delete(service: AppConstants.keychainService, account: account.id.uuidString) }
+
+        MockURLProtocol.requestHandler = { req in
+            guard req.url?.path.contains("/v1/usage") == true else {
+                throw URLError(.badServerResponse)
+            }
+            let body = """
+            {
+              "data": [
+                {
+                  "start_time": "2026-02-28T00:00:00Z",
+                  "end_time": "2026-02-28T01:00:00Z",
+                  "input_tokens": 1000,
+                  "output_tokens": 500,
+                  "cache_creation_input_tokens": 0,
+                  "cache_read_input_tokens": 0,
+                  "model": "claude-3-haiku"
+                }
+              ],
+              "has_more": false,
+              "first_id": "a",
+              "last_id": "a"
+            }
+            """
+            let resp = HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (resp, Data(body.utf8))
+        }
+
+        await PollingService.shared.fetchAndStore(account: account, config: .default)
+        await PollingService.shared.fetchAndStore(account: account, config: .default)
+
+        let snaps = CacheManager.shared.load().filter { $0.accountId == account.id }
+        XCTAssertEqual(snaps.count, 1, "identical Anthropic usage payloads across consecutive polls must upsert, not append duplicates")
+    }
+
     func testAutomationCooldownBlocksImmediateRefire() {
         var rule = AutomationRule(name: "cooldown", triggerType: "cost_gt", threshold: 1, shellCommand: "say hi")
         rule.lastFiredAt = Date()
