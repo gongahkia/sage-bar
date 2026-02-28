@@ -603,6 +603,8 @@ struct SyncTab: View {
 struct CLITab: View {
     @State private var config = ConfigManager.shared.load()
     @State private var copyFeedback = false
+    @State private var isInstalling = false
+    @State private var lastInstallError: String? = UserDefaults.standard.string(forKey: "lastCLIInstallError")
 
     private let snippet = "claude-usage"
 
@@ -610,7 +612,14 @@ struct CLITab: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("CLI Binary").font(.headline)
             Text("Install the claude-usage binary to access usage data from the terminal.")
-            Button("Install to /usr/local/bin") { installCLI() }
+            Button(isInstalling ? "Installing..." : "Install to /usr/local/bin") { installCLI() }
+                .disabled(isInstalling)
+            if let lastInstallError, !lastInstallError.isEmpty {
+                Text(lastInstallError)
+                    .font(.caption2)
+                    .foregroundColor(.red)
+                    .textSelection(.enabled)
+            }
 
             Divider()
 
@@ -640,13 +649,28 @@ struct CLITab: View {
     }
 
     private func installCLI() {
-        guard let cliBinary = packagedCLIBinaryURL() else { return }
+        guard let cliBinary = packagedCLIBinaryURL() else {
+            let msg = "Bundled CLI binary not found in app bundle."
+            lastInstallError = msg
+            UserDefaults.standard.set(msg, forKey: "lastCLIInstallError")
+            return
+        }
         let dest = URL(fileURLWithPath: "/usr/local/bin/claude-usage")
-        let script = "cp '\(cliBinary.path)' '\(dest.path)' && chmod +x '\(dest.path)'"
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/bin/sh")
-        task.arguments = ["-c", script]
-        try? task.run()
+        isInstalling = true
+        DispatchQueue.global(qos: .userInitiated).async {
+            let result = runInstallCommand(source: cliBinary, destination: dest)
+            DispatchQueue.main.async {
+                isInstalling = false
+                switch result {
+                case .success:
+                    lastInstallError = nil
+                    UserDefaults.standard.removeObject(forKey: "lastCLIInstallError")
+                case .failure(let message):
+                    lastInstallError = message
+                    UserDefaults.standard.set(message, forKey: "lastCLIInstallError")
+                }
+            }
+        }
     }
 
     private func packagedCLIBinaryURL() -> URL? {
@@ -659,6 +683,32 @@ struct CLITab: View {
         return candidates
             .compactMap { $0 }
             .first(where: { fm.isExecutableFile(atPath: $0.path) })
+    }
+
+    private func runInstallCommand(source: URL, destination: URL) -> Result<Void, String> {
+        let script = "cp '\(source.path)' '\(destination.path)' && chmod +x '\(destination.path)'"
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/bin/sh")
+        task.arguments = ["-c", script]
+        let outputPipe = Pipe()
+        task.standardOutput = outputPipe
+        task.standardError = outputPipe
+
+        do {
+            try task.run()
+            task.waitUntilExit()
+        } catch {
+            return .failure("CLI install failed to start: \(error.localizedDescription)")
+        }
+
+        let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
+        let output = String(data: outputData, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard task.terminationStatus == 0 else {
+            if !output.isEmpty { return .failure(output) }
+            return .failure("CLI install failed with exit code \(task.terminationStatus).")
+        }
+        return .success(())
     }
 }
 
