@@ -8,7 +8,10 @@ on:
 
 jobs:
   build-and-test:
-    runs-on: macos-14
+    strategy:
+      matrix:
+        os: [macos-14, macos-13]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - name: Select Xcode
@@ -17,7 +20,15 @@ jobs:
         run: brew install swiftlint
       - name: Lint
         run: swiftlint --strict
+      - name: Install swift-format
+        run: brew install swift-format
+      - name: swift-format lint
+        run: |
+          OUTPUT=$(swift-format lint --recursive Sources/ Tests/ 2>&1)
+          [ -z "$OUTPUT" ] || { echo "$OUTPUT"; exit 1; }
+      - name: Validate prices.json
+        run: python3 -c "import json,sys; json.load(open('Sources/ClaudeUsage/Resources/prices.json'))"
       - name: Build
         run: swift build
       - name: Test
-        run: swift test
+        run: swift test --parallel
