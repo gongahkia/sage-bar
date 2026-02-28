@@ -101,7 +101,7 @@ class PollingService: ObservableObject {
         )
     }
 
-    private func fetchAndStore(account: Account, config: Config) async {
+    internal func fetchAndStore(account: Account, config: Config) async {
         switch account.type {
         case .claudeCode:
             var snap = ClaudeCodeLogParser.shared.aggregateToday()
