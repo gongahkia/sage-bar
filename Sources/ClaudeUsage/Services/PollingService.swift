@@ -5,23 +5,23 @@ import OSLog
 
 private let log = Logger(subsystem: "dev.claudeusage", category: "PollingService")
 
-@MainActor
 class PollingService: ObservableObject {
     static let shared = PollingService()
-    @Published var lastPollDate: Date?
-    @Published var isPolling: Bool = false
-    @Published var lastFetchError: String?
+    @MainActor @Published var lastPollDate: Date?
+    @MainActor @Published var isPolling: Bool = false
+    @MainActor @Published var lastFetchError: String?
 
     private var timer: Timer?
     private var currentTask: Task<Void, Never>?
     private let maxConcurrency = 3
     private let pathMonitor = NWPathMonitor()
+    private let stateLock = NSLock()
     private var networkAvailable = true
 
     private init() {
         pathMonitor.pathUpdateHandler = { [weak self] path in
             let available = path.status == .satisfied
-            self?.networkAvailable = available
+            self?.setNetworkAvailable(available)
             if !available {
                 ErrorLogger.shared.log("Network unavailable, skipping polls until reconnect", level: "WARN")
             }
@@ -29,6 +29,7 @@ class PollingService: ObservableObject {
         pathMonitor.start(queue: DispatchQueue(label: "dev.claudeusage.netmon"))
     }
 
+    @MainActor
     func start(config: Config) {
         stop()
         let interval = TimeInterval(config.pollIntervalSeconds)
@@ -38,6 +39,7 @@ class PollingService: ObservableObject {
         Task { await pollOnce() } // fire immediately
     }
 
+    @MainActor
     func stop() {
         timer?.invalidate()
         timer = nil
@@ -45,21 +47,28 @@ class PollingService: ObservableObject {
         currentTask = nil
     }
 
+    @MainActor
     func forceRefresh() {
         currentTask?.cancel()
         Task { await pollOnce() }
     }
 
     func pollOnce() async {
-        guard networkAvailable else {
+        guard isNetworkAvailable() else {
             log.warning("Network unavailable, skipping poll")
             ErrorLogger.shared.log("Network unavailable, skipping poll", level: "WARN")
             return
         }
         var config = ConfigManager.shared.load()
         log.info("Poll started: \(config.accounts.filter { $0.isActive }.count) active accounts")
-        isPolling = true
-        defer { isPolling = false; lastPollDate = Date(); log.info("Poll completed") }
+        await MainActor.run { self.isPolling = true }
+        defer {
+            Task { @MainActor in
+                self.isPolling = false
+                self.lastPollDate = Date()
+                log.info("Poll completed")
+            }
+        }
 
         let activeAccounts = config.accounts.filter { $0.isActive }
         var updatedIds: [UUID] = []
@@ -147,21 +156,21 @@ class PollingService: ObservableObject {
             } catch APIError.invalidKey {
                 let msg = "Invalid API key for account \(account.id.uuidString)"
                 ErrorLogger.shared.log(msg, file: #file, line: #line)
-                lastFetchError = msg
+                await MainActor.run { self.lastFetchError = msg }
             } catch APIError.rateLimited(let retryAfter) {
                 let msg = "Rate limited for account \(account.id.uuidString); retry after \(retryAfter ?? 0)s"
                 ErrorLogger.shared.log(msg, file: #file, line: #line)
-                lastFetchError = msg
+                await MainActor.run { self.lastFetchError = msg }
             } catch APIError.networkError(let underlying) {
                 let msg = "Network error for account \(account.id.uuidString): \(underlying.localizedDescription)"
                 ErrorLogger.shared.log(msg, file: #file, line: #line)
-                lastFetchError = msg
+                await MainActor.run { self.lastFetchError = msg }
             } catch {
                 let msg = "Unexpected error for account \(account.id.uuidString): \(error.localizedDescription)"
                 ErrorLogger.shared.log(msg, file: #file, line: #line)
-                lastFetchError = msg
+                await MainActor.run { self.lastFetchError = msg }
             }
-            lastFetchError = nil // clear on successful fetch
+            await MainActor.run { self.lastFetchError = nil } // clear on successful fetch
         case .claudeAI:
             let token: String
             do {
@@ -310,6 +319,19 @@ class PollingService: ObservableObject {
         guard let raw = cursor?.lastStartTime else { return fallback }
         guard let ts = ISO8601DateFormatter().date(from: raw) else { return fallback }
         return Calendar.current.startOfDay(for: ts)
+    }
+
+    private func setNetworkAvailable(_ value: Bool) {
+        stateLock.lock()
+        networkAvailable = value
+        stateLock.unlock()
+    }
+
+    private func isNetworkAvailable() -> Bool {
+        stateLock.lock()
+        let available = networkAvailable
+        stateLock.unlock()
+        return available
     }
 }
 
