@@ -117,6 +117,17 @@ jobs:
         with:
           path: docs/
 
+      - name: Patch Homebrew SHA256 values
+        run: |
+          DMG_SHA=$(shasum -a 256 "ClaudeUsage-${{ github.ref_name }}.dmg" | awk '{print $1}')
+          ARM_SHA=$(shasum -a 256 claude-usage-arm64 | awk '{print $1}')
+          X86_SHA=$(shasum -a 256 claude-usage-x86_64 | awk '{print $1}')
+
+          sed -i '' "s/PLACEHOLDER_SHA256/${DMG_SHA}/g" homebrew/Casks/claude-usage.rb
+          sed -i '' "s/PLACEHOLDER_SHA256/${DMG_SHA}/g" homebrew/Formula/claude-usage-cli.rb
+          sed -i '' "s/PLACEHOLDER_ARM64_SHA256/${ARM_SHA}/g" homebrew/Formula/claude-usage-cli.rb
+          sed -i '' "s/PLACEHOLDER_X86_SHA256/${X86_SHA}/g" homebrew/Formula/claude-usage-cli.rb
+
       - name: Upload DMG to release
         uses: softprops/action-gh-release@v2
         with:
@@ -125,3 +136,5 @@ jobs:
             claude-usage-universal
             claude-usage-arm64
             claude-usage-x86_64
+            homebrew/Casks/claude-usage.rb
+            homebrew/Formula/claude-usage-cli.rb
