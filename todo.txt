@@ -1,5 +1,3 @@
-(B) Remove Carbon HIToolbox import from HotkeyManager.swift and delete all EventHotKeyID/RegisterEventHotKey/UnregisterEventHotKey call sites +fix
-(B) Implement CGEventTap in HotkeyManager using CGEvent.tapCreate(tap:place:options:eventsOfInterest:callback:userInfo:) to intercept keyDown events globally +feature
 (B) Define HotkeyBinding struct in HotkeyManager.swift: id: String, keyCode: CGKeyCode, modifiers: CGEventFlags, handler: () -> Void +refactor
 (B) Refactor HotkeyManager to maintain var bindings: [HotkeyBinding] and match incoming CGEvent against each binding's keyCode+modifiers before firing handler +feature
 (B) Implement chord sequence support in HotkeyManager: store lastKeyEvent: (keyCode, timestamp); if second key arrives within 500ms and matches a registered chord binding, fire that binding's handler +feature
