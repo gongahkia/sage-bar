@@ -640,14 +640,25 @@ struct CLITab: View {
     }
 
     private func installCLI() {
-        // copy current binary to /usr/local/bin/claude-usage via shell
-        guard let bin = Bundle.main.executableURL else { return }
+        guard let cliBinary = packagedCLIBinaryURL() else { return }
         let dest = URL(fileURLWithPath: "/usr/local/bin/claude-usage")
-        let script = "cp '\(bin.path)' '\(dest.path)' && chmod +x '\(dest.path)'"
+        let script = "cp '\(cliBinary.path)' '\(dest.path)' && chmod +x '\(dest.path)'"
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/bin/sh")
         task.arguments = ["-c", script]
         try? task.run()
+    }
+
+    private func packagedCLIBinaryURL() -> URL? {
+        let fm = FileManager.default
+        let candidates: [URL?] = [
+            Bundle.main.executableURL?.deletingLastPathComponent().appendingPathComponent("claude-usage"),
+            Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/claude-usage"),
+            Bundle.main.resourceURL?.appendingPathComponent("claude-usage"),
+        ]
+        return candidates
+            .compactMap { $0 }
+            .first(where: { fm.isExecutableFile(atPath: $0.path) })
     }
 }
 
