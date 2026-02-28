@@ -4,9 +4,20 @@ import AppKit
 
 struct HotkeyBinding {
     let id: String
-    let keyCode: CGKeyCode
+    let keyCode: CGKeyCode         // for regular: the trigger key; for chord: the second key
     let modifiers: CGEventFlags
+    let chordFirstKeyCode: CGKeyCode? // set for chord bindings; nil for regular
     let handler: () -> Void
+
+    init(id: String, keyCode: CGKeyCode, modifiers: CGEventFlags, handler: @escaping () -> Void) {
+        self.id = id; self.keyCode = keyCode; self.modifiers = modifiers
+        self.chordFirstKeyCode = nil; self.handler = handler
+    }
+
+    init(id: String, firstKeyCode: CGKeyCode, secondKeyCode: CGKeyCode, modifiers: CGEventFlags, handler: @escaping () -> Void) {
+        self.id = id; self.keyCode = secondKeyCode; self.modifiers = modifiers
+        self.chordFirstKeyCode = firstKeyCode; self.handler = handler
+    }
 }
 
 // MARK: – HotkeyManager
@@ -16,6 +27,7 @@ class HotkeyManager {
     var bindings: [HotkeyBinding] = []
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
+    private var lastKeyEvent: (keyCode: CGKeyCode, timestamp: TimeInterval)?
 
     private init() {}
 
@@ -89,11 +101,24 @@ class HotkeyManager {
     private func handle(event: CGEvent) {
         let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
         let flags = event.flags
-        for binding in bindings {
+        let now = Date().timeIntervalSinceReferenceDate
+        // chord bindings: second key within 500ms of first key
+        if let last = lastKeyEvent, now - last.timestamp < 0.5 {
+            for binding in bindings where binding.chordFirstKeyCode != nil {
+                if last.keyCode == binding.chordFirstKeyCode! && keyCode == binding.keyCode {
+                    lastKeyEvent = nil
+                    DispatchQueue.main.async { binding.handler() }
+                    return
+                }
+            }
+        }
+        // regular bindings
+        for binding in bindings where binding.chordFirstKeyCode == nil {
             if binding.keyCode == keyCode && flags.contains(binding.modifiers) {
                 DispatchQueue.main.async { binding.handler() }
             }
         }
+        lastKeyEvent = (keyCode: keyCode, timestamp: now)
     }
 
     private func modifierFlags(from modifiers: [String]) -> CGEventFlags {

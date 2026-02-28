@@ -1,4 +1,3 @@
-(B) Implement chord sequence support in HotkeyManager: store lastKeyEvent: (keyCode, timestamp); if second key arrives within 500ms and matches a registered chord binding, fire that binding's handler +feature
 (B) Add HotkeyConfig struct to SubConfigs.swift: primaryKeyCode: Int, primaryModifiers: [String], chordEnabled: Bool, chordSecondaryKeyCode: Int +feature
 (B) Wire HotkeyConfig through ConfigManager TOML load/save including default values (e.g., Cmd+Shift+U, chord disabled) +feature
 (B) Add hotkey recorder control in SettingsView that captures the next local key event via NSEvent.addLocalMonitorForEvents, displays the binding as a label, and saves to HotkeyConfig on confirm +feature
