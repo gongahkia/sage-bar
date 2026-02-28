@@ -99,4 +99,38 @@ final class CacheManagerTests: XCTestCase {
         XCTAssertEqual(loaded?.lastStartTime, cursor.lastStartTime)
         XCTAssertEqual(loaded?.lastModel, cursor.lastModel)
     }
+
+    func testUpsertAnthropicSnapshotsReplacesDeterministicKeyMatch() {
+        let ts = Date()
+        let initial = UsageSnapshot(
+            accountId: accountId,
+            timestamp: ts,
+            inputTokens: 100,
+            outputTokens: 40,
+            cacheCreationTokens: 0,
+            cacheReadTokens: 0,
+            totalCostUSD: 1.0,
+            modelBreakdown: [ModelUsage(modelId: "claude-sonnet-4-6", inputTokens: 100, outputTokens: 40, costUSD: 1.0)],
+            costConfidence: .billingGrade
+        )
+        let replacement = UsageSnapshot(
+            accountId: accountId,
+            timestamp: ts,
+            inputTokens: 120,
+            outputTokens: 50,
+            cacheCreationTokens: 0,
+            cacheReadTokens: 0,
+            totalCostUSD: 2.0,
+            modelBreakdown: [ModelUsage(modelId: "claude-sonnet-4-6", inputTokens: 120, outputTokens: 50, costUSD: 2.0)],
+            costConfidence: .billingGrade
+        )
+        cm.save([initial])
+        cm.upsertAnthropicSnapshots([replacement], forAccount: accountId)
+        let exp = expectation(description: "upsert")
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.3) { exp.fulfill() }
+        wait(for: [exp], timeout: 2)
+        let loaded = cm.load().filter { $0.accountId == accountId && $0.timestamp == ts }
+        XCTAssertEqual(loaded.count, 1)
+        XCTAssertEqual(loaded.first?.totalCostUSD, 2.0, accuracy: 0.001)
+    }
 }

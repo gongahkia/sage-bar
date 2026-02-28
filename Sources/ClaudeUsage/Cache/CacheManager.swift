@@ -80,6 +80,29 @@ class CacheManager {
         }
     }
 
+    func upsertAnthropicSnapshots(_ incoming: [UsageSnapshot], forAccount id: UUID) {
+        queue.async {
+            guard !incoming.isEmpty else { return }
+            let cutoff = Calendar.current.date(byAdding: .day, value: -Self.retentionDays, to: Date())!
+            var snapshots = self.load().filter { $0.timestamp >= cutoff }
+            var indexByKey: [String: Int] = [:]
+            for (i, snap) in snapshots.enumerated() {
+                indexByKey[self.anthropicKey(for: snap)] = i
+            }
+            for snap in incoming {
+                guard snap.accountId == id else { continue }
+                let key = self.anthropicKey(for: snap)
+                if let idx = indexByKey[key] {
+                    snapshots[idx] = snap
+                } else {
+                    snapshots.append(snap)
+                    indexByKey[key] = snapshots.count - 1
+                }
+            }
+            self.save(snapshots)
+        }
+    }
+
     func latest(forAccount id: UUID) -> UsageSnapshot? {
         load().filter { $0.accountId == id }.max(by: { $0.timestamp < $1.timestamp })
     }
@@ -168,5 +191,10 @@ class CacheManager {
                 ErrorLogger.shared.log("Anthropic cursor write failed: \(error.localizedDescription)")
             }
         }
+    }
+
+    private func anthropicKey(for snapshot: UsageSnapshot) -> String {
+        let model = snapshot.modelBreakdown.first?.modelId ?? ""
+        return "\(snapshot.accountId.uuidString)|\(snapshot.timestamp.ISO8601Format())|\(model)"
     }
 }

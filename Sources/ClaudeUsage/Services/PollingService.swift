@@ -130,9 +130,7 @@ class PollingService: ObservableObject {
                 // Anthropic Usage API remains the canonical billing source for anthropicAPI accounts.
                 let result = try await fetchAnthropicCanonicalSnapshots(accountId: account.id, apiKey: key)
                 let snapshots = result.snapshots
-                for snap in snapshots {
-                    CacheManager.shared.append(snap)
-                }
+                CacheManager.shared.upsertAnthropicSnapshots(snapshots, forAccount: account.id)
                 if let cursor = result.cursor {
                     CacheManager.shared.saveAnthropicCursor(cursor, forAccount: account.id)
                 }
