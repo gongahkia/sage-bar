@@ -1,5 +1,3 @@
-(B) Define AutomationAction enum in AutomationEngine.swift with cases: osascript(script: String), openURL(url: String), say(text: String), afplay(path: String), notification(title: String, body: String), httpGet(url: String) +security
-(B) Add static func AutomationAction.parse(commandString: String) -> AutomationAction? that maps allowlisted command prefix (osascript/open/say/afplay/terminal-notifier/curl) to the correct enum case +security
 (B) Rewrite AutomationEngine.fire(rule:snapshot:) to switch on AutomationAction, calling Process with explicit executableURL and arguments array, no /bin/sh -c +security
 (B) For AutomationAction.osascript: set Process executableURL = URL(fileURLWithPath: "/usr/bin/osascript") and pass script via -e argument directly +security
 (B) For AutomationAction.openURL: call NSWorkspace.shared.open(URL(string: url)) directly without Process +security

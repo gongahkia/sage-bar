@@ -3,6 +3,35 @@ import OSLog
 
 private let log = Logger(subsystem: "dev.claudeusage", category: "Automations")
 
+// MARK: – AutomationAction
+
+enum AutomationAction {
+    case osascript(script: String)
+    case openURL(url: String)
+    case say(text: String)
+    case afplay(path: String)
+    case notification(title: String, body: String)
+    case httpGet(url: String)
+
+    private static let metacharacters = ["$(", "`", "&&", "||", ";", "|", ">", "<"]
+
+    static func parse(commandString: String) -> AutomationAction? {
+        guard !metacharacters.contains(where: { commandString.contains($0) }) else { return nil }
+        let parts = commandString.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true).map(String.init)
+        guard let cmd = parts.first else { return nil }
+        let rest = parts.count > 1 ? parts[1] : ""
+        switch cmd {
+        case "osascript": return rest.isEmpty ? nil : .osascript(script: rest)
+        case "open": return rest.isEmpty ? nil : .openURL(url: rest)
+        case "say": return rest.isEmpty ? nil : .say(text: rest)
+        case "afplay": return rest.isEmpty ? nil : .afplay(path: rest)
+        case "terminal-notifier": return .notification(title: "Claude Usage", body: rest)
+        case "curl": return rest.isEmpty ? nil : .httpGet(url: rest)
+        default: return nil
+        }
+    }
+}
+
 struct AutomationEngine {
     static let allowedCommands: Set<String> = [
         "osascript", "open", "say", "curl", "afplay", "terminal-notifier"
