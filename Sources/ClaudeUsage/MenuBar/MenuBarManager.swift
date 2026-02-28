@@ -41,8 +41,8 @@ class MenuBarManager {
         }
         NotificationCenter.default.addObserver(
             forName: .claudeCodeLogsChanged, object: nil, queue: .main
-        ) { [weak self] _ in
-            Task { await PollingService.shared.pollOnce() }
+        ) { _ in
+            Task { await PollingService.shared.handleClaudeCodeLogsChanged() }
         }
     }
 

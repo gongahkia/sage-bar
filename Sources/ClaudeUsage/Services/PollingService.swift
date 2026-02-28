@@ -16,13 +16,14 @@ class PollingService: ObservableObject {
     @MainActor private var currentPollToken: UUID?
     private let maxConcurrency = 3
     private let pathMonitor = NWPathMonitor()
-    private let stateLock = NSLock()
-    private var networkAvailable = true
+    @MainActor private var networkAvailable = true
+    @MainActor private var pendingLogRefresh = false
+    @MainActor private var logChangeDebounceTask: Task<Void, Never>?
 
     private init() {
         pathMonitor.pathUpdateHandler = { [weak self] path in
             let available = path.status == .satisfied
-            self?.setNetworkAvailable(available)
+            Task { @MainActor in self?.networkAvailable = available }
             if !available {
                 ErrorLogger.shared.log("Network unavailable, skipping polls until reconnect", level: "WARN")
             }
@@ -34,8 +35,8 @@ class PollingService: ObservableObject {
     func start(config: Config) {
         stop()
         let interval = TimeInterval(config.pollIntervalSeconds)
-        timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-            Task { await self?.pollOnce() }
+        timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { _ in
+            Task { await PollingService.shared.pollOnce() }
         }
         Task { await pollOnce() } // fire immediately
     }
@@ -47,12 +48,24 @@ class PollingService: ObservableObject {
         currentTask?.cancel()
         currentTask = nil
         currentPollToken = nil
+        pendingLogRefresh = false
+        logChangeDebounceTask?.cancel()
+        logChangeDebounceTask = nil
     }
 
     @MainActor
     func forceRefresh() {
         currentTask?.cancel()
         Task { await pollOnce() }
+    }
+
+    func handleClaudeCodeLogsChanged() async {
+        let pollInProgress = await MainActor.run { self.currentTask != nil || self.isPolling }
+        if pollInProgress {
+            await MainActor.run { self.pendingLogRefresh = true }
+            return
+        }
+        await scheduleDebouncedLogRefresh()
     }
 
     func pollOnce() async {
@@ -76,7 +89,8 @@ class PollingService: ObservableObject {
 
     private func runPollCycle() async {
         guard !Task.isCancelled else { return }
-        guard isNetworkAvailable() else {
+        let available = await MainActor.run { self.networkAvailable }
+        guard available else {
             log.warning("Network unavailable, skipping poll")
             ErrorLogger.shared.log("Network unavailable, skipping poll", level: "WARN")
             return
@@ -145,6 +159,9 @@ class PollingService: ObservableObject {
             object: nil,
             userInfo: ["accountIds": updatedIds]
         )
+        if await consumePendingLogRefresh() {
+            await scheduleDebouncedLogRefresh()
+        }
     }
 
     internal func fetchAndStore(account: Account, config: Config) async {
@@ -348,17 +365,24 @@ class PollingService: ObservableObject {
         return Calendar.current.startOfDay(for: ts)
     }
 
-    private func setNetworkAvailable(_ value: Bool) {
-        stateLock.lock()
-        networkAvailable = value
-        stateLock.unlock()
+    private func scheduleDebouncedLogRefresh(delayNanos: UInt64 = 400_000_000) async {
+        await MainActor.run {
+            self.logChangeDebounceTask?.cancel()
+            self.logChangeDebounceTask = Task { [weak self] in
+                try? await Task.sleep(nanoseconds: delayNanos)
+                guard !Task.isCancelled, let self else { return }
+                await self.pollOnce()
+                await MainActor.run { self.logChangeDebounceTask = nil }
+            }
+        }
     }
 
-    private func isNetworkAvailable() -> Bool {
-        stateLock.lock()
-        let available = networkAvailable
-        stateLock.unlock()
-        return available
+    private func consumePendingLogRefresh() async -> Bool {
+        await MainActor.run {
+            let pending = self.pendingLogRefresh
+            self.pendingLogRefresh = false
+            return pending
+        }
     }
 }
 
