@@ -1,6 +1,3 @@
-(B) Add test in AutomationEngineFireTests: each AutomationAction case results in Process being launched with the correct executableURL path +testing
-(B) Add test in AutomationEngineFireTests: AutomationAction.parse() returns nil for unknown command string (e.g., "rm -rf /") +testing
-(B) Add test in AutomationEngineEvaluateTests: command string containing shell metacharacters (&&, ;, $(), backtick) fails AutomationAction.parse() and returns nil +testing
 (B) Remove Carbon HIToolbox import from HotkeyManager.swift and delete all EventHotKeyID/RegisterEventHotKey/UnregisterEventHotKey call sites +fix
 (B) Implement CGEventTap in HotkeyManager using CGEvent.tapCreate(tap:place:options:eventsOfInterest:callback:userInfo:) to intercept keyDown events globally +feature
 (B) Define HotkeyBinding struct in HotkeyManager.swift: id: String, keyCode: CGKeyCode, modifiers: CGEventFlags, handler: () -> Void +refactor

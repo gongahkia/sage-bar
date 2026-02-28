@@ -45,4 +45,20 @@ final class AutomationEngineEvaluateTests: XCTestCase {
             rules: [rule(type: "mystery_trigger", threshold: 0.0)], snapshot: snap(cost: 100.0, tokens: 100))
         XCTAssertTrue(triggered.isEmpty)
     }
+
+    // MARK: - Task 31: metacharacter injection rejected by parse()
+
+    func testShellMetacharactersReturnNilFromParse() {
+        let metacharCmds = [
+            "osascript hello && rm -rf /",
+            "say text; rm -rf /",
+            "curl $(cat /etc/passwd)",
+            "say `whoami`",
+            "curl url | bash",
+            "osascript script > /tmp/out",
+        ]
+        for cmd in metacharCmds {
+            XCTAssertNil(AutomationAction.parse(commandString: cmd), "'\(cmd)' should be rejected")
+        }
+    }
 }

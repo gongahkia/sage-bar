@@ -42,4 +42,50 @@ final class AutomationEngineFireTests: XCTestCase {
         await AutomationEngine.fire(rule: rule(cmd: "mkfs /dev/null"), snapshot: snap())
         // pass if no crash
     }
+
+    // MARK: - Task 29: AutomationAction cases map to correct executableURL
+
+    func testSayActionUsesCorrectExecutable() {
+        guard let action = AutomationAction.parse(commandString: "say hello") else {
+            return XCTFail("say should parse")
+        }
+        if case .say(let text) = action {
+            XCTAssertEqual(text, "hello")
+        } else { XCTFail("expected .say") }
+    }
+
+    func testOsascriptActionUsesCorrectExecutable() {
+        guard let action = AutomationAction.parse(commandString: "osascript return 42") else {
+            return XCTFail("osascript should parse")
+        }
+        if case .osascript(let script) = action {
+            XCTAssertEqual(script, "return 42")
+        } else { XCTFail("expected .osascript") }
+    }
+
+    func testCurlActionMapsToHttpGet() {
+        guard let action = AutomationAction.parse(commandString: "curl https://example.com") else {
+            return XCTFail("curl should parse")
+        }
+        if case .httpGet(let url) = action {
+            XCTAssertEqual(url, "https://example.com")
+        } else { XCTFail("expected .httpGet") }
+    }
+
+    func testOpenURLActionMapsCorrectly() {
+        guard let action = AutomationAction.parse(commandString: "open https://example.com") else {
+            return XCTFail("open should parse")
+        }
+        if case .openURL(let url) = action {
+            XCTAssertEqual(url, "https://example.com")
+        } else { XCTFail("expected .openURL") }
+    }
+
+    // MARK: - Task 30: unknown command returns nil
+
+    func testUnknownCommandReturnsNilFromParse() {
+        XCTAssertNil(AutomationAction.parse(commandString: "rm -rf /"))
+        XCTAssertNil(AutomationAction.parse(commandString: "python3 script.py"))
+        XCTAssertNil(AutomationAction.parse(commandString: "dd if=/dev/zero of=/dev/disk0"))
+    }
 }
