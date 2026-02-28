@@ -22,6 +22,10 @@ final class ErrorLogger: ObservableObject {
         self.logFile = dir.appendingPathComponent("errors.log")
     }
 
+    internal init(logFile: URL) { // test injection only
+        self.logFile = logFile
+    }
+
     func log(_ message: String, level: String = "ERROR", file: String = #file, line: Int = #line) {
         let entry = "[\(isoTimestamp())] [\(level)] \(URL(fileURLWithPath: file).lastPathComponent):\(line) — \(message)\n"
         queue.async { [weak self] in
@@ -41,7 +45,7 @@ final class ErrorLogger: ObservableObject {
         }
     }
 
-    func clear() {
+    func clearLog() { // task 84: truncate errors.log to 0 bytes
         queue.async { [weak self] in
             guard let self else { return }
             try? "".write(to: self.logFile, atomically: true, encoding: .utf8)

@@ -25,8 +25,8 @@ struct DiagnosticsView: View {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(entries.joined(separator: "\n"), forType: .string)
                 }
-                Button("Clear Log") {
-                    errorLogger.clear()
+                Button("Clear Errors") {
+                    errorLogger.clearLog()
                     entries = []
                 }
             }.padding(.horizontal, 12).padding(.vertical, 8)
