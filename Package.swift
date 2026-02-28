@@ -22,6 +22,7 @@ let package = Package(
                 .product(name: "Sparkle", package: "Sparkle"),
             ],
             path: "Sources/ClaudeUsage",
+            exclude: ["Resources/Info.plist"],
             resources: [.process("Resources")]
         ),
         .executableTarget(
