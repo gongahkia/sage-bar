@@ -10,13 +10,12 @@ final class iCloudSyncManagerTests: XCTestCase {
             cacheCreationTokens: 0, cacheReadTokens: 0, totalCostUSD: 0, modelBreakdown: [])
     }
 
-    func testDedupWithin1sPreferHigherTokens() {
+    func testNearIdenticalTimestampsDoNotDedupWithDeterministicKey() {
         let t = Date()
         let local = [snap(100, at: t)]
         let remote = [snap(200, at: t.addingTimeInterval(0.5))] // within 1s
         let merged = mgr.merge(local: local, remote: remote)
-        XCTAssertEqual(merged.count, 1)
-        XCTAssertEqual(merged[0].inputTokens, 200, "should prefer higher token count")
+        XCTAssertEqual(merged.count, 2, "different timestamps should remain distinct events")
     }
 
     func testDedupDoesNotMergeSnapshotsMoreThan1sApart() {
@@ -32,6 +31,15 @@ final class iCloudSyncManagerTests: XCTestCase {
         let snap = self.snap(150, at: t)
         let merged = mgr.merge(local: [snap], remote: [snap])
         XCTAssertEqual(merged.count, 1)
+    }
+
+    func testExactMergeKeyCollisionPrefersHigherTokenSnapshot() {
+        let t = Date()
+        let local = [snap(100, at: t)]
+        let remote = [snap(250, at: t)] // same deterministic key
+        let merged = mgr.merge(local: local, remote: remote)
+        XCTAssertEqual(merged.count, 1)
+        XCTAssertEqual(merged[0].inputTokens, 250)
     }
 
     func testNoOpOnEmptyRemote() {

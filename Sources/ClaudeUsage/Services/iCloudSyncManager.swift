@@ -73,21 +73,18 @@ class iCloudSyncManager: ObservableObject {
         await writeWithBackoff(data: data, to: remoteURL)
     }
 
-    /// dedup by (accountId, timestamp within 1s), prefer higher total tokens
+    /// dedup by deterministic event key: accountId + timestamp + modelId + sourceType
     func merge(local: [UsageSnapshot], remote: [UsageSnapshot]) -> [UsageSnapshot] {
-        var result: [UsageSnapshot] = local
-        for r in remote {
-            let match = result.firstIndex(where: {
-                $0.accountId == r.accountId && abs($0.timestamp.timeIntervalSince(r.timestamp)) < 1
-            })
-            if let i = match {
-                let existing = result[i]
-                if r.inputTokens + r.outputTokens > existing.inputTokens + existing.outputTokens { result[i] = r }
+        var byKey: [String: UsageSnapshot] = [:]
+        for snap in local + remote {
+            let key = mergeKey(for: snap)
+            if let existing = byKey[key] {
+                byKey[key] = preferredSnapshot(existing, snap)
             } else {
-                result.append(r)
+                byKey[key] = snap
             }
         }
-        return result
+        return byKey.values.sorted { $0.timestamp < $1.timestamp }
     }
 
     func startMetadataQuery(config: iCloudSyncConfig) {
@@ -158,6 +155,46 @@ class iCloudSyncManager: ObservableObject {
                 ErrorLogger.shared.log("iCloud sync write failed after \(delays.count) retries")
             }
         }
+    }
+
+    private func mergeKey(for snapshot: UsageSnapshot) -> String {
+        let modelId = snapshot.modelBreakdown.map(\.modelId).sorted().first ?? "unknown"
+        let sourceType = sourceType(forModel: modelId)
+        return "\(snapshot.accountId.uuidString)|\(snapshot.timestamp.ISO8601Format())|\(modelId)|\(sourceType)"
+    }
+
+    private func sourceType(forModel modelId: String) -> String {
+        switch modelId {
+        case "claude-code-local":
+            return "claude-code"
+        case "claude-ai-web":
+            return "claude-ai-web"
+        default:
+            if modelId.hasPrefix("claude-") {
+                return "anthropic"
+            }
+            return "unknown"
+        }
+    }
+
+    private func preferredSnapshot(_ lhs: UsageSnapshot, _ rhs: UsageSnapshot) -> UsageSnapshot {
+        let lhsTokens = lhs.inputTokens + lhs.outputTokens + lhs.cacheCreationTokens + lhs.cacheReadTokens
+        let rhsTokens = rhs.inputTokens + rhs.outputTokens + rhs.cacheCreationTokens + rhs.cacheReadTokens
+        let lhsScore = (
+            lhs.costConfidence == .billingGrade ? 1 : 0,
+            lhs.isStale ? 0 : 1,
+            lhsTokens,
+            lhs.totalCostUSD,
+            lhs.timestamp.timeIntervalSince1970
+        )
+        let rhsScore = (
+            rhs.costConfidence == .billingGrade ? 1 : 0,
+            rhs.isStale ? 0 : 1,
+            rhsTokens,
+            rhs.totalCostUSD,
+            rhs.timestamp.timeIntervalSince1970
+        )
+        return rhsScore > lhsScore ? rhs : lhs
     }
 }
 
