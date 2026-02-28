@@ -58,4 +58,34 @@ final class CacheManagerTests: XCTestCase {
     func testReadEmptyCacheReturnsEmpty() {
         XCTAssertTrue(cm.load().filter { $0.accountId == accountId }.isEmpty)
     }
+
+    // MARK: - Task 62: shared AppGroup container path JSON round-trip
+
+    func testSharedContainerPathJSONRoundTrip() throws {
+        let s = snap(7.77)
+        cm.save([s])
+        let url = AppConstants.sharedContainerURL.appendingPathComponent("usage_cache.json")
+        let data = try Data(contentsOf: url)
+        let dec = JSONDecoder(); dec.dateDecodingStrategy = .iso8601
+        let loaded = try dec.decode([UsageSnapshot].self, from: data)
+        XCTAssertTrue(loaded.contains { abs($0.totalCostUSD - 7.77) < 0.001 && $0.accountId == accountId })
+    }
+
+    // MARK: - Task 64: two concurrent DispatchQueue.async appends → valid JSON via JSONDecoder
+
+    func testTwoConcurrentAsyncAppendsProduceValidJSON() {
+        let g = DispatchGroup()
+        g.enter(); g.enter()
+        DispatchQueue.global().async { self.cm.append(self.snap(1.11)); g.leave() }
+        DispatchQueue.global().async { self.cm.append(self.snap(2.22)); g.leave() }
+        let exp = expectation(description: "both appends dispatched")
+        g.notify(queue: .global()) {
+            DispatchQueue.global().asyncAfter(deadline: .now() + 0.5) { exp.fulfill() }
+        }
+        wait(for: [exp], timeout: 3)
+        let url = AppConstants.sharedContainerURL.appendingPathComponent("usage_cache.json")
+        guard let data = try? Data(contentsOf: url) else { XCTFail("cache file missing"); return }
+        let dec = JSONDecoder(); dec.dateDecodingStrategy = .iso8601
+        XCTAssertNoThrow(try dec.decode([UsageSnapshot].self, from: data), "concurrent appends must not corrupt JSON")
+    }
 }

@@ -41,4 +41,25 @@ final class iCloudSyncManagerTests: XCTestCase {
         XCTAssertEqual(merged.count, 1)
         XCTAssertEqual(merged[0].inputTokens, 100)
     }
+
+    // MARK: - Task 60: remote newer modificationDate → appears in merged result
+
+    func testRemoteNewerTimestampAppearsInMergedResult() {
+        let t = Date()
+        let local = [snap(100, at: t)]
+        let remote = [snap(50, at: t.addingTimeInterval(5))] // 5s newer, distinct entry
+        let merged = mgr.merge(local: local, remote: remote)
+        XCTAssertEqual(merged.count, 2)
+        XCTAssertTrue(merged.contains { $0.timestamp > local[0].timestamp }, "newer remote snapshot must be present")
+    }
+
+    // MARK: - Task 61: sync with iCloud unavailable (NWPath analog) → no crash, local unchanged
+
+    func testSyncNowUnavailableICloudDoesNotModifyLocalData() async {
+        let pre = [snap(77, at: Date())]
+        CacheManager.shared.save(pre)
+        await mgr.syncNow() // iCloudSync.enabled=false in test env → early return, local untouched
+        let post = CacheManager.shared.load().filter { $0.accountId == accountId }
+        XCTAssertEqual(post.first?.inputTokens, 77, "local data must be unchanged when iCloud unavailable")
+    }
 }
