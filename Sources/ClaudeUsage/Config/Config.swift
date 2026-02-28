@@ -13,6 +13,7 @@ struct Config: Codable {
     var iCloudSync: iCloudSyncConfig
     var hotkey: GlobalHotkeyConfig
     var automations: [AutomationRule]
+    var claudeAI: ClaudeAIConfig
 
     static var `default`: Config {
         Config(
@@ -27,7 +28,8 @@ struct Config: Codable {
             modelOptimizer: .default,
             iCloudSync: .default,
             hotkey: .default,
-            automations: []
+            automations: [],
+            claudeAI: .default
         )
     }
 }

@@ -1,4 +1,3 @@
-(B) Add claude_ai.session_cookie optional String field to SubConfigs.swift ClaudeAIConfig and wire it through ConfigManager TOML load/save +feature
 (B) Implement claudeAI case in PollingService.fetchAndStore(): call ClaudeAIClient.fetchUsage() and store resulting UsageSnapshot in CacheManager +feature
 (B) Add fallback in PollingService claudeAI case: on network error or HTTP non-200, retrieve last cached snapshot for that account and set isStale=true before storing +feature
 (B) Show stale data badge in MenuBarPopoverView when the active account's most recent snapshot has isStale=true (e.g., "(stale)" suffix on last-synced label) +feature

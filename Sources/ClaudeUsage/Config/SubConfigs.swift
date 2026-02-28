@@ -92,6 +92,11 @@ struct GlobalHotkeyConfig: Codable {
     }
 }
 
+struct ClaudeAIConfig: Codable {
+    var sessionCookie: String? // sessionKey value from claude.ai DevTools
+    static var `default`: ClaudeAIConfig { ClaudeAIConfig(sessionCookie: nil) }
+}
+
 struct AutomationRule: Codable, Identifiable {
     var id: UUID
     var name: String
