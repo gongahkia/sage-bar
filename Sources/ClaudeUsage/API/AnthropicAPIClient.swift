@@ -38,22 +38,14 @@ private struct PriceEntry: Decodable {
 }
 
 class AnthropicAPIClient {
-    static let pricingConstants: [String: (inputPer1M: Double, outputPer1M: Double)] = {
-        guard let url = Bundle.module.url(forResource: "prices", withExtension: "json") else {
-            ErrorLogger.shared.log("prices.json not found in bundle", level: "WARN")
-            return [:]
-        }
+    static func loadPrices(from url: URL) -> [String: (inputPer1M: Double, outputPer1M: Double)] {
         let data: Data
-        do {
-            data = try Data(contentsOf: url)
-        } catch {
+        do { data = try Data(contentsOf: url) } catch {
             ErrorLogger.shared.log("Failed to read prices.json: \(error.localizedDescription)", level: "WARN")
             return [:]
         }
         let raw: [String: PriceEntry]
-        do {
-            raw = try JSONDecoder().decode([String: PriceEntry].self, from: data)
-        } catch {
+        do { raw = try JSONDecoder().decode([String: PriceEntry].self, from: data) } catch {
             ErrorLogger.shared.log("Failed to decode prices.json: \(error.localizedDescription)", level: "ERROR")
             return [:]
         }
@@ -66,6 +58,14 @@ class AnthropicAPIClient {
             }
         }
         return result
+    }
+
+    static let pricingConstants: [String: (inputPer1M: Double, outputPer1M: Double)] = {
+        guard let url = Bundle.module.url(forResource: "prices", withExtension: "json") else {
+            ErrorLogger.shared.log("prices.json not found in bundle", level: "WARN")
+            return [:]
+        }
+        return loadPrices(from: url)
     }()
 
     private let apiKey: String

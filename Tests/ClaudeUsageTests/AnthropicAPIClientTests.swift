@@ -54,4 +54,35 @@ final class AnthropicAPIClientTests: XCTestCase {
             accountId: accountId)
         XCTAssertTrue(snaps.allSatisfy { $0.accountId == accountId })
     }
+
+    // MARK: - Task 52: zero-price entry logs warning but does not crash
+
+    func testLoadPricesZeroPriceLogsWarningNoCrash() throws {
+        let json = """
+        {"claude-test-model":{"inputPer1M":0.0,"outputPer1M":15.0}}
+        """
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("prices_test_\(UUID().uuidString).json")
+        try json.write(to: url, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let prices = AnthropicAPIClient.loadPrices(from: url)
+        XCTAssertTrue(prices.isEmpty, "zero inputPer1M entry should be excluded")
+        let exp = expectation(description: "ErrorLogger gets warning")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { exp.fulfill() }
+        wait(for: [exp], timeout: 1)
+        XCTAssertNotNil(ErrorLogger.shared.lastError, "ErrorLogger should have a warning for invalid entry")
+    }
+
+    // MARK: - Task 53: malformed prices.json logs error and returns empty
+
+    func testLoadPricesMalformedJSONLogsError() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("prices_bad_\(UUID().uuidString).json")
+        try "this is not json {{{".write(to: url, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let prices = AnthropicAPIClient.loadPrices(from: url)
+        XCTAssertTrue(prices.isEmpty, "malformed JSON should return empty dict")
+        let exp = expectation(description: "ErrorLogger gets decode error")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { exp.fulfill() }
+        wait(for: [exp], timeout: 1)
+        XCTAssertNotNil(ErrorLogger.shared.lastError)
+    }
 }
