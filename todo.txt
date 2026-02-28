@@ -1,4 +1,3 @@
-(B) Add a 60-second repeating Timer fallback in ClaudeCodeLogParser that rescans all .jsonl files when no FSEvent has fired in the last interval +feature
 (B) Add test in ClaudeCodeLogParserTests: write a .jsonl file two levels deep under a temp projects/ dir and assert FSEvent callback fires +testing
 (B) Add test in ClaudeCodeLogParserTests: disable FSEvents watcher, wait 61 seconds, assert fallback timer triggered rescan and returned correct token totals +testing
 (B) Add test in ClaudeCodeLogParserTests: malformed (non-JSON) line in .jsonl is skipped and parsing continues to next line without crash +testing

@@ -32,6 +32,8 @@ class ClaudeCodeLogParser {
     private var fileChecksums: [URL: (Date, Int)] = [:] // mtime+size cache for skip-unchanged
     private var fsEventStream: FSEventStreamRef?
     private var debounceWork: DispatchWorkItem?
+    private var fallbackTimer: Timer?
+    private var lastFSEventDate: Date?
 
     private init() {
         self.claudeDir = FileManager.default.homeDirectoryForCurrentUser
@@ -183,15 +185,25 @@ class ClaudeCodeLogParser {
         FSEventStreamScheduleWithRunLoop(stream, CFRunLoopGetMain(), CFRunLoopMode.defaultMode.rawValue)
         FSEventStreamStart(stream)
         fsEventStream = stream
+        lastFSEventDate = nil
+        fallbackTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            guard let self = self else { return }
+            let last = self.lastFSEventDate ?? .distantPast
+            if Date().timeIntervalSince(last) >= 60 {
+                self.debounceLogsChanged()
+            }
+        }
     }
 
     func stopWatching() {
+        fallbackTimer?.invalidate(); fallbackTimer = nil
         guard let s = fsEventStream else { return }
         FSEventStreamStop(s); FSEventStreamInvalidate(s); FSEventStreamRelease(s)
         fsEventStream = nil
     }
 
     private func debounceLogsChanged() { // 500ms debounce
+        lastFSEventDate = Date()
         debounceWork?.cancel()
         let w = DispatchWorkItem {
             NotificationCenter.default.post(name: .claudeCodeLogsChanged, object: nil)
