@@ -14,19 +14,46 @@ enum WebhookEvent {
 }
 
 class WebhookService {
-    private let session = URLSession(configuration: .ephemeral)
+    let maxRetries: Int
+    private let session: URLSession
+
+    init(session: URLSession? = nil, maxRetries: Int = 2) {
+        self.session = session ?? URLSession(configuration: .ephemeral)
+        self.maxRetries = maxRetries
+    }
 
     func send(event: WebhookEvent, snapshot: UsageSnapshot, config: WebhookConfig) async throws {
-        guard config.enabled, let url = URL(string: config.url), !config.url.isEmpty else { return }
-        let data = buildPayload(event: event, snapshot: snapshot, template: config.payloadTemplate)
-        var req = URLRequest(url: url)
-        req.httpMethod = "POST"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = data
-        let (_, resp) = try await session.data(for: req)
-        guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-            throw APIError.serverError((resp as? HTTPURLResponse)?.statusCode ?? 0)
+        guard config.enabled, !config.url.isEmpty else { return }
+        guard let url = URL(string: config.url), url.scheme == "https" else {
+            let msg = "Webhook URL '\(config.url)' is invalid or missing https:// scheme"
+            ErrorLogger.shared.log(msg, level: "WARN")
+            throw APIError.networkError(URLError(.badURL))
         }
+        let data = buildPayload(event: event, snapshot: snapshot, template: config.payloadTemplate)
+        var lastError: Error?
+        for attempt in 0...maxRetries {
+            do {
+                var req = URLRequest(url: url)
+                req.httpMethod = "POST"
+                req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                req.httpBody = data
+                let (_, resp) = try await session.data(for: req)
+                if let http = resp as? HTTPURLResponse, http.statusCode == 503, attempt < maxRetries {
+                    lastError = APIError.serverError(503)
+                    continue // retry
+                }
+                guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+                    throw APIError.serverError((resp as? HTTPURLResponse)?.statusCode ?? 0)
+                }
+                return // success
+            } catch let e as APIError { lastError = e; if attempt >= maxRetries { throw e }
+            } catch {
+                ErrorLogger.shared.log("Webhook send failed (attempt \(attempt+1)): \(error.localizedDescription)", level: "WARN")
+                lastError = error
+                if attempt >= maxRetries { throw error }
+            }
+        }
+        if let e = lastError { throw e }
     }
 
     func buildPayload(event: WebhookEvent, snapshot: UsageSnapshot, template: String?) -> Data {
@@ -52,10 +79,9 @@ class WebhookService {
     }
 
     func sendTest(config: WebhookConfig) async -> Result<Void, Error> {
-        guard let url = URL(string: config.url) else { return .failure(APIError.networkError(URLError(.badURL))) }
-        let dummy = UsageSnapshot(accountId: UUID(), timestamp: Date(), inputTokens: 0, outputTokens: 0,
-                                  cacheCreationTokens: 0, cacheReadTokens: 0, totalCostUSD: 0, modelBreakdown: [])
-        // fake event named "test"
+        guard let url = URL(string: config.url), url.scheme == "https" else {
+            return .failure(APIError.networkError(URLError(.badURL)))
+        }
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")

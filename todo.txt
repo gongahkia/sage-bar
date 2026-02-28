@@ -1,6 +1,3 @@
-(B) Add test in WebhookServiceTests: a 503 response triggers a retry and the request is attempted exactly (maxRetries+1) times total +testing
-(B) Add test in WebhookServiceTests: URLSession timeout (mock via URLProtocol) results in an error logged via ErrorLogger, not a silent failure +testing
-(B) Add test in WebhookServiceTests: a webhook URL missing the https:// scheme is rejected at config validation before any network call is made +testing
 (B) Add test in ForecastEngineTests: input with all-zero UsageSnapshots returns ForecastSnapshot where eodCost == 0, eowCost == 0, eomCost == 0 +testing
 (B) Add test in ForecastEngineTests: input with a single UsageSnapshot extrapolates eodCost proportionally to remaining hours in the day +testing
 (B) Add test in ForecastEngineTests: burn rate value decreases when second half of day snapshots show lower spend than first half +testing

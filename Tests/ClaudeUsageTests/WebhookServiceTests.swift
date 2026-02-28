@@ -56,4 +56,54 @@ final class WebhookServiceTests: XCTestCase {
             XCTFail("should not throw on empty URL: \(error)")
         }
     }
+
+    // MARK: - Task 54: 503 triggers retry; total attempts = maxRetries+1
+
+    func test503TriggersRetryExactCount() async {
+        var callCount = 0
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [MockURLProtocol.self]
+        MockURLProtocol.requestHandler = { req in
+            callCount += 1
+            let resp = HTTPURLResponse(url: req.url!, statusCode: 503, httpVersion: nil, headerFields: nil)!
+            return (resp, Data())
+        }
+        let mockSession = URLSession(configuration: config)
+        let svc = WebhookService(session: mockSession, maxRetries: 2)
+        let whConfig = WebhookConfig(enabled: true, url: "https://example.com/hook", events: [], payloadTemplate: nil)
+        do {
+            try await svc.send(event: .dailyDigest, snapshot: snap(), config: whConfig)
+        } catch {}
+        XCTAssertEqual(callCount, svc.maxRetries + 1, "should attempt initial + maxRetries times on 503")
+    }
+
+    // MARK: - Task 55: URLSession timeout logs via ErrorLogger
+
+    func testTimeoutLogsError() async {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [MockURLProtocol.self]
+        MockURLProtocol.requestHandler = { _ in throw URLError(.timedOut) }
+        let mockSession = URLSession(configuration: config)
+        let svc = WebhookService(session: mockSession, maxRetries: 0)
+        let whConfig = WebhookConfig(enabled: true, url: "https://example.com/hook", events: [], payloadTemplate: nil)
+        do { try await svc.send(event: .dailyDigest, snapshot: snap(), config: whConfig) } catch {}
+        let exp = expectation(description: "ErrorLogger set after timeout")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { exp.fulfill() }
+        wait(for: [exp], timeout: 1)
+        XCTAssertNotNil(ErrorLogger.shared.lastError, "timeout should log via ErrorLogger")
+    }
+
+    // MARK: - Task 56: non-https URL rejected before any network call
+
+    func testNonHttpsURLRejectedWithoutNetworkCall() async {
+        var called = false
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [MockURLProtocol.self]
+        MockURLProtocol.requestHandler = { _ in called = true; throw URLError(.unknown) }
+        let mockSession = URLSession(configuration: config)
+        let svc = WebhookService(session: mockSession, maxRetries: 0)
+        let whConfig = WebhookConfig(enabled: true, url: "http://example.com/hook", events: [], payloadTemplate: nil)
+        do { try await svc.send(event: .dailyDigest, snapshot: snap(), config: whConfig) } catch {}
+        XCTAssertFalse(called, "http:// URL should be rejected without making any network call")
+    }
 }
