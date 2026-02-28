@@ -150,27 +150,26 @@ class PollingService: ObservableObject {
                 return
             }
             let aiClient = ClaudeAIClient(sessionToken: token)
-            do {
-                let usage = try await aiClient.fetchRemainingUsage()
-                let remaining = usage.messageLimit.remaining
+            if let usage = await aiClient.fetchUsage() {
                 let snap = UsageSnapshot(
                     accountId: account.id,
                     timestamp: Date(),
-                    inputTokens: 0,
+                    inputTokens: usage.messagesUsed,
                     outputTokens: 0,
                     cacheCreationTokens: 0,
                     cacheReadTokens: 0,
                     totalCostUSD: 0,
-                    modelBreakdown: [ModelUsage(modelId: "claude-ai-web", inputTokens: remaining, outputTokens: 0, costUSD: 0)]
+                    modelBreakdown: [ModelUsage(modelId: "claude-ai-web", inputTokens: usage.messagesRemaining, outputTokens: 0, costUSD: 0)]
                 )
                 CacheManager.shared.append(snap)
-            } catch ClaudeAIError.unauthorized, ClaudeAIError.forbidden {
-                ErrorLogger.shared.log("claudeAI session expired for account \(account.id.uuidString) — re-authenticate")
+            } else {
+                ErrorLogger.shared.log("claudeAI fetchUsage returned nil for account \(account.id.uuidString) — using cached snapshot", level: "WARN")
+                if var cached = CacheManager.shared.latest(forAccount: account.id) {
+                    cached.isStale = true
+                    cached.timestamp = Date()
+                    CacheManager.shared.append(cached)
+                }
                 NotificationCenter.default.post(name: .claudeAISessionExpired, object: account.id)
-            } catch ClaudeAIError.networkError(let err) {
-                ErrorLogger.shared.log("claudeAI network error for account \(account.id.uuidString): \(err.localizedDescription)")
-            } catch {
-                ErrorLogger.shared.log("claudeAI unexpected error for account \(account.id.uuidString): \(error.localizedDescription)")
             }
         }
     }
