@@ -152,8 +152,18 @@ class ClaudeCodeLogParser {
 
     func startWatching() {
         stopWatching()
-        let projectsPath = claudeDir.appendingPathComponent("projects").path
-        let paths = [projectsPath] as CFArray
+        let projectsDir = claudeDir.appendingPathComponent("projects")
+        var watchPaths = [projectsDir.path]
+        if let subs = try? FileManager.default.contentsOfDirectory(
+            at: projectsDir, includingPropertiesForKeys: [.isDirectoryKey], options: .skipsHiddenFiles
+        ) {
+            for sub in subs {
+                if (try? sub.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true {
+                    watchPaths.append(sub.path)
+                }
+            }
+        }
+        let paths = watchPaths as CFArray
         var ctx = FSEventStreamContext(
             version: 0,
             info: Unmanaged.passUnretained(self).toOpaque(),
