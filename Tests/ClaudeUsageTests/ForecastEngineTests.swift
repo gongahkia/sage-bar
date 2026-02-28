@@ -40,6 +40,55 @@ final class ForecastEngineTests: XCTestCase {
         XCTAssertEqual(result.projectedEODCostUSD, 2.0 + 2.0 * 12.0, accuracy: 0.01)
     }
 
+    // MARK: - Task 57: all-zero snapshots → zero projections
+
+    func testAllZeroSnapshotsReturnZeroCosts() {
+        let cal = Calendar.current
+        var comps = cal.dateComponents([.year,.month,.day], from: Date())
+        comps.hour = 12; comps.minute = 0; comps.second = 0
+        let noon = cal.date(from: comps)!
+        let snaps = [snap(0, at: noon.addingTimeInterval(-3600)), snap(0, at: noon)]
+        let result = ForecastEngine.compute(history: snaps, now: noon)!
+        XCTAssertEqual(result.projectedEODCostUSD, 0.0, accuracy: 0.0001)
+        XCTAssertEqual(result.projectedEOWCostUSD, 0.0, accuracy: 0.0001)
+        XCTAssertEqual(result.projectedEOMCostUSD, 0.0, accuracy: 0.0001)
+    }
+
+    // MARK: - Task 58: eodCost proportional to remaining hours
+
+    func testEODCostProportionalToRemainingHours() {
+        let cal = Calendar.current
+        var comps = cal.dateComponents([.year,.month,.day], from: Date())
+        comps.hour = 6; comps.minute = 0; comps.second = 0
+        let sixAM = cal.date(from: comps)!
+        // 1h elapsed, cost = 4.0 → burnPerHour = 4.0; 18h remain until midnight → eod = 4 + 4*18 = 76
+        let snaps = [snap(0, at: sixAM.addingTimeInterval(-3600)), snap(4.0, at: sixAM)]
+        let result = ForecastEngine.compute(history: snaps, now: sixAM)!
+        let hoursLeft = 24.0 - 6.0 // 18h
+        let expected = 4.0 + 4.0 * hoursLeft
+        XCTAssertEqual(result.projectedEODCostUSD, expected, accuracy: 0.1)
+    }
+
+    // MARK: - Task 59: lower second-half spend decreases burn rate vs first-half only
+
+    func testBurnRateDecreasesWithLowerSecondHalfSpend() {
+        let cal = Calendar.current
+        var comps = cal.dateComponents([.year,.month,.day], from: Date())
+        comps.hour = 12; comps.minute = 0; comps.second = 0
+        let noon = cal.date(from: comps)!
+        // first half: 6h elapsed, cost=12 → burnRate=2
+        let firstHalfOnly = [snap(0, at: noon.addingTimeInterval(-6*3600)), snap(12.0, at: noon.addingTimeInterval(-3600))]
+        let r1 = ForecastEngine.compute(history: firstHalfOnly, now: noon.addingTimeInterval(-3600))!
+        // all day: 12h elapsed, cost=13 (slow second half) → burnRate=13/12 ≈ 1.08
+        let allDay = [
+            snap(0, at: noon.addingTimeInterval(-12*3600)),
+            snap(12.0, at: noon.addingTimeInterval(-6*3600)),
+            snap(13.0, at: noon),
+        ]
+        let r2 = ForecastEngine.compute(history: allDay, now: noon)!
+        XCTAssertLessThan(r2.burnRatePerHour, r1.burnRatePerHour, "slower second-half spend should produce lower overall burn rate")
+    }
+
     func testEOWAndEOMPositive() {
         let cal = Calendar.current
         var comps = cal.dateComponents([.year, .month, .day], from: Date())

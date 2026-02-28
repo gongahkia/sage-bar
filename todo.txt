@@ -1,6 +1,3 @@
-(B) Add test in ForecastEngineTests: input with all-zero UsageSnapshots returns ForecastSnapshot where eodCost == 0, eowCost == 0, eomCost == 0 +testing
-(B) Add test in ForecastEngineTests: input with a single UsageSnapshot extrapolates eodCost proportionally to remaining hours in the day +testing
-(B) Add test in ForecastEngineTests: burn rate value decreases when second half of day snapshots show lower spend than first half +testing
 (B) Add test in iCloudSyncManagerTests: when remote file has a newer modificationDate than local, sync overwrites local with remote content +testing
 (B) Add test in iCloudSyncManagerTests: sync attempt with NWPath unsatisfied completes without crash and local data is unchanged +testing
 (B) Add test in CacheManagerTests: JSON written by the ClaudeUsage app target is readable via the same shared AppGroup container path used by ClaudeUsageCLI target +testing
