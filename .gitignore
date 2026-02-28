@@ -1,0 +1,10 @@
+.build/
+Package.resolved
+ClaudeUsage-universal
+claude-usage-universal
+claude-usage-arm64
+claude-usage-x86_64
+ClaudeUsage-*.dmg
+sparkle_tools.zip
+sparkle_bin/
+docs/appcast.xml
