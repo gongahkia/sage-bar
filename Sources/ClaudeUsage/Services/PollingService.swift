@@ -19,6 +19,8 @@ class PollingService: ObservableObject {
     @MainActor private var networkAvailable = true
     @MainActor private var pendingLogRefresh = false
     @MainActor private var logChangeDebounceTask: Task<Void, Never>?
+    @MainActor private var fetchErrorsByAccount: [UUID: String] = [:]
+    @MainActor private var fetchErrorUpdatedAtByAccount: [UUID: Date] = [:]
 
     private init() {
         pathMonitor.pathUpdateHandler = { [weak self] path in
@@ -181,12 +183,15 @@ class PollingService: ObservableObject {
                 costConfidence: .estimated
             )
             CacheManager.shared.append(snap)
+            await clearFetchError(for: account.id)
         case .anthropicAPI:
             let key: String
             do {
                 key = try KeychainManager.retrieve(service: AppConstants.keychainService, account: account.id.uuidString)
             } catch {
-                ErrorLogger.shared.log("Keychain failure for account \(account.id): \(error.localizedDescription)")
+                let msg = "Keychain failure for account \(account.id.uuidString): \(error.localizedDescription)"
+                ErrorLogger.shared.log(msg)
+                await setFetchError(msg, for: account.id)
                 return
             }
             do {
@@ -197,30 +202,32 @@ class PollingService: ObservableObject {
                 if let cursor = result.cursor {
                     CacheManager.shared.saveAnthropicCursor(cursor, forAccount: account.id)
                 }
+                await clearFetchError(for: account.id)
             } catch APIError.invalidKey {
                 let msg = "Invalid API key for account \(account.id.uuidString)"
                 ErrorLogger.shared.log(msg, file: #file, line: #line)
-                await MainActor.run { self.lastFetchError = msg }
+                await setFetchError(msg, for: account.id)
             } catch APIError.rateLimited(let retryAfter) {
                 let msg = "Rate limited for account \(account.id.uuidString); retry after \(retryAfter ?? 0)s"
                 ErrorLogger.shared.log(msg, file: #file, line: #line)
-                await MainActor.run { self.lastFetchError = msg }
+                await setFetchError(msg, for: account.id)
             } catch APIError.networkError(let underlying) {
                 let msg = "Network error for account \(account.id.uuidString): \(underlying.localizedDescription)"
                 ErrorLogger.shared.log(msg, file: #file, line: #line)
-                await MainActor.run { self.lastFetchError = msg }
+                await setFetchError(msg, for: account.id)
             } catch {
                 let msg = "Unexpected error for account \(account.id.uuidString): \(error.localizedDescription)"
                 ErrorLogger.shared.log(msg, file: #file, line: #line)
-                await MainActor.run { self.lastFetchError = msg }
+                await setFetchError(msg, for: account.id)
             }
-            await MainActor.run { self.lastFetchError = nil } // clear on successful fetch
         case .claudeAI:
             let token: String
             do {
                 token = try KeychainManager.retrieve(service: AppConstants.keychainSessionTokenService, account: account.id.uuidString)
             } catch {
-                ErrorLogger.shared.log("No session token for claudeAI account \(account.id): \(error.localizedDescription)")
+                let msg = "No session token for claudeAI account \(account.id.uuidString): \(error.localizedDescription)"
+                ErrorLogger.shared.log(msg)
+                await setFetchError(msg, for: account.id)
                 return
             }
             let aiClient = ClaudeAIClient(sessionToken: token)
@@ -237,8 +244,11 @@ class PollingService: ObservableObject {
                     costConfidence: .estimated
                 )
                 CacheManager.shared.append(snap)
+                await clearFetchError(for: account.id)
             } else {
-                ErrorLogger.shared.log("claudeAI fetchUsage returned nil for account \(account.id.uuidString) — using cached snapshot", level: "WARN")
+                let msg = "claudeAI fetchUsage returned nil for account \(account.id.uuidString) — using cached snapshot"
+                ErrorLogger.shared.log(msg, level: "WARN")
+                await setFetchError(msg, for: account.id)
                 if var cached = CacheManager.shared.latest(forAccount: account.id) {
                     cached.isStale = true
                     cached.timestamp = Date()
@@ -383,6 +393,31 @@ class PollingService: ObservableObject {
             self.pendingLogRefresh = false
             return pending
         }
+    }
+
+    private func setFetchError(_ message: String, for accountId: UUID) async {
+        await MainActor.run {
+            self.fetchErrorsByAccount[accountId] = message
+            self.fetchErrorUpdatedAtByAccount[accountId] = Date()
+            self.refreshLastFetchErrorSummary()
+        }
+    }
+
+    private func clearFetchError(for accountId: UUID) async {
+        await MainActor.run {
+            self.fetchErrorsByAccount.removeValue(forKey: accountId)
+            self.fetchErrorUpdatedAtByAccount.removeValue(forKey: accountId)
+            self.refreshLastFetchErrorSummary()
+        }
+    }
+
+    @MainActor
+    private func refreshLastFetchErrorSummary() {
+        guard let latestAccountId = fetchErrorUpdatedAtByAccount.max(by: { $0.value < $1.value })?.key else {
+            lastFetchError = nil
+            return
+        }
+        lastFetchError = fetchErrorsByAccount[latestAccountId]
     }
 }
 
