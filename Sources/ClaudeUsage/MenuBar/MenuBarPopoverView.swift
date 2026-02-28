@@ -85,11 +85,13 @@ struct MenuBarPopoverView: View {
     // MARK: – Today stats
     private func todayStatsSection(account: Account) -> some View {
         let agg = CacheManager.shared.todayAggregate(forAccount: account.id)
+        let confidence = currentCostConfidence(account: account)
         return VStack(alignment: .leading, spacing: 4) {
             statRow("Input Tokens", value: "\(agg.totalInputTokens.formatted())")
             statRow("Output Tokens", value: "\(agg.totalOutputTokens.formatted())")
             statRow("Cache Tokens", value: "\((CacheManager.shared.todayAggregate(forAccount: account.id).snapshots.reduce(0) { $0 + $1.cacheReadTokens + $1.cacheCreationTokens }).formatted())")
             statRow("Cost Today", value: String(format: "$%.4f", agg.totalCostUSD))
+            statRow("Cost Confidence", value: confidence)
         }.padding(12)
     }
 
@@ -181,7 +183,15 @@ struct MenuBarPopoverView: View {
             } else {
                 Text("No data yet").font(.caption).foregroundColor(.secondary)
             }
+            statRow("Cost Confidence", value: currentCostConfidence(account: account))
         }.padding(12)
+    }
+
+    private func currentCostConfidence(account: Account) -> String {
+        if let latest = CacheManager.shared.latest(forAccount: account.id) {
+            return latest.costConfidence == .billingGrade ? "Billing-grade" : "Estimated"
+        }
+        return account.type == .anthropicAPI ? "Billing-grade" : "Estimated"
     }
 
     // MARK: – Re-auth banner
