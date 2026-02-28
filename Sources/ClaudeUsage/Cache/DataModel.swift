@@ -4,6 +4,7 @@ struct ModelUsage: Codable {
     var modelId: String
     var inputTokens: Int
     var outputTokens: Int
+    var cacheTokens: Int = 0 // task 89: cache read + creation tokens
     var costUSD: Double
 }
 

@@ -145,7 +145,7 @@ class AnthropicAPIClient {
                 cacheCreationTokens: period.cache_creation_input_tokens,
                 cacheReadTokens: period.cache_read_input_tokens,
                 totalCostUSD: costIn + costOut + costCacheCreate + costCacheRead,
-                modelBreakdown: [ModelUsage(modelId: period.model, inputTokens: period.input_tokens, outputTokens: period.output_tokens, costUSD: costIn + costOut)]
+                modelBreakdown: [ModelUsage(modelId: period.model, inputTokens: period.input_tokens, outputTokens: period.output_tokens, cacheTokens: period.cache_creation_input_tokens + period.cache_read_input_tokens, costUSD: costIn + costOut + costCacheCreate + costCacheRead)]
             )
         }
     }
