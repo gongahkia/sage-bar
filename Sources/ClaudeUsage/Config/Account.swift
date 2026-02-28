@@ -14,12 +14,17 @@ struct Account: Codable, Identifiable {
     var createdAt: Date
     var costLimitUSD: Double? // per-account daily limit for notifications
 
-    init(name: String, type: AccountType, isActive: Bool = true) {
+    init(name: String, type: AccountType, isActive: Bool = true, costLimitUSD: Double? = nil) {
         self.id = UUID()
         self.name = name
         self.type = type
         self.isActive = isActive
         self.createdAt = Date()
-        self.costLimitUSD = nil
+        if let limit = costLimitUSD, limit <= 0 { // task 87: warn on invalid costLimitUSD
+            ErrorLogger.shared.log("Account '\(name)' costLimitUSD \(limit) must be > 0; ignoring", level: "WARN")
+            self.costLimitUSD = nil
+        } else {
+            self.costLimitUSD = costLimitUSD
+        }
     }
 }

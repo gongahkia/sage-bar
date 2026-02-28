@@ -25,17 +25,34 @@ struct AccountsTab: View {
     @State private var config = ConfigManager.shared.load()
     @State private var showAddSheet = false
     @State private var deleteTarget: Account?
+    @State private var connectionStatus: [UUID: String] = [:] // task 88
+    @State private var connectionTesting: Set<UUID> = []
 
     var body: some View {
         VStack(alignment: .leading) {
             List {
                 ForEach(config.accounts) { account in
+                    VStack(alignment: .leading, spacing: 4) {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(account.name).fontWeight(.medium)
                             Text(account.type.rawValue).font(.caption).foregroundColor(.secondary)
                         }
                         Spacer()
+                        // task 88: Test Connection button
+                        if connectionTesting.contains(account.id) {
+                            ProgressView().scaleEffect(0.6)
+                        } else {
+                            Button("Test") {
+                                connectionTesting.insert(account.id)
+                                connectionStatus.removeValue(forKey: account.id)
+                                Task {
+                                    let result = await testConnection(account: account)
+                                    connectionStatus[account.id] = result
+                                    connectionTesting.remove(account.id)
+                                }
+                            }.font(.caption).buttonStyle(.bordered)
+                        }
                         Toggle("", isOn: Binding(
                             get: { account.isActive },
                             set: { newVal in
@@ -45,7 +62,14 @@ struct AccountsTab: View {
                                 }
                             }
                         )).labelsHidden()
+                    } // HStack
+                    if let status = connectionStatus[account.id] { // task 88: inline result
+                        Text(status)
+                            .font(.caption2)
+                            .foregroundColor(status.hasPrefix("✓") ? .green : .red)
+                            .padding(.leading, 4)
                     }
+                    } // outer VStack
                 }.onDelete { idx in
                     for i in idx {
                         let a = config.accounts[i]
@@ -68,6 +92,33 @@ struct AccountsTab: View {
                 }
                 ConfigManager.shared.save(config)
             }
+        }
+    }
+
+    // task 88: test connection per account type
+    private func testConnection(account: Account) async -> String {
+        switch account.type {
+        case .claudeCode:
+            return "✓ OK (local logs, no API)"
+        case .anthropicAPI:
+            guard let key = try? KeychainManager.retrieve(service: AppConstants.keychainService, account: account.id.uuidString) else {
+                return "✗ No API key stored"
+            }
+            let client = AnthropicAPIClient(apiKey: key)
+            do {
+                let end = Date(); let start = Calendar.current.date(byAdding: .day, value: -1, to: end)!
+                _ = try await client.fetchUsage(startDate: start, endDate: end)
+                return "✓ OK"
+            } catch {
+                return "✗ \(error.localizedDescription)"
+            }
+        case .claudeAI:
+            guard let token = try? KeychainManager.retrieve(service: AppConstants.keychainSessionTokenService, account: account.id.uuidString) else {
+                return "✗ No session token stored"
+            }
+            let client = ClaudeAIClient(sessionToken: token)
+            let result = await client.fetchUsage()
+            return result != nil ? "✓ OK" : "✗ Fetch failed (check session token)"
         }
     }
 }

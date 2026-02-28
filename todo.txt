@@ -1,5 +1,3 @@
-(B) Add costLimitUSD > 0 validation in Account.swift init; if value is 0 or negative call ErrorLogger.shared.log() with a descriptive warning +fix
-(B) Add "Test Connection" button per account row in SettingsView that calls the appropriate API client fetch method once and displays "OK" or the error message inline below the button +feature
 (B) Add cacheTokens: Int field (default 0) to ModelUsage in DataModel.swift to track prompt cache read and write tokens separately from regular input tokens +refactor
 (B) Update AnthropicAPIClient response decoding to populate ModelUsage.cacheTokens from cache_read_input_tokens + cache_creation_input_tokens fields in the API response +refactor
 (B) Update ClaudeCodeLogParser JSONL parsing to read cache_read_input_tokens and cache_creation_input_tokens from ClaudeUsageField and sum them into ModelUsage.cacheTokens +refactor
