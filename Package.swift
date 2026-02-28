@@ -14,9 +14,14 @@ let package = Package(
         .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.0.0"),
     ],
     targets: [
+        .target(
+            name: "ClaudeUsageCore",
+            path: "Sources/ClaudeUsageCore"
+        ),
         .executableTarget(
             name: "ClaudeUsage",
             dependencies: [
+                "ClaudeUsageCore",
                 "TOMLKit",
                 .product(name: "LaunchAtLogin", package: "LaunchAtLogin-Modern"),
                 .product(name: "Sparkle", package: "Sparkle"),
@@ -27,7 +32,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "ClaudeUsageCLI",
-            dependencies: ["TOMLKit"],
+            dependencies: ["ClaudeUsageCore", "TOMLKit"],
             path: "Sources/ClaudeUsageCLI"
         ),
         .testTarget(
