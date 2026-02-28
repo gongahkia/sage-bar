@@ -2,12 +2,23 @@ import XCTest
 @testable import ClaudeUsage
 
 final class CacheManagerTests: XCTestCase {
-    private let cm = CacheManager.shared
+    private var cm: CacheManager!
+    private var fixtureDir: URL!
     private let accountId = UUID()
 
     override func setUp() {
         super.setUp()
+        fixtureDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("claude-usage-cache-tests-\(UUID().uuidString)")
+        try? FileManager.default.createDirectory(at: fixtureDir, withIntermediateDirectories: true)
+        cm = CacheManager(baseURL: fixtureDir)
         cm.save([]) // reset cache to empty before each test
+    }
+
+    override func tearDown() {
+        try? FileManager.default.removeItem(at: fixtureDir)
+        cm = nil
+        super.tearDown()
     }
 
     private func snap(_ cost: Double, at date: Date = Date()) -> UsageSnapshot {
@@ -64,7 +75,7 @@ final class CacheManagerTests: XCTestCase {
     func testSharedContainerPathJSONRoundTrip() throws {
         let s = snap(7.77)
         cm.save([s])
-        let url = AppConstants.sharedContainerURL.appendingPathComponent("usage_cache.json")
+        let url = fixtureDir.appendingPathComponent("usage_cache.json")
         let data = try Data(contentsOf: url)
         let dec = JSONDecoder(); dec.dateDecodingStrategy = .iso8601
         let loaded = try dec.decode([UsageSnapshot].self, from: data)
@@ -83,7 +94,7 @@ final class CacheManagerTests: XCTestCase {
             DispatchQueue.global().asyncAfter(deadline: .now() + 0.5) { exp.fulfill() }
         }
         wait(for: [exp], timeout: 3)
-        let url = AppConstants.sharedContainerURL.appendingPathComponent("usage_cache.json")
+        let url = fixtureDir.appendingPathComponent("usage_cache.json")
         guard let data = try? Data(contentsOf: url) else { XCTFail("cache file missing"); return }
         let dec = JSONDecoder(); dec.dateDecodingStrategy = .iso8601
         XCTAssertNoThrow(try dec.decode([UsageSnapshot].self, from: data), "concurrent appends must not corrupt JSON")

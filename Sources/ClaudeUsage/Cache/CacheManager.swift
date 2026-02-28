@@ -12,8 +12,8 @@ class CacheManager {
     private let queue = DispatchQueue(label: "dev.claudeusage.cache", qos: .utility)
     private static let retentionDays = 30
 
-    private init() {
-        let base = AppConstants.sharedContainerURL
+    init(baseURL: URL = AppConstants.sharedContainerURL) {
+        let base = baseURL
         try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
         self.cacheFile = base.appendingPathComponent("usage_cache.json")
         self.forecastFile = base.appendingPathComponent("forecast_cache.json")
