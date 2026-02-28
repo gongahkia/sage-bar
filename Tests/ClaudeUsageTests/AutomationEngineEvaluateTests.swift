@@ -61,4 +61,9 @@ final class AutomationEngineEvaluateTests: XCTestCase {
             XCTAssertNil(AutomationAction.parse(commandString: cmd), "'\(cmd)' should be rejected")
         }
     }
+
+    func testValidateCommandAcceptsAllowlistedAndRejectsUnknown() {
+        XCTAssertNil(AutomationEngine.validateCommand("say hello"))
+        XCTAssertNotNil(AutomationEngine.validateCommand("python3 script.py"))
+    }
 }
