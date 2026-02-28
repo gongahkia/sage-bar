@@ -13,6 +13,7 @@ class PollingService: ObservableObject {
 
     private var timer: Timer?
     private var currentTask: Task<Void, Never>?
+    @MainActor private var currentPollToken: UUID?
     private let maxConcurrency = 3
     private let pathMonitor = NWPathMonitor()
     private let stateLock = NSLock()
@@ -45,6 +46,7 @@ class PollingService: ObservableObject {
         timer = nil
         currentTask?.cancel()
         currentTask = nil
+        currentPollToken = nil
     }
 
     @MainActor
@@ -54,6 +56,26 @@ class PollingService: ObservableObject {
     }
 
     func pollOnce() async {
+        let token = UUID()
+        let task = Task { [weak self] in
+            guard let self else { return }
+            await self.runPollCycle()
+        }
+        await MainActor.run {
+            self.currentTask = task
+            self.currentPollToken = token
+        }
+        await task.value
+        await MainActor.run {
+            if self.currentPollToken == token {
+                self.currentTask = nil
+                self.currentPollToken = nil
+            }
+        }
+    }
+
+    private func runPollCycle() async {
+        guard !Task.isCancelled else { return }
         guard isNetworkAvailable() else {
             log.warning("Network unavailable, skipping poll")
             ErrorLogger.shared.log("Network unavailable, skipping poll", level: "WARN")
@@ -78,6 +100,7 @@ class PollingService: ObservableObject {
             for account in activeAccounts {
                 if launched >= maxConcurrency { _ = await group.next() }
                 group.addTask { [account] in
+                    guard !Task.isCancelled else { return nil }
                     await self.fetchAndStore(account: account, config: config)
                     return account.id
                 }
@@ -90,6 +113,7 @@ class PollingService: ObservableObject {
 
         // compute forecasts
         for account in activeAccounts {
+            guard !Task.isCancelled else { return }
             let history = CacheManager.shared.history(forAccount: account.id, days: 1)
             if let forecast = ForecastEngine.compute(history: history) {
                 CacheManager.shared.saveForecast(forecast)
@@ -102,6 +126,7 @@ class PollingService: ObservableObject {
         }
 
         // threshold notifications
+        guard !Task.isCancelled else { return }
         checkThresholds(config: config, accounts: activeAccounts)
 
         // automation evaluation
@@ -112,6 +137,7 @@ class PollingService: ObservableObject {
         }
 
         // daily digest check
+        guard !Task.isCancelled else { return }
         checkDailyDigest(config: config, accounts: activeAccounts)
 
         NotificationCenter.default.post(
@@ -122,6 +148,7 @@ class PollingService: ObservableObject {
     }
 
     internal func fetchAndStore(account: Account, config: Config) async {
+        guard !Task.isCancelled else { return }
         switch account.type {
         case .claudeCode:
             var snap = ClaudeCodeLogParser.shared.aggregateToday()
