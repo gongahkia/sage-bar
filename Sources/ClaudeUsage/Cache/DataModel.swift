@@ -14,6 +14,30 @@ struct DailyAggregate {
     var totalCostUSD: Double { snapshots.reduce(0) { $0 + $1.totalCostUSD } }
 }
 
+enum CacheSchema {
+    static let currentVersion = 1
+}
+
+struct UsageCachePayload: Codable {
+    var schemaVersion: Int
+    var snapshots: [UsageSnapshot]
+
+    init(schemaVersion: Int = CacheSchema.currentVersion, snapshots: [UsageSnapshot]) {
+        self.schemaVersion = schemaVersion
+        self.snapshots = snapshots
+    }
+}
+
+struct ForecastCachePayload: Codable {
+    var schemaVersion: Int
+    var forecasts: [ForecastSnapshot]
+
+    init(schemaVersion: Int = CacheSchema.currentVersion, forecasts: [ForecastSnapshot]) {
+        self.schemaVersion = schemaVersion
+        self.forecasts = forecasts
+    }
+}
+
 struct ModelHint: Codable {
     var accountId: UUID
     var date: Date

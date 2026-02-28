@@ -62,12 +62,14 @@ class iCloudSyncManager: ObservableObject {
         var remoteSnaps: [UsageSnapshot] = []
         if let data = remoteData {
             let dec = JSONDecoder(); dec.dateDecodingStrategy = .iso8601
-            remoteSnaps = (try? dec.decode([UsageSnapshot].self, from: data)) ?? []
+            remoteSnaps = (try? dec.decode(UsageCachePayload.self, from: data).snapshots)
+                ?? (try? dec.decode([UsageSnapshot].self, from: data))
+                ?? []
         }
         let merged = merge(local: localSnaps, remote: remoteSnaps)
         CacheManager.shared.save(merged)
         let enc = JSONEncoder(); enc.dateEncodingStrategy = .iso8601
-        guard let data = try? enc.encode(merged) else { return }
+        guard let data = try? enc.encode(UsageCachePayload(snapshots: merged)) else { return }
         await writeWithBackoff(data: data, to: remoteURL)
     }
 

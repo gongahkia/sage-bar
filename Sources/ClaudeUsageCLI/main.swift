@@ -15,6 +15,16 @@ let forecastFile = sharedContainer.appendingPathComponent("forecast_cache.json")
 let configDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".config/claude-usage")
 let configFile = configDir.appendingPathComponent("config.toml")
 
+private struct UsageCachePayload: Codable {
+    var schemaVersion: Int
+    var snapshots: [UsageSnapshot]
+}
+
+private struct ForecastCachePayload: Codable {
+    var schemaVersion: Int
+    var forecasts: [ForecastSnapshot]
+}
+
 private func pad(_ value: String, width: Int) -> String {
     let clipped = value.count > width ? String(value.prefix(width)) : value
     if clipped.count >= width { return clipped }
@@ -128,7 +138,9 @@ guard FileManager.default.fileExists(atPath: cacheFile.path),
     exit(1)
 }
 
-guard var snapshots = try? decoder.decode([UsageSnapshot].self, from: data) else {
+let snapshotsFromVersioned = try? decoder.decode(UsageCachePayload.self, from: data).snapshots
+let snapshotsFromLegacy = try? decoder.decode([UsageSnapshot].self, from: data)
+guard var snapshots = snapshotsFromVersioned ?? snapshotsFromLegacy else {
     fputs("Parse error: cache file malformed\n", stderr)
     exit(2)
 }
@@ -254,7 +266,8 @@ print(renderer.render())
 if showForecast {
     guard !snapshots.isEmpty else { print("No data available"); exit(0) }
     if let fdata = try? Data(contentsOf: forecastFile),
-       let forecasts = try? decoder.decode([ForecastSnapshot].self, from: fdata),
+       let forecasts = (try? decoder.decode(ForecastCachePayload.self, from: fdata).forecasts)
+            ?? (try? decoder.decode([ForecastSnapshot].self, from: fdata)),
        let forecast = forecasts.first {
         if formatJSON { // task 83: --forecast --format json outputs valid JSON
             let enc = JSONEncoder(); enc.dateEncodingStrategy = .iso8601; enc.outputFormatting = .prettyPrinted

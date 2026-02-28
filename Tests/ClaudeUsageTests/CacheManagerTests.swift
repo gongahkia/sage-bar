@@ -78,8 +78,9 @@ final class CacheManagerTests: XCTestCase {
         let url = fixtureDir.appendingPathComponent("usage_cache.json")
         let data = try Data(contentsOf: url)
         let dec = JSONDecoder(); dec.dateDecodingStrategy = .iso8601
-        let loaded = try dec.decode([UsageSnapshot].self, from: data)
-        XCTAssertTrue(loaded.contains { abs($0.totalCostUSD - 7.77) < 0.001 && $0.accountId == accountId })
+        let payload = try dec.decode(UsageCachePayload.self, from: data)
+        XCTAssertEqual(payload.schemaVersion, CacheSchema.currentVersion)
+        XCTAssertTrue(payload.snapshots.contains { abs($0.totalCostUSD - 7.77) < 0.001 && $0.accountId == accountId })
     }
 
     // MARK: - Task 64: two concurrent DispatchQueue.async appends → valid JSON via JSONDecoder
@@ -97,7 +98,7 @@ final class CacheManagerTests: XCTestCase {
         let url = fixtureDir.appendingPathComponent("usage_cache.json")
         guard let data = try? Data(contentsOf: url) else { XCTFail("cache file missing"); return }
         let dec = JSONDecoder(); dec.dateDecodingStrategy = .iso8601
-        XCTAssertNoThrow(try dec.decode([UsageSnapshot].self, from: data), "concurrent appends must not corrupt JSON")
+        XCTAssertNoThrow(try dec.decode(UsageCachePayload.self, from: data), "concurrent appends must not corrupt JSON")
     }
 
     func testSaveAndLoadAnthropicCursorPerAccount() {
@@ -173,5 +174,47 @@ final class CacheManagerTests: XCTestCase {
         let agg = cm.todayAggregate(forAccount: accountId)
         XCTAssertEqual(agg.totalInputTokens, 150)
         XCTAssertEqual(agg.totalOutputTokens, 30)
+    }
+
+    func testLegacyUsageArrayMigratesToVersionedPayloadOnRead() throws {
+        let legacy = [snap(3.14)]
+        let enc = JSONEncoder(); enc.dateEncodingStrategy = .iso8601
+        let legacyData = try enc.encode(legacy)
+        let url = fixtureDir.appendingPathComponent("usage_cache.json")
+        try legacyData.write(to: url, options: .atomic)
+
+        let loaded = cm.load()
+        XCTAssertEqual(loaded.count, 1)
+        XCTAssertEqual(loaded.first?.totalCostUSD, 3.14, accuracy: 0.001)
+
+        let migratedData = try Data(contentsOf: url)
+        let dec = JSONDecoder(); dec.dateDecodingStrategy = .iso8601
+        let payload = try dec.decode(UsageCachePayload.self, from: migratedData)
+        XCTAssertEqual(payload.schemaVersion, CacheSchema.currentVersion)
+        XCTAssertEqual(payload.snapshots.count, 1)
+    }
+
+    func testLegacyForecastArrayMigratesToVersionedPayloadOnRead() throws {
+        let forecast = ForecastSnapshot(
+            accountId: accountId,
+            generatedAt: Date(),
+            projectedEODCostUSD: 1.0,
+            projectedEOWCostUSD: 2.0,
+            projectedEOMCostUSD: 3.0,
+            burnRatePerHour: 0.25
+        )
+        let enc = JSONEncoder(); enc.dateEncodingStrategy = .iso8601
+        let legacyData = try enc.encode([forecast])
+        let url = fixtureDir.appendingPathComponent("forecast_cache.json")
+        try legacyData.write(to: url, options: .atomic)
+
+        let loaded = cm.latestForecast(forAccount: accountId)
+        XCTAssertEqual(loaded?.projectedEOMCostUSD, 3.0, accuracy: 0.001)
+
+        let migratedData = try Data(contentsOf: url)
+        let dec = JSONDecoder(); dec.dateDecodingStrategy = .iso8601
+        let payload = try dec.decode(ForecastCachePayload.self, from: migratedData)
+        XCTAssertEqual(payload.schemaVersion, CacheSchema.currentVersion)
+        XCTAssertEqual(payload.forecasts.count, 1)
     }
 }

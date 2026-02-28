@@ -30,17 +30,23 @@ private actor CacheStore {
 
     func loadSnapshots() -> [UsageSnapshot] {
         guard let data = try? Data(contentsOf: cacheFile) else { return [] }
-        guard let decoded = try? decoder().decode([UsageSnapshot].self, from: data) else {
-            ErrorLogger.shared.log("JSON decode failed for usage_cache.json")
-            return []
+        if let decoded = try? decoder().decode(UsageCachePayload.self, from: data) {
+            log.debug("Cache loaded: \(decoded.snapshots.count) snapshots (schema \(decoded.schemaVersion))")
+            return decoded.snapshots
         }
-        log.debug("Cache loaded: \(decoded.count) snapshots")
-        return decoded
+        if let legacy = try? decoder().decode([UsageSnapshot].self, from: data) {
+            log.info("Migrating legacy usage cache payload")
+            saveSnapshots(legacy)
+            return legacy
+        }
+        ErrorLogger.shared.log("JSON decode failed for usage_cache.json")
+        return []
     }
 
     func saveSnapshots(_ snapshots: [UsageSnapshot]) {
         do {
-            let data = try encoder().encode(snapshots)
+            let payload = UsageCachePayload(snapshots: snapshots)
+            let data = try encoder().encode(payload)
             try data.write(to: cacheFile, options: .atomic)
             log.debug("Cache saved: \(snapshots.count) snapshots")
         } catch {
@@ -97,28 +103,15 @@ private actor CacheStore {
     }
 
     func latestForecast(forAccount id: UUID) -> ForecastSnapshot? {
-        guard let data = try? Data(contentsOf: forecastFile) else { return nil }
-        guard let forecasts = try? decoder().decode([ForecastSnapshot].self, from: data) else {
-            ErrorLogger.shared.log("Forecast decode failed")
-            return nil
-        }
+        let forecasts = loadForecasts()
         return forecasts.filter { $0.accountId == id }.max(by: { $0.generatedAt < $1.generatedAt })
     }
 
     func saveForecast(_ forecast: ForecastSnapshot) {
-        var forecasts: [ForecastSnapshot] = []
-        if let data = try? Data(contentsOf: forecastFile),
-           let decoded = try? decoder().decode([ForecastSnapshot].self, from: data) {
-            forecasts = decoded
-        }
+        var forecasts = loadForecasts()
         forecasts.removeAll { $0.accountId == forecast.accountId }
         forecasts.append(forecast)
-        do {
-            let data = try encoder().encode(forecasts)
-            try data.write(to: forecastFile, options: .atomic)
-        } catch {
-            ErrorLogger.shared.log("Forecast write failed: \(error.localizedDescription)")
-        }
+        saveForecasts(forecasts)
     }
 
     func loadCursor(forAccount id: UUID) -> AnthropicIngestionCursor? {
@@ -145,6 +138,30 @@ private actor CacheStore {
     private func anthropicKey(for snapshot: UsageSnapshot) -> String {
         let model = snapshot.modelBreakdown.first?.modelId ?? ""
         return "\(snapshot.accountId.uuidString)|\(snapshot.timestamp.ISO8601Format())|\(model)"
+    }
+
+    private func loadForecasts() -> [ForecastSnapshot] {
+        guard let data = try? Data(contentsOf: forecastFile) else { return [] }
+        if let decoded = try? decoder().decode(ForecastCachePayload.self, from: data) {
+            return decoded.forecasts
+        }
+        if let legacy = try? decoder().decode([ForecastSnapshot].self, from: data) {
+            log.info("Migrating legacy forecast cache payload")
+            saveForecasts(legacy)
+            return legacy
+        }
+        ErrorLogger.shared.log("Forecast decode failed")
+        return []
+    }
+
+    private func saveForecasts(_ forecasts: [ForecastSnapshot]) {
+        do {
+            let payload = ForecastCachePayload(forecasts: forecasts)
+            let data = try encoder().encode(payload)
+            try data.write(to: forecastFile, options: .atomic)
+        } catch {
+            ErrorLogger.shared.log("Forecast write failed: \(error.localizedDescription)")
+        }
     }
 
     private func normalizeDailySnapshots(_ snapshots: [UsageSnapshot]) -> [UsageSnapshot] {
