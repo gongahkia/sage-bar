@@ -1,6 +1,6 @@
 import Foundation
 
-struct TUIConfig: Codable {
+struct TUIConfig: Codable, Equatable {
     var layout: [String]
     var colorScheme: String
     var showLogo: Bool
@@ -17,7 +17,7 @@ struct TUIConfig: Codable {
     }
 }
 
-struct DisplayConfig: Codable {
+struct DisplayConfig: Codable, Equatable {
     var menubarStyle: String // "icon" | "tokens" | "cost"
     var showBadge: Bool
     var compactMode: Bool
@@ -27,7 +27,7 @@ struct DisplayConfig: Codable {
     }
 }
 
-struct SparklineConfig: Codable {
+struct SparklineConfig: Codable, Equatable {
     var enabled: Bool
     var windowHours: Int
     var style: String // "cost" | "tokens"
@@ -37,7 +37,7 @@ struct SparklineConfig: Codable {
     }
 }
 
-struct ForecastConfig: Codable {
+struct ForecastConfig: Codable, Equatable {
     var enabled: Bool
     var showInPopover: Bool
     var showInTUI: Bool
@@ -46,7 +46,7 @@ struct ForecastConfig: Codable {
     }
 }
 
-struct WebhookConfig: Codable {
+struct WebhookConfig: Codable, Equatable {
     var enabled: Bool
     var url: String
     var events: [String] // "threshold" | "daily_digest" | "weekly_summary"
@@ -56,7 +56,7 @@ struct WebhookConfig: Codable {
     }
 }
 
-struct AnalyticsConfig: Codable {
+struct AnalyticsConfig: Codable, Equatable {
     var enabled: Bool
     var showMonthlyView: Bool
     var showHeatmap: Bool
@@ -65,7 +65,7 @@ struct AnalyticsConfig: Codable {
     }
 }
 
-struct ModelOptimizerConfig: Codable {
+struct ModelOptimizerConfig: Codable, Equatable {
     var enabled: Bool
     var cheapThresholdTokens: Int
     var showInPopover: Bool
@@ -74,7 +74,7 @@ struct ModelOptimizerConfig: Codable {
     }
 }
 
-struct iCloudSyncConfig: Codable {
+struct iCloudSyncConfig: Codable, Equatable {
     var enabled: Bool
     var localOnly: Bool
     var containerIdentifier: String
@@ -83,7 +83,7 @@ struct iCloudSyncConfig: Codable {
     }
 }
 
-struct GlobalHotkeyConfig: Codable {
+struct GlobalHotkeyConfig: Codable, Equatable {
     var enabled: Bool
     var modifiers: [String]
     var key: String
@@ -92,7 +92,7 @@ struct GlobalHotkeyConfig: Codable {
     }
 }
 
-struct HotkeyConfig: Codable {
+struct HotkeyConfig: Codable, Equatable {
     var primaryKeyCode: Int         // virtual key code (e.g., 32 for U)
     var primaryModifiers: [String]  // ["command","shift"]
     var chordEnabled: Bool
@@ -103,12 +103,12 @@ struct HotkeyConfig: Codable {
     }
 }
 
-struct ClaudeAIConfig: Codable {
+struct ClaudeAIConfig: Codable, Equatable {
     var sessionCookie: String? // sessionKey value from claude.ai DevTools
     static var `default`: ClaudeAIConfig { ClaudeAIConfig(sessionCookie: nil) }
 }
 
-struct AutomationRule: Codable, Identifiable {
+struct AutomationRule: Codable, Identifiable, Equatable {
     var id: UUID
     var name: String
     var triggerType: String // "cost_gt" | "tokens_gt"
