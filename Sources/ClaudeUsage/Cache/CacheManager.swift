@@ -31,13 +31,19 @@ private actor CacheStore {
     func loadSnapshots() -> [UsageSnapshot] {
         guard let data = try? Data(contentsOf: cacheFile) else { return [] }
         if let decoded = try? decoder().decode(UsageCachePayload.self, from: data) {
-            log.debug("Cache loaded: \(decoded.snapshots.count) snapshots (schema \(decoded.schemaVersion))")
-            return decoded.snapshots
+            let deduped = deduplicateSnapshots(decoded.snapshots)
+            if deduped.count != decoded.snapshots.count {
+                log.info("Deduplicated usage cache: \(decoded.snapshots.count) -> \(deduped.count)")
+                saveSnapshots(deduped)
+            }
+            log.debug("Cache loaded: \(deduped.count) snapshots (schema \(decoded.schemaVersion))")
+            return deduped
         }
         if let legacy = try? decoder().decode([UsageSnapshot].self, from: data) {
             log.info("Migrating legacy usage cache payload")
-            saveSnapshots(legacy)
-            return legacy
+            let deduped = deduplicateSnapshots(legacy)
+            saveSnapshots(deduped)
+            return deduped
         }
         ErrorLogger.shared.log("JSON decode failed for usage_cache.json")
         return []
@@ -180,6 +186,54 @@ private actor CacheStore {
             eventSnapshots.append(latestCumulative)
         }
         return eventSnapshots
+    }
+
+    private func deduplicateSnapshots(_ snapshots: [UsageSnapshot]) -> [UsageSnapshot] {
+        var byKey: [String: UsageSnapshot] = [:]
+        for snapshot in snapshots {
+            let key = eventKey(for: snapshot)
+            guard let existing = byKey[key] else {
+                byKey[key] = snapshot
+                continue
+            }
+            byKey[key] = preferredSnapshot(existing, snapshot)
+        }
+        return byKey.values.sorted { $0.timestamp < $1.timestamp }
+    }
+
+    private func eventKey(for snapshot: UsageSnapshot) -> String {
+        let modelId = snapshot.modelBreakdown.map(\.modelId).sorted().first ?? "unknown"
+        let sourceType = sourceType(forModel: modelId)
+        return "\(snapshot.accountId.uuidString)|\(snapshot.timestamp.ISO8601Format())|\(sourceType)|\(modelId)"
+    }
+
+    private func sourceType(forModel modelId: String) -> String {
+        switch modelId {
+        case "claude-code-local":
+            return "claude-code"
+        case "claude-ai-web":
+            return "claude-ai-web"
+        default:
+            if modelId.hasPrefix("claude-") {
+                return "anthropic"
+            }
+            return "unknown"
+        }
+    }
+
+    private func preferredSnapshot(_ lhs: UsageSnapshot, _ rhs: UsageSnapshot) -> UsageSnapshot {
+        let lhsTokenTotal = lhs.inputTokens + lhs.outputTokens + lhs.cacheCreationTokens + lhs.cacheReadTokens
+        let rhsTokenTotal = rhs.inputTokens + rhs.outputTokens + rhs.cacheCreationTokens + rhs.cacheReadTokens
+        let lhsScore = snapshotScore(lhs, tokenTotal: lhsTokenTotal)
+        let rhsScore = snapshotScore(rhs, tokenTotal: rhsTokenTotal)
+        if rhsScore > lhsScore { return rhs }
+        return lhs
+    }
+
+    private func snapshotScore(_ snapshot: UsageSnapshot, tokenTotal: Int) -> (Int, Int, Int, Double, TimeInterval) {
+        let confidence = snapshot.costConfidence == .billingGrade ? 1 : 0
+        let freshness = snapshot.isStale ? 0 : 1
+        return (confidence, freshness, tokenTotal, snapshot.totalCostUSD, snapshot.timestamp.timeIntervalSince1970)
     }
 }
 

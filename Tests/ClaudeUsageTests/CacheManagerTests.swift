@@ -176,6 +176,38 @@ final class CacheManagerTests: XCTestCase {
         XCTAssertEqual(agg.totalOutputTokens, 30)
     }
 
+    func testLoadDeduplicatesDeterministicEventKeyAndPrefersBillingGrade() {
+        let ts = Date()
+        let estimated = UsageSnapshot(
+            accountId: accountId,
+            timestamp: ts,
+            inputTokens: 10,
+            outputTokens: 2,
+            cacheCreationTokens: 0,
+            cacheReadTokens: 0,
+            totalCostUSD: 0.15,
+            modelBreakdown: [ModelUsage(modelId: "claude-sonnet-4-6", inputTokens: 10, outputTokens: 2, costUSD: 0.15)],
+            costConfidence: .estimated
+        )
+        let billing = UsageSnapshot(
+            accountId: accountId,
+            timestamp: ts,
+            inputTokens: 12,
+            outputTokens: 3,
+            cacheCreationTokens: 0,
+            cacheReadTokens: 0,
+            totalCostUSD: 0.20,
+            modelBreakdown: [ModelUsage(modelId: "claude-sonnet-4-6", inputTokens: 12, outputTokens: 3, costUSD: 0.20)],
+            costConfidence: .billingGrade
+        )
+
+        cm.save([estimated, billing])
+        let loaded = cm.load().filter { $0.accountId == accountId && $0.timestamp == ts }
+        XCTAssertEqual(loaded.count, 1)
+        XCTAssertEqual(loaded.first?.costConfidence, .billingGrade)
+        XCTAssertEqual(loaded.first?.inputTokens, 12)
+    }
+
     func testLegacyUsageArrayMigratesToVersionedPayloadOnRead() throws {
         let legacy = [snap(3.14)]
         let enc = JSONEncoder(); enc.dateEncodingStrategy = .iso8601
