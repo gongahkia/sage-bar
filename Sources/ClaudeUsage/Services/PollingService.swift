@@ -194,6 +194,13 @@ class PollingService: ObservableObject {
                 await setFetchError(msg, for: account.id)
                 return
             }
+            if let retryAfter = CacheManager.shared.loadAnthropicRetryAfter(forAccount: account.id), retryAfter > Date() {
+                let seconds = Int(retryAfter.timeIntervalSinceNow.rounded(.up))
+                let msg = "Rate limited for account \(account.id.uuidString); deferred for \(max(1, seconds))s"
+                log.warning("\(msg, privacy: .public)")
+                await setFetchError(msg, for: account.id)
+                return
+            }
             do {
                 // Anthropic Usage API remains the canonical billing source for anthropicAPI accounts.
                 let result = try await fetchAnthropicCanonicalSnapshots(accountId: account.id, apiKey: key)
@@ -202,13 +209,17 @@ class PollingService: ObservableObject {
                 if let cursor = result.cursor {
                     CacheManager.shared.saveAnthropicCursor(cursor, forAccount: account.id)
                 }
+                CacheManager.shared.clearAnthropicRetryAfter(forAccount: account.id)
                 await clearFetchError(for: account.id)
             } catch APIError.invalidKey {
                 let msg = "Invalid API key for account \(account.id.uuidString)"
                 ErrorLogger.shared.log(msg, file: #file, line: #line)
                 await setFetchError(msg, for: account.id)
             } catch APIError.rateLimited(let retryAfter) {
-                let msg = "Rate limited for account \(account.id.uuidString); retry after \(retryAfter ?? 0)s"
+                let retryDate = Self.retryAfterDate(fromSeconds: retryAfter)
+                let retrySeconds = Int(retryDate.timeIntervalSinceNow.rounded(.up))
+                CacheManager.shared.saveAnthropicRetryAfter(retryDate, forAccount: account.id)
+                let msg = "Rate limited for account \(account.id.uuidString); retry after \(max(1, retrySeconds))s"
                 ErrorLogger.shared.log(msg, file: #file, line: #line)
                 await setFetchError(msg, for: account.id)
             } catch APIError.networkError(let underlying) {
@@ -419,6 +430,13 @@ class PollingService: ObservableObject {
         let base = pow(2.0, Double(exponent))
         let jitter = Double.random(in: 0...(base * 0.35))
         return UInt64((base + jitter) * 1_000_000_000)
+    }
+
+    private static func retryAfterDate(fromSeconds retryAfterSeconds: Int?) -> Date {
+        let fallbackSeconds = 60
+        let raw = retryAfterSeconds ?? fallbackSeconds
+        let clamped = max(1, min(raw, 3600))
+        return Date().addingTimeInterval(TimeInterval(clamped))
     }
 
     private func scheduleDebouncedLogRefresh(delayNanos: UInt64 = 400_000_000) async {

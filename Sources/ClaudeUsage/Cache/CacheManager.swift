@@ -9,11 +9,13 @@ private actor CacheStore {
     private let cacheFile: URL
     private let forecastFile: URL
     private let anthropicCursorFile: URL
+    private let anthropicRetryAfterFile: URL
 
     init(baseURL: URL) {
         self.cacheFile = baseURL.appendingPathComponent("usage_cache.json")
         self.forecastFile = baseURL.appendingPathComponent("forecast_cache.json")
         self.anthropicCursorFile = baseURL.appendingPathComponent("anthropic_cursors.json")
+        self.anthropicRetryAfterFile = baseURL.appendingPathComponent("anthropic_retry_after.json")
     }
 
     private func encoder() -> JSONEncoder {
@@ -138,6 +140,42 @@ private actor CacheStore {
             try data.write(to: anthropicCursorFile, options: .atomic)
         } catch {
             ErrorLogger.shared.log("Anthropic cursor write failed: \(error.localizedDescription)")
+        }
+    }
+
+    func loadRetryAfter(forAccount id: UUID) -> Date? {
+        guard let data = try? Data(contentsOf: anthropicRetryAfterFile),
+              let all = try? decoder().decode([String: Date].self, from: data) else { return nil }
+        return all[id.uuidString]
+    }
+
+    func saveRetryAfter(_ retryAfter: Date, forAccount id: UUID) {
+        var all: [String: Date] = [:]
+        if let data = try? Data(contentsOf: anthropicRetryAfterFile),
+           let decoded = try? decoder().decode([String: Date].self, from: data) {
+            all = decoded
+        }
+        all[id.uuidString] = retryAfter
+        do {
+            let data = try encoder().encode(all)
+            try data.write(to: anthropicRetryAfterFile, options: .atomic)
+        } catch {
+            ErrorLogger.shared.log("Anthropic retryAfter write failed: \(error.localizedDescription)")
+        }
+    }
+
+    func clearRetryAfter(forAccount id: UUID) {
+        var all: [String: Date] = [:]
+        if let data = try? Data(contentsOf: anthropicRetryAfterFile),
+           let decoded = try? decoder().decode([String: Date].self, from: data) {
+            all = decoded
+        }
+        all.removeValue(forKey: id.uuidString)
+        do {
+            let data = try encoder().encode(all)
+            try data.write(to: anthropicRetryAfterFile, options: .atomic)
+        } catch {
+            ErrorLogger.shared.log("Anthropic retryAfter clear failed: \(error.localizedDescription)")
         }
     }
 
@@ -308,6 +346,22 @@ class CacheManager {
     func saveAnthropicCursor(_ cursor: AnthropicIngestionCursor, forAccount id: UUID) {
         blocking {
             await self.store.saveCursor(cursor, forAccount: id)
+        }
+    }
+
+    func loadAnthropicRetryAfter(forAccount id: UUID) -> Date? {
+        blocking { await self.store.loadRetryAfter(forAccount: id) }
+    }
+
+    func saveAnthropicRetryAfter(_ retryAfter: Date, forAccount id: UUID) {
+        blocking {
+            await self.store.saveRetryAfter(retryAfter, forAccount: id)
+        }
+    }
+
+    func clearAnthropicRetryAfter(forAccount id: UUID) {
+        blocking {
+            await self.store.clearRetryAfter(forAccount: id)
         }
     }
 }

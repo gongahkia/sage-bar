@@ -112,6 +112,17 @@ final class CacheManagerTests: XCTestCase {
         XCTAssertEqual(loaded?.lastModel, cursor.lastModel)
     }
 
+    func testSaveLoadAndClearAnthropicRetryAfterPerAccount() {
+        let retryAfter = Date().addingTimeInterval(120)
+        cm.saveAnthropicRetryAfter(retryAfter, forAccount: accountId)
+        let loaded = cm.loadAnthropicRetryAfter(forAccount: accountId)
+        XCTAssertNotNil(loaded)
+        XCTAssertEqual(loaded?.timeIntervalSince1970, retryAfter.timeIntervalSince1970, accuracy: 1)
+
+        cm.clearAnthropicRetryAfter(forAccount: accountId)
+        XCTAssertNil(cm.loadAnthropicRetryAfter(forAccount: accountId))
+    }
+
     func testUpsertAnthropicSnapshotsReplacesDeterministicKeyMatch() {
         let ts = Date()
         let initial = UsageSnapshot(
