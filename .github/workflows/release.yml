@@ -48,6 +48,8 @@ jobs:
           mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
           cp ClaudeUsage-universal "$APP/Contents/MacOS/ClaudeUsage"
           cp Sources/ClaudeUsage/Resources/Info.plist "$APP/Contents/"
+          cp Sources/ClaudeUsage/Resources/prices.json "$APP/Contents/Resources/"
+          cp Sources/ClaudeUsage/Scriptable/ClaudeUsage.sdef "$APP/Contents/Resources/"
 
       - name: Code sign app
         env:
