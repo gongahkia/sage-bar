@@ -32,6 +32,11 @@ struct ClaudeAIClient {
         self.session = URLSession(configuration: config)
     }
 
+    internal init(sessionToken: String, session: URLSession) {
+        self.sessionToken = sessionToken
+        self.session = session
+    }
+
     func fetchUsage() async -> ClaudeAIUsage? {
         guard let response = try? await fetchRemainingUsage() else { return nil }
         return ClaudeAIUsage(

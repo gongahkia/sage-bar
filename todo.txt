@@ -1,5 +1,3 @@
-(B) Add test: ClaudeAIClient.fetchUsage() with a mocked 200 response containing valid JSON returns correct messagesRemaining and messagesUsed values +testing
-(B) Add test: ClaudeAIClient.fetchUsage() with mocked network error returns nil and does not throw unhandled exception +testing
 (B) Add test: PollingService claudeAI branch stores a snapshot with isStale=true in CacheManager when ClaudeAIClient returns nil +testing
 (B) Define AutomationAction enum in AutomationEngine.swift with cases: osascript(script: String), openURL(url: String), say(text: String), afplay(path: String), notification(title: String, body: String), httpGet(url: String) +security
 (B) Add static func AutomationAction.parse(commandString: String) -> AutomationAction? that maps allowlisted command prefix (osascript/open/say/afplay/terminal-notifier/curl) to the correct enum case +security
