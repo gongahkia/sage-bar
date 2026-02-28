@@ -90,4 +90,25 @@ final class ClaudeCodeLogParserTests: XCTestCase {
             XCTAssertGreaterThanOrEqual(snap.outputTokens, 0)
         }
     }
+
+    // MARK: - FSEvent watcher
+
+    func testFSEventFiresForNestedJSONL() throws {
+        let projectsDir = tmpDir.appendingPathComponent("projects")
+        let subDir = projectsDir.appendingPathComponent("subproject")
+        try FileManager.default.createDirectory(at: subDir, withIntermediateDirectories: true)
+        let localParser = ClaudeCodeLogParser(claudeDir: tmpDir)
+        let exp = expectation(description: "claudeCodeLogsChanged fires for nested .jsonl write")
+        let obs = NotificationCenter.default.addObserver(
+            forName: .claudeCodeLogsChanged, object: nil, queue: .main) { _ in exp.fulfill() }
+        defer { NotificationCenter.default.removeObserver(obs) }
+        localParser.startWatching()
+        defer { localParser.stopWatching() }
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.5) {
+            let file = subDir.appendingPathComponent("session.jsonl")
+            try? """{"type":"message","usage":{"input_tokens":1,"output_tokens":1}}\n"""
+                .write(to: file, atomically: true, encoding: .utf8)
+        }
+        wait(for: [exp], timeout: 5)
+    }
 }

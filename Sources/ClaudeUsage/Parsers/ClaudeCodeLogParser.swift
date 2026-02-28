@@ -29,6 +29,7 @@ struct ClaudeUsageField: Codable {
 class ClaudeCodeLogParser {
     static let shared = ClaudeCodeLogParser()
     private let claudeDir: URL
+    let fallbackInterval: TimeInterval // internal for test override
     private var fileChecksums: [URL: (Date, Int)] = [:] // mtime+size cache for skip-unchanged
     private var fsEventStream: FSEventStreamRef?
     private var debounceWork: DispatchWorkItem?
@@ -38,6 +39,12 @@ class ClaudeCodeLogParser {
     private init() {
         self.claudeDir = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".claude")
+        self.fallbackInterval = 60
+    }
+
+    internal init(claudeDir: URL, fallbackInterval: TimeInterval = 60) {
+        self.claudeDir = claudeDir
+        self.fallbackInterval = fallbackInterval
     }
 
     private var missingDirLogged = false
@@ -186,7 +193,7 @@ class ClaudeCodeLogParser {
         FSEventStreamStart(stream)
         fsEventStream = stream
         lastFSEventDate = nil
-        fallbackTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+        fallbackTimer = Timer.scheduledTimer(withTimeInterval: fallbackInterval, repeats: true) { [weak self] _ in
             guard let self = self else { return }
             let last = self.lastFSEventDate ?? .distantPast
             if Date().timeIntervalSince(last) >= 60 {
