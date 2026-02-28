@@ -27,6 +27,7 @@ final class PollingServiceTests: XCTestCase {
     override func tearDown() async throws {
         URLProtocol.unregisterClass(MockURLProtocol.self)
         try? KeychainManager.delete(service: service, account: accountId.uuidString)
+        try? FileManager.default.removeItem(at: AppConstants.sharedContainerURL.appendingPathComponent("model_hints.json"))
         try await super.tearDown()
     }
 
@@ -134,5 +135,36 @@ final class PollingServiceTests: XCTestCase {
         let freshRule = AutomationRule(name: "new", triggerType: "cost_gt", threshold: 1, shellCommand: "say hi")
         XCTAssertTrue(PollingService.isAutomationOffCooldown(firedRule, pollIntervalSeconds: 300, now: Date()))
         XCTAssertTrue(PollingService.isAutomationOffCooldown(freshRule, pollIntervalSeconds: 300, now: Date()))
+    }
+
+    func testGenerateAndPersistModelHintsWritesModelHintsFile() async {
+        let account = Account(name: "Hinted API", type: .anthropicAPI, isActive: true)
+        let snapshot = UsageSnapshot(
+            accountId: account.id,
+            timestamp: Date(),
+            inputTokens: 1_000,
+            outputTokens: 100,
+            cacheCreationTokens: 0,
+            cacheReadTokens: 0,
+            totalCostUSD: 0.8,
+            modelBreakdown: [ModelUsage(modelId: "claude-3-sonnet", inputTokens: 1_000, outputTokens: 100, costUSD: 0.8)],
+            costConfidence: .billingGrade
+        )
+        CacheManager.shared.append(snapshot)
+        try? await Task.sleep(nanoseconds: 250_000_000)
+
+        var config = Config.default
+        config.modelOptimizer = ModelOptimizerConfig(enabled: true, cheapThresholdTokens: 200, showInPopover: true)
+        PollingService.shared.generateAndPersistModelHints(config: config, accounts: [account])
+
+        let hintsURL = AppConstants.sharedContainerURL.appendingPathComponent("model_hints.json")
+        guard let data = try? Data(contentsOf: hintsURL) else {
+            XCTFail("model_hints.json not written")
+            return
+        }
+        let dec = JSONDecoder()
+        dec.dateDecodingStrategy = .iso8601
+        let hints = try? dec.decode([ModelHint].self, from: data)
+        XCTAssertTrue(hints?.contains(where: { $0.accountId == account.id && $0.cheaperAlternativeExists }) == true)
     }
 }

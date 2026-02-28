@@ -136,6 +136,9 @@ class PollingService: ObservableObject {
             }
         }
 
+        // generate model hints for popover
+        generateAndPersistModelHints(config: config, accounts: activeAccounts)
+
         // iCloud sync if enabled
         if config.iCloudSync.enabled {
             await iCloudSyncManager.shared.syncNow()
@@ -389,6 +392,35 @@ class PollingService: ObservableObject {
         guard let raw = cursor?.lastStartTime else { return fallback }
         guard let ts = ISO8601DateFormatter().date(from: raw) else { return fallback }
         return Calendar.current.startOfDay(for: ts)
+    }
+
+    internal func generateAndPersistModelHints(config: Config, accounts: [Account]) {
+        let hints: [ModelHint]
+        if config.modelOptimizer.enabled {
+            hints = accounts.compactMap { account in
+                guard let latest = CacheManager.shared.latest(forAccount: account.id) else { return nil }
+                return ModelOptimizerAnalyzer.analyze(
+                    breakdown: latest.modelBreakdown,
+                    accountId: account.id,
+                    config: config.modelOptimizer
+                )
+            }
+        } else {
+            hints = []
+        }
+        let url = AppConstants.sharedContainerURL.appendingPathComponent("model_hints.json")
+        do {
+            try FileManager.default.createDirectory(
+                at: AppConstants.sharedContainerURL,
+                withIntermediateDirectories: true
+            )
+            let enc = JSONEncoder()
+            enc.dateEncodingStrategy = .iso8601
+            let data = try enc.encode(hints)
+            try data.write(to: url, options: .atomic)
+        } catch {
+            ErrorLogger.shared.log("Failed to persist model hints: \(error.localizedDescription)")
+        }
     }
 
     private func fetchAnthropicUsageWithRetry(
