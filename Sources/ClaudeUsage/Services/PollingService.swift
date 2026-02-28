@@ -10,6 +10,7 @@ class PollingService: ObservableObject {
     static let shared = PollingService()
     @Published var lastPollDate: Date?
     @Published var isPolling: Bool = false
+    @Published var lastFetchError: String?
 
     private var timer: Timer?
     private var currentTask: Task<Void, Never>?
@@ -133,14 +134,23 @@ class PollingService: ObservableObject {
                     CacheManager.shared.append(snap)
                 }
             } catch APIError.invalidKey {
-                ErrorLogger.shared.log("Invalid API key for account \(account.id.uuidString)")
+                let msg = "Invalid API key for account \(account.id.uuidString)"
+                ErrorLogger.shared.log(msg, file: #file, line: #line)
+                lastFetchError = msg
             } catch APIError.rateLimited(let retryAfter) {
-                ErrorLogger.shared.log("Rate limited for account \(account.id.uuidString); retry after \(retryAfter ?? 0)s")
+                let msg = "Rate limited for account \(account.id.uuidString); retry after \(retryAfter ?? 0)s"
+                ErrorLogger.shared.log(msg, file: #file, line: #line)
+                lastFetchError = msg
             } catch APIError.networkError(let underlying) {
-                ErrorLogger.shared.log("Network error for account \(account.id.uuidString): \(underlying.localizedDescription)")
+                let msg = "Network error for account \(account.id.uuidString): \(underlying.localizedDescription)"
+                ErrorLogger.shared.log(msg, file: #file, line: #line)
+                lastFetchError = msg
             } catch {
-                ErrorLogger.shared.log("Unexpected error for account \(account.id.uuidString): \(error.localizedDescription)")
+                let msg = "Unexpected error for account \(account.id.uuidString): \(error.localizedDescription)"
+                ErrorLogger.shared.log(msg, file: #file, line: #line)
+                lastFetchError = msg
             }
+            lastFetchError = nil // clear on successful fetch
         case .claudeAI:
             let token: String
             do {
@@ -194,7 +204,13 @@ class PollingService: ObservableObject {
                 totalCostUSD: agg.totalCostUSD,
                 modelBreakdown: []
             )
-            Task { try? await ws.send(event: .dailyDigest, snapshot: snap, config: config.webhook) }
+            Task {
+                do {
+                    try await ws.send(event: .dailyDigest, snapshot: snap, config: config.webhook)
+                } catch {
+                    ErrorLogger.shared.log("Daily digest webhook failed for account \(account.id.uuidString): \(error.localizedDescription)", file: #file, line: #line)
+                }
+            }
         }
     }
 }
