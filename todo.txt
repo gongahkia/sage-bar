@@ -1,5 +1,3 @@
-(B) Add test in ConfigManagerTests: TOML file missing all optional fields (webhooks, sparkline, forecast) loads successfully using default struct values +testing
-(B) Add test in ConfigManagerTests: atomic write is verified by simulating a write error mid-operation, original config file must remain intact and readable +testing
 (B) Add test in KeychainManagerTests: store then retrieve API key round-trip returns identical string +testing
 (B) Add test in KeychainManagerTests: calling delete on a key that was never stored completes without throwing or crashing +testing
 (B) Add test in AnalyticsEngineTests: weekly aggregate correctly sums all daily snapshot costs across 7 DailyAggregate entries +testing
