@@ -5,6 +5,11 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
 jobs:
   release:
     runs-on: macos-14
@@ -138,3 +143,14 @@ jobs:
             claude-usage-x86_64
             homebrew/Casks/claude-usage.rb
             homebrew/Formula/claude-usage-cli.rb
+
+  deploy-pages:
+    needs: release
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
