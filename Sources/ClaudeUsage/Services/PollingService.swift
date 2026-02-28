@@ -92,6 +92,9 @@ class PollingService: ObservableObject {
             await iCloudSyncManager.shared.syncNow()
         }
 
+        // threshold notifications
+        checkThresholds(config: config, accounts: activeAccounts)
+
         // daily digest check
         checkDailyDigest(config: config, accounts: activeAccounts)
 
@@ -215,6 +218,30 @@ class PollingService: ObservableObject {
                     ErrorLogger.shared.log("Daily digest webhook failed for account \(account.id.uuidString): \(error.localizedDescription)", file: #file, line: #line)
                 }
             }
+        }
+    }
+
+    private func checkThresholds(config: Config, accounts: [Account]) {
+        for account in accounts {
+            guard let limit = account.costLimitUSD else { continue }
+            let agg = CacheManager.shared.todayAggregate(forAccount: account.id)
+            let snapshot = UsageSnapshot(
+                accountId: account.id,
+                timestamp: Date(),
+                inputTokens: agg.totalInputTokens,
+                outputTokens: agg.totalOutputTokens,
+                cacheCreationTokens: 0,
+                cacheReadTokens: 0,
+                totalCostUSD: agg.totalCostUSD,
+                modelBreakdown: [],
+                costConfidence: account.type == .anthropicAPI ? .billingGrade : .estimated
+            )
+            NotificationManager.shared.checkThreshold(
+                snapshot: snapshot,
+                account: account,
+                limitUSD: limit,
+                webhookConfig: config.webhook
+            )
         }
     }
 
