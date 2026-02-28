@@ -1,32 +1,10 @@
 import XCTest
 @testable import ClaudeUsage
 
-// MARK: - Mock URLSession support
-
-final class MockURLProtocol: URLProtocol {
-    static var responseProvider: ((URLRequest) -> (HTTPURLResponse, Data))?
-
-    override class func canInit(with request: URLRequest) -> Bool { true }
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
-
-    override func startLoading() {
-        guard let provider = Self.responseProvider else {
-            client?.urlProtocol(self, didFailWithError: URLError(.badServerResponse))
-            return
-        }
-        let (response, data) = provider(request)
-        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(self, didLoad: data)
-        client?.urlProtocolDidFinishLoading(self)
-    }
-
-    override func stopLoading() {}
-}
-
 private func mockClient(statusCode: Int, body: Data, headers: [String: String] = [:]) -> AnthropicAPIClient {
     let config = URLSessionConfiguration.ephemeral
     config.protocolClasses = [MockURLProtocol.self]
-    MockURLProtocol.responseProvider = { req in
+    MockURLProtocol.requestHandler = { req in
         let resp = HTTPURLResponse(url: req.url!, statusCode: statusCode,
             httpVersion: nil, headerFields: headers)!
         return (resp, body)
