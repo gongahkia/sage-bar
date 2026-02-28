@@ -5,9 +5,15 @@ final class iCloudSyncManagerTests: XCTestCase {
     private let mgr = iCloudSyncManager.shared
     private let accountId = UUID()
 
-    private func snap(_ tokens: Int, at date: Date) -> UsageSnapshot {
+    private func snap(_ tokens: Int, at date: Date, modelId: String? = nil) -> UsageSnapshot {
+        let breakdown: [ModelUsage]
+        if let modelId {
+            breakdown = [ModelUsage(modelId: modelId, inputTokens: tokens, outputTokens: 0, costUSD: 0)]
+        } else {
+            breakdown = []
+        }
         UsageSnapshot(accountId: accountId, timestamp: date, inputTokens: tokens, outputTokens: 0,
-            cacheCreationTokens: 0, cacheReadTokens: 0, totalCostUSD: 0, modelBreakdown: [])
+            cacheCreationTokens: 0, cacheReadTokens: 0, totalCostUSD: 0, modelBreakdown: breakdown)
     }
 
     func testNearIdenticalTimestampsDoNotDedupWithDeterministicKey() {
@@ -40,6 +46,14 @@ final class iCloudSyncManagerTests: XCTestCase {
         let merged = mgr.merge(local: local, remote: remote)
         XCTAssertEqual(merged.count, 1)
         XCTAssertEqual(merged[0].inputTokens, 250)
+    }
+
+    func testNearIdenticalTimestampDifferentModelsRemainDistinct() {
+        let t = Date()
+        let local = [snap(100, at: t, modelId: "claude-3-sonnet")]
+        let remote = [snap(120, at: t.addingTimeInterval(0.2), modelId: "claude-3-haiku")]
+        let merged = mgr.merge(local: local, remote: remote)
+        XCTAssertEqual(merged.count, 2, "near-identical timestamps across different models must not collide")
     }
 
     func testNoOpOnEmptyRemote() {
