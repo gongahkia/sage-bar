@@ -6,11 +6,9 @@ class ConfigManager {
     private let configDir: URL
     private let configFile: URL
 
-    private init() {
-        let base = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".config/claude-usage")
-        self.configDir = base
-        self.configFile = base.appendingPathComponent("config.toml")
+    init(configDir: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".config/claude-usage")) {
+        self.configDir = configDir
+        self.configFile = configDir.appendingPathComponent("config.toml")
     }
 
     func load() -> Config {

@@ -2,23 +2,22 @@ import XCTest
 @testable import ClaudeUsage
 
 final class ConfigManagerTests: XCTestCase {
-    private let cm = ConfigManager.shared
-    private let configFile = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent(".config/claude-usage/config.toml")
-    private var backup: Data?
+    private var cm: ConfigManager!
+    private var configDir: URL!
+    private var configFile: URL!
 
     override func setUp() {
         super.setUp()
-        backup = try? Data(contentsOf: configFile)
-        try? FileManager.default.removeItem(at: configFile) // start clean
+        configDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("claude-usage-config-tests-\(UUID().uuidString)")
+        try? FileManager.default.createDirectory(at: configDir, withIntermediateDirectories: true)
+        configFile = configDir.appendingPathComponent("config.toml")
+        cm = ConfigManager(configDir: configDir)
     }
 
     override func tearDown() {
-        if let backup {
-            try? backup.write(to: configFile, options: .atomic)
-        } else {
-            try? FileManager.default.removeItem(at: configFile)
-        }
+        try? FileManager.default.removeItem(at: configDir)
+        cm = nil
         super.tearDown()
     }
 
