@@ -399,7 +399,7 @@ struct AddAutomationSheet: View {
             TextField("Threshold", text: $threshold)
             TextField("Shell command", text: $shellCommand)
                 .onChange(of: shellCommand) { cmd in
-                    commandError = AutomationEngine.validateShellCommand(cmd)
+                    commandError = AutomationEngine.validateCommand(cmd)
                 }
             if let err = commandError {
                 Text(err).foregroundColor(.red).font(.caption)
