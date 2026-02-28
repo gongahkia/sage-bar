@@ -1,10 +1,3 @@
-(B) Rewrite AutomationEngine.fire(rule:snapshot:) to switch on AutomationAction, calling Process with explicit executableURL and arguments array, no /bin/sh -c +security
-(B) For AutomationAction.osascript: set Process executableURL = URL(fileURLWithPath: "/usr/bin/osascript") and pass script via -e argument directly +security
-(B) For AutomationAction.openURL: call NSWorkspace.shared.open(URL(string: url)) directly without Process +security
-(B) For AutomationAction.say: set Process executableURL = URL(fileURLWithPath: "/usr/bin/say") and pass text as single argument +security
-(B) For AutomationAction.afplay: set Process executableURL = URL(fileURLWithPath: "/usr/bin/afplay"), validate path starts with FileManager.default.homeDirectoryForCurrentUser before executing +security
-(B) For AutomationAction.httpGet: set Process executableURL = URL(fileURLWithPath: "/usr/bin/curl"), pass URL as sole argument with no additional flags allowed +security
-(B) For AutomationAction.notification: call UNUserNotificationCenter.current().add(UNNotificationRequest) directly without Process +security
 (B) Remove the regex injection denylist array and all associated string-scanning code from AutomationEngine after enum rewrite is complete +security
 (B) Add test in AutomationEngineFireTests: each AutomationAction case results in Process being launched with the correct executableURL path +testing
 (B) Add test in AutomationEngineFireTests: AutomationAction.parse() returns nil for unknown command string (e.g., "rm -rf /") +testing
