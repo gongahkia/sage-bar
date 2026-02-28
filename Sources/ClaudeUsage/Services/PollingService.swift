@@ -114,7 +114,8 @@ class PollingService: ObservableObject {
                 cacheCreationTokens: snap.cacheCreationTokens,
                 cacheReadTokens: snap.cacheReadTokens,
                 totalCostUSD: snap.totalCostUSD,
-                modelBreakdown: snap.modelBreakdown
+                modelBreakdown: snap.modelBreakdown,
+                costConfidence: .estimated
             )
             CacheManager.shared.append(snap)
         case .anthropicAPI:
@@ -167,7 +168,8 @@ class PollingService: ObservableObject {
                     cacheCreationTokens: 0,
                     cacheReadTokens: 0,
                     totalCostUSD: 0,
-                    modelBreakdown: [ModelUsage(modelId: "claude-ai-web", inputTokens: usage.messagesRemaining, outputTokens: 0, costUSD: 0)]
+                    modelBreakdown: [ModelUsage(modelId: "claude-ai-web", inputTokens: usage.messagesRemaining, outputTokens: 0, costUSD: 0)],
+                    costConfidence: .estimated
                 )
                 CacheManager.shared.append(snap)
             } else {
@@ -175,6 +177,7 @@ class PollingService: ObservableObject {
                 if var cached = CacheManager.shared.latest(forAccount: account.id) {
                     cached.isStale = true
                     cached.timestamp = Date()
+                    cached.costConfidence = .estimated
                     CacheManager.shared.append(cached)
                 }
                 NotificationCenter.default.post(name: .claudeAISessionExpired, object: account.id)
@@ -200,7 +203,8 @@ class PollingService: ObservableObject {
                 cacheCreationTokens: 0,
                 cacheReadTokens: 0,
                 totalCostUSD: agg.totalCostUSD,
-                modelBreakdown: []
+                modelBreakdown: [],
+                costConfidence: account.type == .anthropicAPI ? .billingGrade : .estimated
             )
             Task {
                 do {

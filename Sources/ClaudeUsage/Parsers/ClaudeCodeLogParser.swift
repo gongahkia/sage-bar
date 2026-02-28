@@ -119,7 +119,8 @@ class ClaudeCodeLogParser {
             cacheCreationTokens: cacheCreate,
             cacheReadTokens: cacheRead,
             totalCostUSD: 0, // local logs lack pricing
-            modelBreakdown: [ModelUsage(modelId: "claude-code-local", inputTokens: input, outputTokens: output, cacheTokens: cacheCreate + cacheRead, costUSD: 0)] // task 91
+            modelBreakdown: [ModelUsage(modelId: "claude-code-local", inputTokens: input, outputTokens: output, cacheTokens: cacheCreate + cacheRead, costUSD: 0)], // task 91
+            costConfidence: .estimated
         )
     }
 
@@ -152,7 +153,8 @@ class ClaudeCodeLogParser {
                 cacheCreationTokens: vals.2,
                 cacheReadTokens: vals.3,
                 totalCostUSD: 0,
-                modelBreakdown: []
+                modelBreakdown: [],
+                costConfidence: .estimated
             )
         }.sorted { $0.timestamp < $1.timestamp }
     }

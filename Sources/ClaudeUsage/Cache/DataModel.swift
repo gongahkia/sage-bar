@@ -1,5 +1,10 @@
 import Foundation
 
+enum CostConfidence: String, Codable {
+    case billingGrade
+    case estimated
+}
+
 struct ModelUsage: Codable {
     var modelId: String
     var inputTokens: Int
@@ -18,6 +23,7 @@ struct UsageSnapshot: Codable {
     var totalCostUSD: Double
     var modelBreakdown: [ModelUsage]
     var isStale: Bool = false
+    var costConfidence: CostConfidence = .billingGrade
 }
 
 struct DailyAggregate {
