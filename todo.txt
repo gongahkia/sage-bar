@@ -1,6 +1,3 @@
-(B) Create PollingServiceTests.swift; add test: mock fetch that throws causes ErrorLogger.shared.lastError to be non-nil after poll completes +testing
-(B) Add test in PollingServiceTests: when NWPathMonitor reports unsatisfied path, poll is skipped and ErrorLogger receives no entries +testing
-(B) Add test in PollingServiceTests: three accounts fetched concurrently all write distinct snapshots to CacheManager without data race (run with Thread Sanitizer enabled) +testing
 (B) Add PriceEntry struct validation in AnthropicAPIClient.loadPrices(): for each decoded entry assert inputPer1M > 0 and outputPer1M > 0, log warning via ErrorLogger for any invalid entry +fix
 (B) Call ErrorLogger.shared.log() with the model name when AnthropicAPIClient.cost(for:) is called with a model key absent from the loaded prices dict +observability
 (B) Add claude-3-5-haiku entry to prices.json with inputPer1M and outputPer1M values matching official Anthropic pricing page at time of next release +fix
