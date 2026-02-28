@@ -1,4 +1,5 @@
 import Foundation
+import ClaudeUsageCore
 
 // MARK: – Shared container path (mirrors AppConstants)
 let appGroup = "group.dev.claudeusage"

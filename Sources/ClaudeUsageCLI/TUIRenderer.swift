@@ -1,4 +1,5 @@
 import Foundation
+import ClaudeUsageCore
 
 // MARK: – Logo
 
@@ -96,35 +97,6 @@ struct TUIRenderer {
         out += row("EOM Projected", v: String(format: "$%.2f", f.projectedEOMCostUSD), lw: config.labelWidth) + "\n"
         return out
     }
-}
-
-// MARK: – UsageSnapshot/ForecastSnapshot stubs (shared from CLI container)
-
-struct UsageSnapshot: Codable {
-    var accountId: UUID
-    var timestamp: Date
-    var inputTokens: Int
-    var outputTokens: Int
-    var cacheCreationTokens: Int
-    var cacheReadTokens: Int
-    var totalCostUSD: Double
-    var modelBreakdown: [ModelUsage]
-}
-
-struct ModelUsage: Codable {
-    var modelId: String
-    var inputTokens: Int
-    var outputTokens: Int
-    var costUSD: Double
-}
-
-struct ForecastSnapshot: Codable {
-    var accountId: UUID
-    var generatedAt: Date
-    var projectedEODCostUSD: Double
-    var projectedEOWCostUSD: Double
-    var projectedEOMCostUSD: Double
-    var burnRatePerHour: Double
 }
 
 struct TUIConfig: Codable {
