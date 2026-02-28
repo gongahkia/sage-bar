@@ -42,6 +42,12 @@ jobs:
             .build/arm64-apple-macosx/release/claude-usage \
             -output claude-usage-universal
 
+      - name: Export architecture-specific CLI binaries
+        run: |
+          cp .build/arm64-apple-macosx/release/claude-usage claude-usage-arm64
+          cp .build/x86_64-apple-macosx/release/claude-usage claude-usage-x86_64
+          chmod +x claude-usage-arm64 claude-usage-x86_64
+
       - name: Bundle .app
         run: |
           APP=ClaudeUsage.app
@@ -117,3 +123,5 @@ jobs:
           files: |
             ClaudeUsage-${{ github.ref_name }}.dmg
             claude-usage-universal
+            claude-usage-arm64
+            claude-usage-x86_64
