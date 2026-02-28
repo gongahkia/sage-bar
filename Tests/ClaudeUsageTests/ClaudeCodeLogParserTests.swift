@@ -179,4 +179,30 @@ final class ClaudeCodeLogParserTests: XCTestCase {
         let snaps = localParser.aggregatePeriod(days: 1)
         XCTAssertTrue(snaps.isEmpty, "old event timestamp must be excluded even if file mtime is recent")
     }
+
+    func testParseFileIncrementalUsesPerFileCheckpoint() throws {
+        let projectsDir = tmpDir.appendingPathComponent("projects")
+        try FileManager.default.createDirectory(at: projectsDir, withIntermediateDirectories: true)
+        let file = projectsDir.appendingPathComponent("session.jsonl")
+        try """
+        {"type":"message","timestamp":"2026-02-28T00:00:00Z","usage":{"input_tokens":1,"output_tokens":1}}
+        """.write(to: file, atomically: true, encoding: .utf8)
+        let localParser = ClaudeCodeLogParser(claudeDir: tmpDir)
+
+        let first = localParser.parseFile(file, incremental: true)
+        XCTAssertEqual(first.count, 1)
+        let second = localParser.parseFile(file, incremental: true)
+        XCTAssertEqual(second.count, 0)
+
+        let handle = try FileHandle(forWritingTo: file)
+        handle.seekToEndOfFile()
+        handle.write(Data("""
+        {"type":"message","timestamp":"2026-02-28T00:01:00Z","usage":{"input_tokens":2,"output_tokens":2}}
+        """.utf8))
+        try handle.close()
+
+        let third = localParser.parseFile(file, incremental: true)
+        XCTAssertEqual(third.count, 1)
+        XCTAssertEqual(third.first?.usage?.input_tokens, 2)
+    }
 }

@@ -30,6 +30,14 @@ struct ClaudeUsageField: Codable {
 // MARK: – Parser
 
 class ClaudeCodeLogParser {
+    private struct DailyAccumulator {
+        var day: DateComponents
+        var input: Int
+        var output: Int
+        var cacheCreate: Int
+        var cacheRead: Int
+    }
+
     static let shared = ClaudeCodeLogParser()
     private let claudeDir: URL
     let fallbackInterval: TimeInterval // internal for test override
@@ -38,6 +46,8 @@ class ClaudeCodeLogParser {
     private var debounceWork: DispatchWorkItem?
     private var fallbackTimer: Timer?
     private var lastFSEventDate: Date?
+    private var lineCheckpoints: [URL: Int] = [:]
+    private var dailyAccumulator: DailyAccumulator?
     private let isoTimestamp: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -79,7 +89,7 @@ class ClaudeCodeLogParser {
         return enumerator.compactMap { $0 as? URL }.filter { $0.pathExtension == "jsonl" }
     }
 
-    func parseFile(_ url: URL) -> [ClaudeCodeEntry] {
+    func parseFile(_ url: URL, incremental: Bool = false) -> [ClaudeCodeEntry] {
         if let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
            let size = attrs[.size] as? Int, size > 50 * 1024 * 1024 {
             ErrorLogger.shared.log("Skipping oversized log file \(url.lastPathComponent) (\(size / 1024 / 1024)MB)", level: "WARN")
@@ -94,13 +104,23 @@ class ClaudeCodeLogParser {
         }
         let dec = JSONDecoder()
         var results: [ClaudeCodeEntry] = []
-        for (i, line) in text.split(separator: "\n", omittingEmptySubsequences: true).enumerated() {
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: true)
+        var startIndex = 0
+        if incremental {
+            let prev = lineCheckpoints[url] ?? 0
+            startIndex = prev <= lines.count ? prev : 0
+        }
+        for (offset, line) in lines.dropFirst(startIndex).enumerated() {
             do {
                 results.append(try dec.decode(ClaudeCodeEntry.self, from: Data(line.utf8)))
             } catch {
                 let preview = String(line.prefix(200))
-                ErrorLogger.shared.log("Malformed JSONL line \(i+1) in \(url.lastPathComponent): \(preview)", level: "WARN")
+                let lineNumber = startIndex + offset + 1
+                ErrorLogger.shared.log("Malformed JSONL line \(lineNumber) in \(url.lastPathComponent): \(preview)", level: "WARN")
             }
+        }
+        if incremental {
+            lineCheckpoints[url] = lines.count
         }
         return results
     }
@@ -108,7 +128,9 @@ class ClaudeCodeLogParser {
     func aggregateToday() -> UsageSnapshot {
         let cal = Calendar.current
         let todayComps = cal.dateComponents([.year,.month,.day], from: Date())
-        var input = 0, output = 0, cacheCreate = 0, cacheRead = 0
+        if dailyAccumulator?.day != todayComps {
+            dailyAccumulator = DailyAccumulator(day: todayComps, input: 0, output: 0, cacheCreate: 0, cacheRead: 0)
+        }
         for url in discoverSessionFiles() {
             let attrs = try? FileManager.default.attributesOfItem(atPath: url.path)
             let mod = attrs?[.modificationDate] as? Date
@@ -116,25 +138,26 @@ class ClaudeCodeLogParser {
             guard let mod else { continue }
             if let prev = fileChecksums[url], prev.0 == mod, prev.1 == size { continue }
             fileChecksums[url] = (mod, size)
-            for entry in parseFile(url) {
+            for entry in parseFile(url, incremental: true) {
                 guard let entryDate = entryTimestamp(entry, fallback: mod),
                       cal.dateComponents([.year,.month,.day], from: entryDate) == todayComps else { continue }
                 let u = entry.usage ?? entry.message?.usage
-                input += u?.input_tokens ?? 0
-                output += u?.output_tokens ?? 0
-                cacheCreate += u?.cache_creation_input_tokens ?? 0
-                cacheRead += u?.cache_read_input_tokens ?? 0
+                dailyAccumulator?.input += u?.input_tokens ?? 0
+                dailyAccumulator?.output += u?.output_tokens ?? 0
+                dailyAccumulator?.cacheCreate += u?.cache_creation_input_tokens ?? 0
+                dailyAccumulator?.cacheRead += u?.cache_read_input_tokens ?? 0
             }
         }
+        let acc = dailyAccumulator ?? DailyAccumulator(day: todayComps, input: 0, output: 0, cacheCreate: 0, cacheRead: 0)
         return UsageSnapshot(
             accountId: UUID(), // overridden by caller with real account id
             timestamp: Date(),
-            inputTokens: input,
-            outputTokens: output,
-            cacheCreationTokens: cacheCreate,
-            cacheReadTokens: cacheRead,
+            inputTokens: acc.input,
+            outputTokens: acc.output,
+            cacheCreationTokens: acc.cacheCreate,
+            cacheReadTokens: acc.cacheRead,
             totalCostUSD: 0, // local logs lack pricing
-            modelBreakdown: [ModelUsage(modelId: "claude-code-local", inputTokens: input, outputTokens: output, cacheTokens: cacheCreate + cacheRead, costUSD: 0)], // task 91
+            modelBreakdown: [ModelUsage(modelId: "claude-code-local", inputTokens: acc.input, outputTokens: acc.output, cacheTokens: acc.cacheCreate + acc.cacheRead, costUSD: 0)], // task 91
             costConfidence: .estimated
         )
     }
