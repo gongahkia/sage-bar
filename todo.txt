@@ -1,4 +1,3 @@
-(B) Implement session cookie extraction in ClaudeAIClient: read sessionKey from user-provided string in config (claude_ai.session_cookie field in TOML) +feature
 (B) Add claude_ai.session_cookie optional String field to SubConfigs.swift ClaudeAIConfig and wire it through ConfigManager TOML load/save +feature
 (B) Implement claudeAI case in PollingService.fetchAndStore(): call ClaudeAIClient.fetchUsage() and store resulting UsageSnapshot in CacheManager +feature
 (B) Add fallback in PollingService claudeAI case: on network error or HTTP non-200, retrieve last cached snapshot for that account and set isStale=true before storing +feature
