@@ -92,6 +92,17 @@ struct GlobalHotkeyConfig: Codable {
     }
 }
 
+struct HotkeyConfig: Codable {
+    var primaryKeyCode: Int         // virtual key code (e.g., 32 for U)
+    var primaryModifiers: [String]  // ["command","shift"]
+    var chordEnabled: Bool
+    var chordSecondaryKeyCode: Int  // secondary key code when chordEnabled
+    static var `default`: HotkeyConfig {
+        HotkeyConfig(primaryKeyCode: 32, primaryModifiers: ["command","shift"],
+                     chordEnabled: false, chordSecondaryKeyCode: 0)
+    }
+}
+
 struct ClaudeAIConfig: Codable {
     var sessionCookie: String? // sessionKey value from claude.ai DevTools
     static var `default`: ClaudeAIConfig { ClaudeAIConfig(sessionCookie: nil) }
