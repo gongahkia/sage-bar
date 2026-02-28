@@ -1,22 +1,62 @@
 import AppKit
 
+// MARK: – HotkeyBinding
+
+struct HotkeyBinding {
+    let id: String
+    let keyCode: CGKeyCode
+    let modifiers: CGEventFlags
+    let handler: () -> Void
+}
+
+// MARK: – HotkeyManager
+
 class HotkeyManager {
     static let shared = HotkeyManager()
+    var bindings: [HotkeyBinding] = []
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
-    private var currentConfig: GlobalHotkeyConfig?
 
     private init() {}
 
+    func register(binding: HotkeyBinding) {
+        bindings.removeAll { $0.id == binding.id }
+        bindings.append(binding)
+        ensureTapRunning()
+    }
+
+    func unregister(id: String) {
+        bindings.removeAll { $0.id == id }
+        if bindings.isEmpty { stopTap() }
+    }
+
+    func unregisterAll() {
+        bindings.removeAll()
+        stopTap()
+    }
+
+    // convenience: register from GlobalHotkeyConfig
     func register(config: GlobalHotkeyConfig) {
-        guard config.enabled else { unregister(); return }
+        guard config.enabled else { unregisterAll(); return }
         guard AXIsProcessTrusted() else {
             ErrorLogger.shared.log("Accessibility permission not granted — hotkey disabled", level: "WARN")
             NotificationCenter.default.post(name: .hotkeyAccessibilityRequired, object: nil)
             return
         }
-        unregister()
-        currentConfig = config
+        let keyCode = CGKeyCode(keyCodeFor(key: config.key))
+        let mods = modifierFlags(from: config.modifiers)
+        let binding = HotkeyBinding(id: "primary", keyCode: keyCode, modifiers: mods) {
+            MenuBarManager.shared.togglePopover()
+        }
+        unregisterAll()
+        register(binding: binding)
+    }
+
+    // MARK: – private
+
+    private func ensureTapRunning() {
+        guard eventTap == nil else { return }
+        guard AXIsProcessTrusted() else { return }
         let mask = CGEventMask(1 << CGEventType.keyDown.rawValue)
         let selfPtr = Unmanaged.passUnretained(self).toOpaque()
         guard let tap = CGEvent.tapCreate(
@@ -26,10 +66,7 @@ class HotkeyManager {
             eventsOfInterest: mask,
             callback: { _, type, event, info -> Unmanaged<CGEvent>? in
                 guard let p = info, type == .keyDown else { return Unmanaged.passRetained(event) }
-                let mgr = Unmanaged<HotkeyManager>.fromOpaque(p).takeUnretainedValue()
-                if mgr.matches(event: event) {
-                    DispatchQueue.main.async { MenuBarManager.shared.togglePopover() }
-                }
+                Unmanaged<HotkeyManager>.fromOpaque(p).takeUnretainedValue().handle(event: event)
                 return Unmanaged.passRetained(event)
             },
             userInfo: selfPtr
@@ -40,29 +77,32 @@ class HotkeyManager {
         let src = CFMachPortCreateRunLoopSource(nil, tap, 0)
         CFRunLoopAddSource(CFRunLoopGetMain(), src, .commonModes)
         CGEvent.tapEnable(tap: tap, enable: true)
-        eventTap = tap
-        runLoopSource = src
+        eventTap = tap; runLoopSource = src
     }
 
-    func unregister() {
+    private func stopTap() {
         if let tap = eventTap { CGEvent.tapEnable(tap: tap, enable: false) }
         if let src = runLoopSource { CFRunLoopRemoveSource(CFRunLoopGetMain(), src, .commonModes) }
-        eventTap = nil; runLoopSource = nil; currentConfig = nil
+        eventTap = nil; runLoopSource = nil
     }
 
-    private func matches(event: CGEvent) -> Bool {
-        guard let cfg = currentConfig else { return false }
-        let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
-        guard keyCode == Int64(keyCodeFor(key: cfg.key)) else { return false }
+    private func handle(event: CGEvent) {
+        let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
         let flags = event.flags
-        let wantCmd = cfg.modifiers.contains("command")
-        let wantOpt = cfg.modifiers.contains("option")
-        let wantShift = cfg.modifiers.contains("shift")
-        let wantCtrl = cfg.modifiers.contains("control")
-        return flags.contains(.maskCommand) == wantCmd
-            && flags.contains(.maskAlternate) == wantOpt
-            && flags.contains(.maskShift) == wantShift
-            && flags.contains(.maskControl) == wantCtrl
+        for binding in bindings {
+            if binding.keyCode == keyCode && flags.contains(binding.modifiers) {
+                DispatchQueue.main.async { binding.handler() }
+            }
+        }
+    }
+
+    private func modifierFlags(from modifiers: [String]) -> CGEventFlags {
+        var flags = CGEventFlags()
+        if modifiers.contains("command") { flags.insert(.maskCommand) }
+        if modifiers.contains("option") { flags.insert(.maskAlternate) }
+        if modifiers.contains("shift") { flags.insert(.maskShift) }
+        if modifiers.contains("control") { flags.insert(.maskControl) }
+        return flags
     }
 
     private func keyCodeFor(key: String) -> Int {

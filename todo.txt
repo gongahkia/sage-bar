@@ -1,5 +1,3 @@
-(B) Define HotkeyBinding struct in HotkeyManager.swift: id: String, keyCode: CGKeyCode, modifiers: CGEventFlags, handler: () -> Void +refactor
-(B) Refactor HotkeyManager to maintain var bindings: [HotkeyBinding] and match incoming CGEvent against each binding's keyCode+modifiers before firing handler +feature
 (B) Implement chord sequence support in HotkeyManager: store lastKeyEvent: (keyCode, timestamp); if second key arrives within 500ms and matches a registered chord binding, fire that binding's handler +feature
 (B) Add HotkeyConfig struct to SubConfigs.swift: primaryKeyCode: Int, primaryModifiers: [String], chordEnabled: Bool, chordSecondaryKeyCode: Int +feature
 (B) Wire HotkeyConfig through ConfigManager TOML load/save including default values (e.g., Cmd+Shift+U, chord disabled) +feature
