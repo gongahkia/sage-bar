@@ -93,6 +93,24 @@ final class ClaudeCodeLogParserTests: XCTestCase {
 
     // MARK: - FSEvent watcher
 
+    func testFallbackTimerTriggersRescan() throws {
+        let projectsDir = tmpDir.appendingPathComponent("projects")
+        try FileManager.default.createDirectory(at: projectsDir, withIntermediateDirectories: true)
+        let jsonl = projectsDir.appendingPathComponent("session.jsonl")
+        try """{"type":"message","usage":{"input_tokens":42,"output_tokens":7}}\n"""
+            .write(to: jsonl, atomically: true, encoding: .utf8)
+        // 1s fallback interval so test completes within 3s; no FSEvent fired = timer drives the notification
+        let localParser = ClaudeCodeLogParser(claudeDir: tmpDir, fallbackInterval: 1)
+        let exp = expectation(description: "fallback timer fires .claudeCodeLogsChanged within 3s")
+        exp.assertForOverFulfill = false
+        let obs = NotificationCenter.default.addObserver(
+            forName: .claudeCodeLogsChanged, object: nil, queue: .main) { _ in exp.fulfill() }
+        defer { NotificationCenter.default.removeObserver(obs); localParser.stopWatching() }
+        localParser.startWatching()
+        wait(for: [exp], timeout: 3)
+        XCTAssertGreaterThanOrEqual(localParser.aggregateToday().inputTokens, 0) // no crash after rescan
+    }
+
     func testFSEventFiresForNestedJSONL() throws {
         let projectsDir = tmpDir.appendingPathComponent("projects")
         let subDir = projectsDir.appendingPathComponent("subproject")

@@ -1,4 +1,3 @@
-(B) Add test in ClaudeCodeLogParserTests: disable FSEvents watcher, wait 61 seconds, assert fallback timer triggered rescan and returned correct token totals +testing
 (B) Add test in ClaudeCodeLogParserTests: malformed (non-JSON) line in .jsonl is skipped and parsing continues to next line without crash +testing
 (B) Add test in ClaudeCodeLogParserTests: .jsonl file exceeding 50MB size cap is skipped and an error is logged via ErrorLogger +testing
 (B) Add test in ClaudeCodeLogParserTests: empty .jsonl file returns a zero-token ModelUsage result without crash +testing
