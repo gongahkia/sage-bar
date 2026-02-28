@@ -270,4 +270,41 @@ final class ClaudeCodeLogParserTests: XCTestCase {
         let parserB = ClaudeCodeLogParser(claudeDir: tmpDir, checkpointFile: checkpoint, accumulatorFile: accFile)
         XCTAssertEqual(parserB.aggregateToday().inputTokens, 4, "persisted accumulator must keep deterministic totals across restarts")
     }
+
+    func testAggregateTodayOnlyProcessesChangedFilesIncrementally() throws {
+        let projectsDir = tmpDir.appendingPathComponent("projects")
+        try FileManager.default.createDirectory(at: projectsDir, withIntermediateDirectories: true)
+        let fileA = projectsDir.appendingPathComponent("session-a.jsonl")
+        let fileB = projectsDir.appendingPathComponent("session-b.jsonl")
+        let checkpoint = tmpDir.appendingPathComponent("checkpoints.json")
+        let accFile = tmpDir.appendingPathComponent("accumulator.json")
+        let nowISO = ISO8601DateFormatter().string(from: Date())
+
+        try """
+        {"type":"message","timestamp":"\(nowISO)","usage":{"input_tokens":2,"output_tokens":1}}
+        """.write(to: fileA, atomically: true, encoding: .utf8)
+        try """
+        {"type":"message","timestamp":"\(nowISO)","usage":{"input_tokens":3,"output_tokens":2}}
+        """.write(to: fileB, atomically: true, encoding: .utf8)
+
+        let parser = ClaudeCodeLogParser(claudeDir: tmpDir, checkpointFile: checkpoint, accumulatorFile: accFile)
+        let first = parser.aggregateToday()
+        XCTAssertEqual(first.inputTokens, 5)
+        XCTAssertEqual(first.outputTokens, 3)
+
+        let second = parser.aggregateToday()
+        XCTAssertEqual(second.inputTokens, 5, "unchanged files must not be re-read")
+        XCTAssertEqual(second.outputTokens, 3)
+
+        let handle = try FileHandle(forWritingTo: fileA)
+        handle.seekToEndOfFile()
+        handle.write(Data("""
+        {"type":"message","timestamp":"\(nowISO)","usage":{"input_tokens":7,"output_tokens":4}}
+        """.utf8))
+        try handle.close()
+
+        let third = parser.aggregateToday()
+        XCTAssertEqual(third.inputTokens, 12, "only newly appended lines from changed file should be added")
+        XCTAssertEqual(third.outputTokens, 7)
+    }
 }
