@@ -7,6 +7,7 @@ struct MenuBarPopoverView: View {
     @State private var showHistory = false
     @State private var needsReAuth: Bool = false
     @State private var showModelBreakdown = false
+    @State private var copyFeedback = false
     @ObservedObject private var polling = PollingService.shared
     @ObservedObject private var errorLogger = ErrorLogger.shared
 
@@ -232,6 +233,12 @@ struct MenuBarPopoverView: View {
             Button("Refresh Now") { PollingService.shared.forceRefresh() }
                 .buttonStyle(.plain).font(.caption)
                 .keyboardShortcut("r", modifiers: .command) // task 79: Cmd+R
+            Button(copyFeedback ? "Copied" : "Copy Totals") {
+                copyActiveAccountDailyTotals()
+                copyFeedback = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { copyFeedback = false }
+            }
+            .buttonStyle(.plain).font(.caption)
             Spacer()
             if config.analytics.enabled {
                 Button("History") { showHistory = true }.buttonStyle(.plain).font(.caption)
@@ -288,5 +295,18 @@ struct MenuBarPopoverView: View {
             Spacer()
             Text(value).monospacedDigit()
         }.font(.system(size: 12))
+    }
+
+    private func copyActiveAccountDailyTotals() {
+        guard let account = currentAccount else { return }
+        let agg = CacheManager.shared.todayAggregate(forAccount: account.id)
+        let text = """
+        Account: \(account.name)
+        Input Tokens: \(agg.totalInputTokens)
+        Output Tokens: \(agg.totalOutputTokens)
+        Cost Today (USD): \(String(format: "%.4f", agg.totalCostUSD))
+        """
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
     }
 }
