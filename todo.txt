@@ -1,5 +1,3 @@
-(B) Add test in KeychainManagerTests: store then retrieve API key round-trip returns identical string +testing
-(B) Add test in KeychainManagerTests: calling delete on a key that was never stored completes without throwing or crashing +testing
 (B) Add test in AnalyticsEngineTests: weekly aggregate correctly sums all daily snapshot costs across 7 DailyAggregate entries +testing
 (B) Add test in ModelOptimizerAnalyzerTests: when cost delta between current model and a cheaper available model exceeds the configured threshold, a ModelHint is returned +testing
 (B) Add --parallel flag to swift test invocation in ci.yml to parallelize test execution across available cores +infra
