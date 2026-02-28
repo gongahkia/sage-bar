@@ -28,6 +28,8 @@ jobs:
           [ -z "$OUTPUT" ] || { echo "$OUTPUT"; exit 1; }
       - name: Validate prices.json
         run: python3 -c "import json,sys; json.load(open('Sources/ClaudeUsage/Resources/prices.json'))"
+      - name: Build app target (release)
+        run: swift build --target ClaudeUsage -c release
       - name: Build
         run: swift build
       - name: Test
