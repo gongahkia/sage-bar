@@ -70,4 +70,17 @@ final class AnalyticsEngineTests: XCTestCase {
         let grid = AnalyticsEngine.heatmap(snapshots: [], account: accountId)
         XCTAssertTrue(grid.flatMap { $0 }.allSatisfy { $0 == 0.0 })
     }
+
+    // MARK: - Task 69: weekly aggregate sums 7 DailyAggregate entries
+
+    func testWeeklyAggregateCorrectlySumsSevenDays() {
+        let cal = Calendar.current; let now = Date()
+        var snaps: [UsageSnapshot] = []
+        for i in 0..<7 {
+            let d = cal.date(byAdding: .day, value: -i, to: now)!
+            snaps.append(snap(Double(i + 1), at: d)) // costs 1..7 → total=28
+        }
+        let agg = DailyAggregate(date: cal.dateComponents([.year,.month,.day], from: now), snapshots: snaps)
+        XCTAssertEqual(agg.totalCostUSD, 28.0, accuracy: 0.001, "weekly aggregate must sum all 7 daily costs")
+    }
 }
