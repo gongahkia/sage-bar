@@ -14,6 +14,12 @@ let forecastFile = sharedContainer.appendingPathComponent("forecast_cache.json")
 let configDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".config/claude-usage")
 let configFile = configDir.appendingPathComponent("config.toml")
 
+private func pad(_ value: String, width: Int) -> String {
+    let clipped = value.count > width ? String(value.prefix(width)) : value
+    if clipped.count >= width { return clipped }
+    return clipped + String(repeating: " ", count: width - clipped.count)
+}
+
 // MARK: – Version
 
 let appVersion = "1.0.0"
@@ -173,10 +179,10 @@ if showModels {
         if let d = try? JSONSerialization.data(withJSONObject: obj, options: .prettyPrinted),
            let s = String(data: d, encoding: .utf8) { print(s) }
     } else {
-        print(String(format: "%-40s | %-12s | %-12s | %s", "Model", "Input Tokens", "Output Tokens", "Cost USD"))
+        print("\(pad("Model", width: 40)) | \(pad("Input Tokens", width: 12)) | \(pad("Output Tokens", width: 12)) | Cost USD")
         print(String(repeating: "─", count: 80))
         for (id, inp, out2, cost) in rows {
-            print(String(format: "%-40s | %-12d | %-12d | $%.4f", id, inp, out2, cost))
+            print("\(pad(id, width: 40)) | \(pad("\(inp)", width: 12)) | \(pad("\(out2)", width: 12)) | \(String(format: "$%.4f", cost))")
         }
     }
     exit(0)
@@ -184,7 +190,7 @@ if showModels {
 
 if showHistory {
     print(String(repeating: "─", count: 60))
-    print(String(format: "%-12s | %-8s | %-10s | %-10s", "Date", "Cost", "Input", "Output"))
+    print("\(pad("Date", width: 12)) | \(pad("Cost", width: 8)) | \(pad("Input", width: 10)) | \(pad("Output", width: 10))")
     print(String(repeating: "─", count: 60))
     let cal = Calendar.current
     let grouped = Dictionary(grouping: snapshots) {
@@ -195,7 +201,8 @@ if showHistory {
         let inp = snaps.reduce(0) { $0 + $1.inputTokens }
         let out2 = snaps.reduce(0) { $0 + $1.outputTokens }
         let fmt = DateFormatter(); fmt.dateFormat = "yyyy-MM-dd"
-        print(String(format: "%-12s | $%-7.3f | %-10d | %-10d", fmt.string(from: day), cost, inp, out2))
+        let costText = "$" + pad(String(format: "%.3f", cost), width: 7)
+        print("\(pad(fmt.string(from: day), width: 12)) | \(costText) | \(pad("\(inp)", width: 10)) | \(pad("\(out2)", width: 10))")
     }
     exit(0)
 }
