@@ -205,4 +205,20 @@ final class ClaudeCodeLogParserTests: XCTestCase {
         XCTAssertEqual(third.count, 1)
         XCTAssertEqual(third.first?.usage?.input_tokens, 2)
     }
+
+    func testCheckpointPersistenceAcrossParserRestart() throws {
+        let projectsDir = tmpDir.appendingPathComponent("projects")
+        try FileManager.default.createDirectory(at: projectsDir, withIntermediateDirectories: true)
+        let file = projectsDir.appendingPathComponent("session.jsonl")
+        try """
+        {"type":"message","timestamp":"2026-02-28T00:00:00Z","usage":{"input_tokens":3,"output_tokens":1}}
+        """.write(to: file, atomically: true, encoding: .utf8)
+        let checkpoint = tmpDir.appendingPathComponent("checkpoints.json")
+
+        let parserA = ClaudeCodeLogParser(claudeDir: tmpDir, checkpointFile: checkpoint)
+        XCTAssertEqual(parserA.parseFile(file, incremental: true).count, 1)
+
+        let parserB = ClaudeCodeLogParser(claudeDir: tmpDir, checkpointFile: checkpoint)
+        XCTAssertEqual(parserB.parseFile(file, incremental: true).count, 0)
+    }
 }

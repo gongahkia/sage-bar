@@ -46,7 +46,8 @@ class ClaudeCodeLogParser {
     private var debounceWork: DispatchWorkItem?
     private var fallbackTimer: Timer?
     private var lastFSEventDate: Date?
-    private var lineCheckpoints: [URL: Int] = [:]
+    private let checkpointFile: URL
+    private var lineCheckpoints: [URL: Int]
     private var dailyAccumulator: DailyAccumulator?
     private let isoTimestamp: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
@@ -63,11 +64,15 @@ class ClaudeCodeLogParser {
         self.claudeDir = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".claude")
         self.fallbackInterval = 60
+        self.checkpointFile = AppConstants.sharedContainerURL.appendingPathComponent("claude_code_checkpoints.json")
+        self.lineCheckpoints = Self.loadLineCheckpoints(from: self.checkpointFile)
     }
 
-    internal init(claudeDir: URL, fallbackInterval: TimeInterval = 60) {
+    internal init(claudeDir: URL, fallbackInterval: TimeInterval = 60, checkpointFile: URL? = nil) {
         self.claudeDir = claudeDir
         self.fallbackInterval = fallbackInterval
+        self.checkpointFile = checkpointFile ?? claudeDir.appendingPathComponent("claude_code_checkpoints.json")
+        self.lineCheckpoints = Self.loadLineCheckpoints(from: self.checkpointFile)
     }
 
     private var missingDirLogged = false
@@ -121,6 +126,7 @@ class ClaudeCodeLogParser {
         }
         if incremental {
             lineCheckpoints[url] = lines.count
+            persistLineCheckpoints()
         }
         return results
     }
@@ -267,6 +273,26 @@ class ClaudeCodeLogParser {
             }
         }
         return fallback
+    }
+
+    private static func loadLineCheckpoints(from file: URL) -> [URL: Int] {
+        guard let data = try? Data(contentsOf: file),
+              let raw = try? JSONDecoder().decode([String: Int].self, from: data) else { return [:] }
+        var mapped: [URL: Int] = [:]
+        for (path, line) in raw {
+            mapped[URL(fileURLWithPath: path)] = line
+        }
+        return mapped
+    }
+
+    private func persistLineCheckpoints() {
+        let raw = Dictionary(uniqueKeysWithValues: lineCheckpoints.map { ($0.key.path, $0.value) })
+        do {
+            let data = try JSONEncoder().encode(raw)
+            try data.write(to: checkpointFile, options: .atomic)
+        } catch {
+            ErrorLogger.shared.log("Failed to persist Claude Code checkpoints: \(error.localizedDescription)", level: "WARN")
+        }
     }
 }
 
