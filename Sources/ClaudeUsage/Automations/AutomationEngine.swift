@@ -46,11 +46,12 @@ struct AutomationEngine {
         }
     }
 
-    static func fire(rule: AutomationRule, snapshot: UsageSnapshot) async {
-        guard !rule.shellCommand.isEmpty else { return }
+    @discardableResult
+    static func fire(rule: AutomationRule, snapshot: UsageSnapshot) async -> Bool {
+        guard !rule.shellCommand.isEmpty else { return false }
         guard let action = AutomationAction.parse(commandString: rule.shellCommand) else {
             ErrorLogger.shared.log("Rejected command for rule '\(rule.name)': parse failed or metacharacter detected")
-            return
+            return false
         }
         let env: [String: String] = [
             "CLAUDE_COST": String(format: "%.4f", snapshot.totalCostUSD),
@@ -59,33 +60,41 @@ struct AutomationEngine {
         ].filter { rule.allowedEnvKeys.contains($0.key) }
         switch action {
         case .osascript(let script):
-            await runProcess(execPath: "/usr/bin/osascript", args: ["-e", script], env: env, ruleName: rule.name)
+            return await runProcess(execPath: "/usr/bin/osascript", args: ["-e", script], env: env, ruleName: rule.name)
         case .openURL(let url):
-            if let u = URL(string: url) { await MainActor.run { NSWorkspace.shared.open(u) } }
+            guard let u = URL(string: url) else { return false }
+            await MainActor.run { NSWorkspace.shared.open(u) }
+            return true
         case .say(let text):
-            await runProcess(execPath: "/usr/bin/say", args: [text], env: env, ruleName: rule.name)
+            return await runProcess(execPath: "/usr/bin/say", args: [text], env: env, ruleName: rule.name)
         case .afplay(let path):
             let home = FileManager.default.homeDirectoryForCurrentUser.path
             guard path.hasPrefix(home) else {
                 ErrorLogger.shared.log("afplay path '\(path)' is outside home directory")
-                return
+                return false
             }
-            await runProcess(execPath: "/usr/bin/afplay", args: [path], env: env, ruleName: rule.name)
+            return await runProcess(execPath: "/usr/bin/afplay", args: [path], env: env, ruleName: rule.name)
         case .notification(let title, let body):
             let content = UNMutableNotificationContent()
             content.title = title; content.body = body
             let req = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
-            try? await UNUserNotificationCenter.current().add(req)
+            do {
+                try await UNUserNotificationCenter.current().add(req)
+                return true
+            } catch {
+                ErrorLogger.shared.log("Notification action failed for rule '\(rule.name)': \(error.localizedDescription)")
+                return false
+            }
         case .httpGet(let url):
-            await runProcess(execPath: "/usr/bin/curl", args: [url], env: env, ruleName: rule.name)
+            return await runProcess(execPath: "/usr/bin/curl", args: [url], env: env, ruleName: rule.name)
         }
     }
 
-    private static func runProcess(execPath: String, args: [String], env: [String: String], ruleName: String) async {
+    private static func runProcess(execPath: String, args: [String], env: [String: String], ruleName: String) async -> Bool {
         let execURL = URL(fileURLWithPath: execPath)
         guard FileManager.default.isExecutableFile(atPath: execURL.path) else {
             ErrorLogger.shared.log("Executable not found: \(execPath)")
-            return
+            return false
         }
         let process = Process()
         process.executableURL = execURL
@@ -97,8 +106,10 @@ struct AutomationEngine {
             try process.run(); process.waitUntilExit()
             let out = String(data: outPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
             log.info("Rule '\(ruleName, privacy: .public)' exit \(process.terminationStatus): \(out, privacy: .public)")
+            return process.terminationStatus == 0
         } catch {
             ErrorLogger.shared.log("Rule '\(ruleName)' launch failed: \(error.localizedDescription)")
+            return false
         }
     }
 

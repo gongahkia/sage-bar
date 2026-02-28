@@ -56,7 +56,7 @@ class PollingService: ObservableObject {
             ErrorLogger.shared.log("Network unavailable, skipping poll", level: "WARN")
             return
         }
-        let config = ConfigManager.shared.load()
+        var config = ConfigManager.shared.load()
         log.info("Poll started: \(config.accounts.filter { $0.isActive }.count) active accounts")
         isPolling = true
         defer { isPolling = false; lastPollDate = Date(); log.info("Poll completed") }
@@ -99,6 +99,7 @@ class PollingService: ObservableObject {
         let matchedAutomations = evaluateAutomations(config: config, accounts: activeAccounts)
         if !matchedAutomations.isEmpty {
             log.info("Automation evaluation matched \(matchedAutomations.count) rule(s)")
+            await fireMatchedAutomations(matches: matchedAutomations, config: &config)
         }
 
         // daily digest check
@@ -270,6 +271,21 @@ class PollingService: ObservableObject {
             matched.append(contentsOf: triggered.map { ($0, snapshot) })
         }
         return matched
+    }
+
+    private func fireMatchedAutomations(matches: [(AutomationRule, UsageSnapshot)], config: inout Config) async {
+        var didMutateConfig = false
+        for (rule, snapshot) in matches {
+            let fired = await AutomationEngine.fire(rule: rule, snapshot: snapshot)
+            guard fired else { continue }
+            if let idx = config.automations.firstIndex(where: { $0.id == rule.id }) {
+                config.automations[idx].lastFiredAt = Date()
+                didMutateConfig = true
+            }
+        }
+        if didMutateConfig {
+            ConfigManager.shared.save(config)
+        }
     }
 
     private func fetchAnthropicCanonicalSnapshots(accountId: UUID, apiKey: String) async throws -> (snapshots: [UsageSnapshot], cursor: AnthropicIngestionCursor?) {
