@@ -221,4 +221,53 @@ final class ClaudeCodeLogParserTests: XCTestCase {
         let parserB = ClaudeCodeLogParser(claudeDir: tmpDir, checkpointFile: checkpoint)
         XCTAssertEqual(parserB.parseFile(file, incremental: true).count, 0)
     }
+
+    func testAggregateTodayIncrementalAccumulatorDeterministicAcrossPolls() throws {
+        let projectsDir = tmpDir.appendingPathComponent("projects")
+        try FileManager.default.createDirectory(at: projectsDir, withIntermediateDirectories: true)
+        let file = projectsDir.appendingPathComponent("session.jsonl")
+        let checkpoint = tmpDir.appendingPathComponent("checkpoints.json")
+        let accFile = tmpDir.appendingPathComponent("accumulator.json")
+        let parser = ClaudeCodeLogParser(claudeDir: tmpDir, checkpointFile: checkpoint, accumulatorFile: accFile)
+
+        try """
+        {"type":"message","timestamp":"\(ISO8601DateFormatter().string(from: Date()))","usage":{"input_tokens":2,"output_tokens":1}}
+        """.write(to: file, atomically: true, encoding: .utf8)
+        let first = parser.aggregateToday()
+        XCTAssertEqual(first.inputTokens, 2)
+        XCTAssertEqual(first.outputTokens, 1)
+
+        let handle = try FileHandle(forWritingTo: file)
+        handle.seekToEndOfFile()
+        handle.write(Data("""
+        {"type":"message","timestamp":"\(ISO8601DateFormatter().string(from: Date()))","usage":{"input_tokens":3,"output_tokens":2}}
+        """.utf8))
+        try handle.close()
+
+        let second = parser.aggregateToday()
+        XCTAssertEqual(second.inputTokens, 5)
+        XCTAssertEqual(second.outputTokens, 3)
+
+        let third = parser.aggregateToday()
+        XCTAssertEqual(third.inputTokens, 5, "unchanged files must not be re-ingested")
+        XCTAssertEqual(third.outputTokens, 3)
+    }
+
+    func testAggregateTodayAccumulatorSurvivesRestart() throws {
+        let projectsDir = tmpDir.appendingPathComponent("projects")
+        try FileManager.default.createDirectory(at: projectsDir, withIntermediateDirectories: true)
+        let file = projectsDir.appendingPathComponent("session.jsonl")
+        let checkpoint = tmpDir.appendingPathComponent("checkpoints.json")
+        let accFile = tmpDir.appendingPathComponent("accumulator.json")
+        let now = ISO8601DateFormatter().string(from: Date())
+        try """
+        {"type":"message","timestamp":"\(now)","usage":{"input_tokens":4,"output_tokens":2}}
+        """.write(to: file, atomically: true, encoding: .utf8)
+
+        let parserA = ClaudeCodeLogParser(claudeDir: tmpDir, checkpointFile: checkpoint, accumulatorFile: accFile)
+        XCTAssertEqual(parserA.aggregateToday().inputTokens, 4)
+
+        let parserB = ClaudeCodeLogParser(claudeDir: tmpDir, checkpointFile: checkpoint, accumulatorFile: accFile)
+        XCTAssertEqual(parserB.aggregateToday().inputTokens, 4, "persisted accumulator must keep deterministic totals across restarts")
+    }
 }

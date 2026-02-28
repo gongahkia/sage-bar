@@ -38,6 +38,36 @@ class ClaudeCodeLogParser {
         var cacheRead: Int
     }
 
+    private struct PersistedDailyAccumulator: Codable {
+        var year: Int
+        var month: Int
+        var day: Int
+        var input: Int
+        var output: Int
+        var cacheCreate: Int
+        var cacheRead: Int
+
+        init(from acc: DailyAccumulator) {
+            self.year = acc.day.year ?? 0
+            self.month = acc.day.month ?? 0
+            self.day = acc.day.day ?? 0
+            self.input = acc.input
+            self.output = acc.output
+            self.cacheCreate = acc.cacheCreate
+            self.cacheRead = acc.cacheRead
+        }
+
+        var asAccumulator: DailyAccumulator {
+            DailyAccumulator(
+                day: DateComponents(year: year, month: month, day: day),
+                input: input,
+                output: output,
+                cacheCreate: cacheCreate,
+                cacheRead: cacheRead
+            )
+        }
+    }
+
     static let shared = ClaudeCodeLogParser()
     private let claudeDir: URL
     let fallbackInterval: TimeInterval // internal for test override
@@ -47,6 +77,7 @@ class ClaudeCodeLogParser {
     private var fallbackTimer: Timer?
     private var lastFSEventDate: Date?
     private let checkpointFile: URL
+    private let accumulatorFile: URL
     private var lineCheckpoints: [URL: Int]
     private var dailyAccumulator: DailyAccumulator?
     private let isoTimestamp: ISO8601DateFormatter = {
@@ -64,15 +95,25 @@ class ClaudeCodeLogParser {
         self.claudeDir = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".claude")
         self.fallbackInterval = 60
-        self.checkpointFile = AppConstants.sharedContainerURL.appendingPathComponent("claude_code_checkpoints.json")
+        let base = AppConstants.sharedContainerURL
+        self.checkpointFile = base.appendingPathComponent("claude_code_checkpoints.json")
+        self.accumulatorFile = base.appendingPathComponent("claude_code_daily_accumulator.json")
         self.lineCheckpoints = Self.loadLineCheckpoints(from: self.checkpointFile)
+        self.dailyAccumulator = Self.loadDailyAccumulator(from: self.accumulatorFile)
     }
 
-    internal init(claudeDir: URL, fallbackInterval: TimeInterval = 60, checkpointFile: URL? = nil) {
+    internal init(
+        claudeDir: URL,
+        fallbackInterval: TimeInterval = 60,
+        checkpointFile: URL? = nil,
+        accumulatorFile: URL? = nil
+    ) {
         self.claudeDir = claudeDir
         self.fallbackInterval = fallbackInterval
         self.checkpointFile = checkpointFile ?? claudeDir.appendingPathComponent("claude_code_checkpoints.json")
+        self.accumulatorFile = accumulatorFile ?? claudeDir.appendingPathComponent("claude_code_daily_accumulator.json")
         self.lineCheckpoints = Self.loadLineCheckpoints(from: self.checkpointFile)
+        self.dailyAccumulator = Self.loadDailyAccumulator(from: self.accumulatorFile)
     }
 
     private var missingDirLogged = false
@@ -136,6 +177,7 @@ class ClaudeCodeLogParser {
         let todayComps = cal.dateComponents([.year,.month,.day], from: Date())
         if dailyAccumulator?.day != todayComps {
             dailyAccumulator = DailyAccumulator(day: todayComps, input: 0, output: 0, cacheCreate: 0, cacheRead: 0)
+            persistDailyAccumulator()
         }
         for url in discoverSessionFiles() {
             let attrs = try? FileManager.default.attributesOfItem(atPath: url.path)
@@ -154,6 +196,7 @@ class ClaudeCodeLogParser {
                 dailyAccumulator?.cacheRead += u?.cache_read_input_tokens ?? 0
             }
         }
+        persistDailyAccumulator()
         let acc = dailyAccumulator ?? DailyAccumulator(day: todayComps, input: 0, output: 0, cacheCreate: 0, cacheRead: 0)
         return UsageSnapshot(
             accountId: UUID(), // overridden by caller with real account id
@@ -285,6 +328,12 @@ class ClaudeCodeLogParser {
         return mapped
     }
 
+    private static func loadDailyAccumulator(from file: URL) -> DailyAccumulator? {
+        guard let data = try? Data(contentsOf: file),
+              let raw = try? JSONDecoder().decode(PersistedDailyAccumulator.self, from: data) else { return nil }
+        return raw.asAccumulator
+    }
+
     private func persistLineCheckpoints() {
         let raw = Dictionary(uniqueKeysWithValues: lineCheckpoints.map { ($0.key.path, $0.value) })
         do {
@@ -292,6 +341,16 @@ class ClaudeCodeLogParser {
             try data.write(to: checkpointFile, options: .atomic)
         } catch {
             ErrorLogger.shared.log("Failed to persist Claude Code checkpoints: \(error.localizedDescription)", level: "WARN")
+        }
+    }
+
+    private func persistDailyAccumulator() {
+        guard let dailyAccumulator else { return }
+        do {
+            let data = try JSONEncoder().encode(PersistedDailyAccumulator(from: dailyAccumulator))
+            try data.write(to: accumulatorFile, options: .atomic)
+        } catch {
+            ErrorLogger.shared.log("Failed to persist Claude Code daily accumulator: \(error.localizedDescription)", level: "WARN")
         }
     }
 }
