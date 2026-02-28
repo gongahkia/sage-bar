@@ -175,6 +175,13 @@ final class PollingServiceTests: XCTestCase {
         XCTAssertTrue(PollingService.isAutomationOffCooldown(freshRule, pollIntervalSeconds: 300, now: Date()))
     }
 
+    func testAutomationCooldownAllowsAtExactBoundary() {
+        let now = Date()
+        var rule = AutomationRule(name: "boundary", triggerType: "cost_gt", threshold: 1, shellCommand: "say hi")
+        rule.lastFiredAt = now.addingTimeInterval(-300)
+        XCTAssertTrue(PollingService.isAutomationOffCooldown(rule, pollIntervalSeconds: 300, now: now))
+    }
+
     func testGenerateAndPersistModelHintsWritesModelHintsFile() async {
         let account = Account(name: "Hinted API", type: .anthropicAPI, isActive: true)
         let snapshot = UsageSnapshot(

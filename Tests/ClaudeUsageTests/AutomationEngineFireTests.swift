@@ -43,6 +43,20 @@ final class AutomationEngineFireTests: XCTestCase {
         // pass if no crash
     }
 
+    func testAllowedEnvKeysIncludesRequiredVariableForOsascript() async {
+        var r = rule(cmd: #"osascript if system attribute "CLAUDE_COST" is equal to "" then error number 1"#)
+        r.allowedEnvKeys = ["CLAUDE_COST"]
+        let fired = await AutomationEngine.fire(rule: r, snapshot: snap())
+        XCTAssertTrue(fired, "rule should succeed when required env key is explicitly allowlisted")
+    }
+
+    func testAllowedEnvKeysFilteringRemovesUnlistedVariables() async {
+        var r = rule(cmd: #"osascript if system attribute "CLAUDE_COST" is equal to "" then error number 1"#)
+        r.allowedEnvKeys = [] // CLAUDE_COST omitted
+        let fired = await AutomationEngine.fire(rule: r, snapshot: snap())
+        XCTAssertFalse(fired, "rule should fail when CLAUDE_COST is filtered out by allowedEnvKeys")
+    }
+
     // MARK: - Task 29: AutomationAction cases map to correct executableURL
 
     func testSayActionUsesCorrectExecutable() {
