@@ -1,10 +1,3 @@
-(B) Add per-model cost breakdown section in MenuBarPopoverView: a collapsible list showing each model's display name, total tokens (input+output), and computed cost for the current period +feature
-(B) Show per-account last-fetch timestamp in MenuBarPopoverView for each account row formatted as relative time (e.g., "2m ago"), not only the global last-synced line +feature
-(B) Add Cmd+R keyboard shortcut handler inside MenuBarPopoverView that calls PollingService.shared.pollNow() to trigger an immediate manual refresh +feature
-(B) Add --models flag to ClaudeUsageCLI main.swift that reads the cache and prints a table of each model name with total input tokens, output tokens, and estimated cost +feature
-(B) Add --since DATE flag (ISO8601 date string) to ClaudeUsageCLI main.swift that filters all history and heatmap output to snapshots on or after that date +feature
-(B) Add --watch N flag to ClaudeUsageCLI main.swift that re-renders the TUI output every N seconds (default 30) using a RunLoop-based timer until Ctrl-C +feature
-(B) Ensure --forecast --format json in ClaudeUsageCLI main.swift outputs ForecastSnapshot as valid JSON to stdout; add the missing branch if not currently handled +fix
 (B) Add ErrorLogger.clearLog() method that truncates errors.log to zero bytes; wire it to a "Clear Errors" button in DiagnosticsView +observability
 (B) Create ErrorLoggerTests.swift; add test: writing entries until file exceeds 1MB triggers log rotation and the new file contains only the most recent 500 lines +testing
 (B) Add test in ErrorLoggerTests: clearLog() results in an empty errors.log file of 0 bytes +testing

@@ -6,6 +6,7 @@ struct MenuBarPopoverView: View {
     @State private var selectedAccountIndex = 0
     @State private var showHistory = false
     @State private var needsReAuth: Bool = false
+    @State private var showModelBreakdown = false
     @ObservedObject private var polling = PollingService.shared
     @ObservedObject private var errorLogger = ErrorLogger.shared
 
@@ -20,6 +21,7 @@ struct MenuBarPopoverView: View {
                 accountPicker
             }
             if let account = currentAccount {
+                accountFetchLabel(account: account) // task 78: per-account relative last-fetch
                 if needsReAuth && account.type == .claudeAI {
                     reAuthBanner
                 }
@@ -29,6 +31,7 @@ struct MenuBarPopoverView: View {
                             claudeAIStatsSection(account: account)
                         } else {
                             todayStatsSection(account: account)
+                            modelBreakdownSection(account: account) // task 77
                         }
                         if account.type != .claudeAI && config.forecast.showInPopover && config.forecast.enabled {
                             forecastSection(account: account)
@@ -216,7 +219,9 @@ struct MenuBarPopoverView: View {
     // MARK: – Footer
     private var footer: some View {
         HStack {
-            Button("Refresh Now") { PollingService.shared.forceRefresh() }.buttonStyle(.plain).font(.caption)
+            Button("Refresh Now") { PollingService.shared.forceRefresh() }
+                .buttonStyle(.plain).font(.caption)
+                .keyboardShortcut("r", modifiers: .command) // task 79: Cmd+R
             Spacer()
             if config.analytics.enabled {
                 Button("History") { showHistory = true }.buttonStyle(.plain).font(.caption)
@@ -225,6 +230,46 @@ struct MenuBarPopoverView: View {
                 SettingsWindowController.shared.showWindow()
             }.buttonStyle(.plain).font(.caption)
         }.padding(.horizontal, 12).padding(.vertical, 8)
+    }
+
+    // MARK: – Task 78: per-account last-fetch label
+
+    private func accountFetchLabel(account: Account) -> some View {
+        Group {
+            if let snap = CacheManager.shared.latest(forAccount: account.id) {
+                Text("Last fetch: \(snap.timestamp, style: .relative) ago")
+                    .font(.caption2).foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .padding(.horizontal, 12).padding(.top, 2)
+            }
+        }
+    }
+
+    // MARK: – Task 77: collapsible per-model cost breakdown
+
+    private func modelBreakdownSection(account: Account) -> some View {
+        let snaps = CacheManager.shared.history(forAccount: account.id, days: 1)
+        let byModel = Dictionary(grouping: snaps.flatMap { $0.modelBreakdown }, by: { $0.modelId })
+        let rows: [(id: String, tok: Int, cost: Double)] = byModel.map { (id, us) in
+            (id, us.reduce(0) { $0 + $1.inputTokens + $1.outputTokens }, us.reduce(0) { $0 + $1.costUSD })
+        }.sorted { $0.cost > $1.cost }
+        return Group {
+            if !rows.isEmpty {
+                DisclosureGroup(isExpanded: $showModelBreakdown) {
+                    ForEach(rows, id: \.id) { row in
+                        HStack {
+                            Text(row.id).font(.caption2).foregroundColor(.secondary).lineLimit(1)
+                            Spacer()
+                            Text("\(row.tok.formatted()) tok").font(.caption2).foregroundColor(.secondary)
+                            Text(String(format: "$%.4f", row.cost)).font(.caption2).monospacedDigit()
+                        }.padding(.horizontal, 4)
+                    }
+                } label: {
+                    Text("Model Breakdown").font(.caption).foregroundColor(.secondary)
+                }
+                .padding(.horizontal, 12).padding(.bottom, 6)
+            }
+        }
     }
 
     private func statRow(_ label: String, value: String) -> some View {

@@ -28,6 +28,9 @@ var showHeatmap = false
 var showErrors = false
 var errorsCount = 20
 var showConfig = false
+var showModels = false
+var sinceDate: Date? = nil
+var watchInterval: Int? = nil
 
 var args = CommandLine.arguments.dropFirst()
 var iter = args.makeIterator()
@@ -44,9 +47,17 @@ while let arg = iter.next() {
     case "--history": showHistory = true
     case "--heatmap": showHeatmap = true
     case "--config": showConfig = true
+    case "--models": showModels = true
+    case "--since":
+        if let raw = iter.next() {
+            let iso = ISO8601DateFormatter(); iso.formatOptions = [.withFullDate]
+            sinceDate = iso.date(from: raw) ?? ISO8601DateFormatter().date(from: raw)
+        }
+    case "--watch":
+        if let raw = iter.next(), let n = Int(raw) { watchInterval = n } else { watchInterval = 30 }
     case "--errors": showErrors = true
     case "--help":
-        print("claude-usage [--account NAME] [--no-color] [--format json] [--forecast] [--history] [--heatmap] [--config] [--errors[=N]] [--version]")
+        print("claude-usage [--account NAME] [--no-color] [--format json] [--forecast] [--history] [--heatmap] [--models] [--since DATE] [--watch N] [--config] [--errors[=N]] [--version]")
         exit(0)
     default:
         if arg.hasPrefix("--errors="), let n = Int(arg.dropFirst("--errors=".count)) {
@@ -124,6 +135,11 @@ if let filter = accountFilter {
     snapshots = snapshots.filter { matched.contains($0.accountId.uuidString) }
 }
 
+// MARK: – --since filter (task 81)
+if let since = sinceDate {
+    snapshots = snapshots.filter { $0.timestamp >= since }
+}
+
 // default TUI config
 let tuiConfig = TUIConfig(
     layout: ["input_tokens","output_tokens","cache_tokens","cost_usd","last_updated","model_breakdown"],
@@ -135,12 +151,32 @@ let tuiConfig = TUIConfig(
 
 // MARK: – Output
 
-if formatJSON {
+if formatJSON && !showForecast && !showModels {
     let enc = JSONEncoder()
     enc.dateEncodingStrategy = .iso8601
     enc.outputFormatting = .prettyPrinted
     if let out = try? enc.encode(snapshots) {
         print(String(data: out, encoding: .utf8)!)
+    }
+    exit(0)
+}
+
+// MARK: – --models (task 80)
+if showModels {
+    let byModel = Dictionary(grouping: snapshots.flatMap { $0.modelBreakdown }, by: { $0.modelId })
+    let rows = byModel.map { (id, us) in
+        (id, us.reduce(0) { $0 + $1.inputTokens }, us.reduce(0) { $0 + $1.outputTokens }, us.reduce(0) { $0 + $1.costUSD })
+    }.sorted { $0.3 > $1.3 }
+    if formatJSON {
+        let obj = rows.map { ["model": $0.0, "input_tokens": $0.1, "output_tokens": $0.2, "cost_usd": $0.3] as [String: Any] }
+        if let d = try? JSONSerialization.data(withJSONObject: obj, options: .prettyPrinted),
+           let s = String(data: d, encoding: .utf8) { print(s) }
+    } else {
+        print(String(format: "%-40s | %-12s | %-12s | %s", "Model", "Input Tokens", "Output Tokens", "Cost USD"))
+        print(String(repeating: "─", count: 80))
+        for (id, inp, out2, cost) in rows {
+            print(String(format: "%-40s | %-12d | %-12d | $%.4f", id, inp, out2, cost))
+        }
     }
     exit(0)
 }
@@ -204,10 +240,29 @@ if showForecast {
     if let fdata = try? Data(contentsOf: forecastFile),
        let forecasts = try? decoder.decode([ForecastSnapshot].self, from: fdata),
        let forecast = forecasts.first {
-        print(renderer.renderForecast(forecast))
+        if formatJSON { // task 83: --forecast --format json outputs valid JSON
+            let enc = JSONEncoder(); enc.dateEncodingStrategy = .iso8601; enc.outputFormatting = .prettyPrinted
+            if let out = try? enc.encode(forecast) { print(String(data: out, encoding: .utf8)!) }
+        } else {
+            print(renderer.renderForecast(forecast))
+        }
     } else {
-        print("No forecast data available.")
+        if formatJSON { print("{}") } else { print("No forecast data available.") }
     }
+}
+
+// MARK: – --watch N (task 82)
+if let interval = watchInterval {
+    signal(SIGINT) { _ in exit(0) }
+    let selfURL = URL(fileURLWithPath: CommandLine.arguments[0])
+    let watchlessArgs = Array(CommandLine.arguments.dropFirst()).filter { a in
+        a != "--watch" && a != String(interval)
+    }
+    Timer.scheduledTimer(withTimeInterval: TimeInterval(interval), repeats: true) { _ in
+        let proc = Process(); proc.executableURL = selfURL; proc.arguments = watchlessArgs
+        try? proc.run(); proc.waitUntilExit()
+    }
+    RunLoop.main.run() // blocks until SIGINT
 }
 
 exit(0)
