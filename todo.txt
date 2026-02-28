@@ -1,5 +1,3 @@
-(B) Add PriceEntry struct validation in AnthropicAPIClient.loadPrices(): for each decoded entry assert inputPer1M > 0 and outputPer1M > 0, log warning via ErrorLogger for any invalid entry +fix
-(B) Call ErrorLogger.shared.log() with the model name when AnthropicAPIClient.cost(for:) is called with a model key absent from the loaded prices dict +observability
 (B) Add claude-3-5-haiku entry to prices.json with inputPer1M and outputPer1M values matching official Anthropic pricing page at time of next release +fix
 (B) Add claude-3-sonnet entry to prices.json if not present, matching official Anthropic pricing page +fix
 (B) Add test in AnthropicAPIClientTests: loadPrices() with a prices.json containing one entry where inputPer1M = 0 logs a warning but does not crash +testing

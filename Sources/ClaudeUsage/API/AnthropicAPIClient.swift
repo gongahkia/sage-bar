@@ -39,13 +39,33 @@ private struct PriceEntry: Decodable {
 
 class AnthropicAPIClient {
     static let pricingConstants: [String: (inputPer1M: Double, outputPer1M: Double)] = {
-        guard let url = Bundle.module.url(forResource: "prices", withExtension: "json"),
-              let data = try? Data(contentsOf: url),
-              let raw = try? JSONDecoder().decode([String: PriceEntry].self, from: data) else {
-            ErrorLogger.shared.log("Failed to load prices.json from bundle", level: "WARN")
+        guard let url = Bundle.module.url(forResource: "prices", withExtension: "json") else {
+            ErrorLogger.shared.log("prices.json not found in bundle", level: "WARN")
             return [:]
         }
-        return raw.mapValues { ($0.inputPer1M, $0.outputPer1M) }
+        let data: Data
+        do {
+            data = try Data(contentsOf: url)
+        } catch {
+            ErrorLogger.shared.log("Failed to read prices.json: \(error.localizedDescription)", level: "WARN")
+            return [:]
+        }
+        let raw: [String: PriceEntry]
+        do {
+            raw = try JSONDecoder().decode([String: PriceEntry].self, from: data)
+        } catch {
+            ErrorLogger.shared.log("Failed to decode prices.json: \(error.localizedDescription)", level: "ERROR")
+            return [:]
+        }
+        var result: [String: (Double, Double)] = [:]
+        for (model, entry) in raw {
+            if entry.inputPer1M <= 0 || entry.outputPer1M <= 0 {
+                ErrorLogger.shared.log("Invalid price entry for '\(model)': inputPer1M=\(entry.inputPer1M) outputPer1M=\(entry.outputPer1M)", level: "WARN")
+            } else {
+                result[model] = (entry.inputPer1M, entry.outputPer1M)
+            }
+        }
+        return result
     }()
 
     private let apiKey: String
@@ -102,10 +122,16 @@ class AnthropicAPIClient {
         } catch let e as APIError { throw e } catch { throw APIError.networkError(error) }
     }
 
+    func cost(for model: String) -> (inputPer1M: Double, outputPer1M: Double)? {
+        if let p = Self.pricingConstants.first(where: { model.hasPrefix($0.key) })?.value { return p }
+        ErrorLogger.shared.log("No pricing entry for model '\(model)' — cost will be 0", level: "WARN")
+        return nil
+    }
+
     func convertToSnapshots(_ response: AnthropicUsageResponse, accountId: UUID) -> [UsageSnapshot] {
         let fmt = ISO8601DateFormatter()
         return response.data.map { period in
-            let price = Self.pricingConstants.first(where: { period.model.hasPrefix($0.key) })?.value ?? (0, 0)
+            let price = cost(for: period.model) ?? (inputPer1M: 0, outputPer1M: 0)
             let costIn = Double(period.input_tokens) / 1_000_000 * price.inputPer1M
             let costOut = Double(period.output_tokens) / 1_000_000 * price.outputPer1M
             let costCacheCreate = Double(period.cache_creation_input_tokens) / 1_000_000 * price.inputPer1M * 1.25
