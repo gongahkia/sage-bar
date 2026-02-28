@@ -77,6 +77,37 @@ final class WebhookServiceTests: XCTestCase {
         XCTAssertEqual(callCount, svc.maxRetries + 1, "should attempt initial + maxRetries times on 503")
     }
 
+    func testIdempotencyHeadersPersistAcrossRetries() async {
+        var callCount = 0
+        var idempotencyKeys: [String] = []
+        var xIdempotencyKeys: [String] = []
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [MockURLProtocol.self]
+        MockURLProtocol.requestHandler = { req in
+            callCount += 1
+            idempotencyKeys.append(req.value(forHTTPHeaderField: "Idempotency-Key") ?? "")
+            xIdempotencyKeys.append(req.value(forHTTPHeaderField: "X-Idempotency-Key") ?? "")
+            let code = callCount == 1 ? 503 : 200
+            let resp = HTTPURLResponse(url: req.url!, statusCode: code, httpVersion: nil, headerFields: nil)!
+            return (resp, Data())
+        }
+        let mockSession = URLSession(configuration: config)
+        let svc = WebhookService(session: mockSession, maxRetries: 2, baseRetryDelayNanos: 1_000_000)
+        let whConfig = WebhookConfig(enabled: true, url: "https://example.com/hook", events: [], payloadTemplate: nil)
+
+        do {
+            try await svc.send(event: .dailyDigest, snapshot: snap(), config: whConfig)
+        } catch {
+            XCTFail("send should succeed on retry: \(error)")
+        }
+
+        XCTAssertEqual(callCount, 2)
+        XCTAssertEqual(Set(idempotencyKeys).count, 1, "Idempotency-Key must stay constant across retries")
+        XCTAssertEqual(Set(xIdempotencyKeys).count, 1, "X-Idempotency-Key must stay constant across retries")
+        XCTAssertFalse((idempotencyKeys.first ?? "").isEmpty)
+        XCTAssertEqual(idempotencyKeys.first, xIdempotencyKeys.first)
+    }
+
     // MARK: - Task 55: URLSession timeout logs via ErrorLogger
 
     func testTimeoutLogsError() async {

@@ -16,10 +16,12 @@ enum WebhookEvent {
 class WebhookService {
     let maxRetries: Int
     private let session: URLSession
+    private let baseRetryDelayNanos: UInt64
 
-    init(session: URLSession? = nil, maxRetries: Int = 2) {
+    init(session: URLSession? = nil, maxRetries: Int = 2, baseRetryDelayNanos: UInt64 = 250_000_000) {
         self.session = session ?? URLSession(configuration: .ephemeral)
         self.maxRetries = maxRetries
+        self.baseRetryDelayNanos = baseRetryDelayNanos
     }
 
     func send(event: WebhookEvent, snapshot: UsageSnapshot, config: WebhookConfig) async throws {
@@ -31,26 +33,47 @@ class WebhookService {
         }
         let data = buildPayload(event: event, snapshot: snapshot, template: config.payloadTemplate)
         var lastError: Error?
+        let idempotencyKey = UUID().uuidString
         for attempt in 0...maxRetries {
             do {
                 var req = URLRequest(url: url)
                 req.httpMethod = "POST"
                 req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                req.setValue(idempotencyKey, forHTTPHeaderField: "Idempotency-Key")
+                req.setValue(idempotencyKey, forHTTPHeaderField: "X-Idempotency-Key")
                 req.httpBody = data
                 let (_, resp) = try await session.data(for: req)
-                if let http = resp as? HTTPURLResponse, http.statusCode == 503, attempt < maxRetries {
-                    lastError = APIError.serverError(503)
-                    continue // retry
+                let http = resp as? HTTPURLResponse
+                let statusCode = http?.statusCode ?? 0
+                if (200...299).contains(statusCode) {
+                    return
                 }
-                guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-                    throw APIError.serverError((resp as? HTTPURLResponse)?.statusCode ?? 0)
+                let apiError: APIError
+                if statusCode == 429 {
+                    apiError = .rateLimited(retryAfter: retryAfterSeconds(from: http))
+                } else {
+                    apiError = .serverError(statusCode)
                 }
-                return // success
-            } catch let e as APIError { lastError = e; if attempt >= maxRetries { throw e }
+                lastError = apiError
+                if attempt >= maxRetries || !isRetryableStatus(statusCode) {
+                    throw apiError
+                }
+                let delay = retryDelayNanos(attempt: attempt, retryAfterSeconds: retryAfterSeconds(from: http))
+                try await Task.sleep(nanoseconds: delay)
+            } catch let e as APIError {
+                lastError = e
+                if attempt >= maxRetries {
+                    throw e
+                }
             } catch {
                 ErrorLogger.shared.log("Webhook send failed (attempt \(attempt+1)): \(error.localizedDescription)", level: "WARN")
                 lastError = error
-                if attempt >= maxRetries { throw error }
+                let urlError = error as? URLError
+                if attempt >= maxRetries || !isTransientURLError(urlError) {
+                    throw error
+                }
+                let delay = retryDelayNanos(attempt: attempt, retryAfterSeconds: nil)
+                try await Task.sleep(nanoseconds: delay)
             }
         }
         if let e = lastError { throw e }
@@ -94,5 +117,36 @@ class WebhookService {
             }
             return .success(())
         } catch { return .failure(error) }
+    }
+
+    private func isRetryableStatus(_ statusCode: Int) -> Bool {
+        statusCode == 429 || (500...599).contains(statusCode)
+    }
+
+    private func retryAfterSeconds(from response: HTTPURLResponse?) -> Int? {
+        guard let value = response?.value(forHTTPHeaderField: "Retry-After") else { return nil }
+        return Int(value)
+    }
+
+    private func retryDelayNanos(attempt: Int, retryAfterSeconds: Int?) -> UInt64 {
+        if let retryAfterSeconds, retryAfterSeconds > 0 {
+            let base = Double(retryAfterSeconds) * 1_000_000_000
+            let jitter = Double.random(in: 0...(base * 0.25))
+            return UInt64(base + jitter)
+        }
+        let clampedAttempt = min(attempt, 6)
+        let exponential = Double(baseRetryDelayNanos) * pow(2.0, Double(clampedAttempt))
+        let jitter = Double.random(in: 0...(exponential * 0.30))
+        return UInt64(exponential + jitter)
+    }
+
+    private func isTransientURLError(_ error: URLError?) -> Bool {
+        guard let error else { return false }
+        switch error.code {
+        case .timedOut, .cannotFindHost, .cannotConnectToHost, .networkConnectionLost, .dnsLookupFailed, .notConnectedToInternet, .resourceUnavailable:
+            return true
+        default:
+            return false
+        }
     }
 }
