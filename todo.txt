@@ -1,4 +1,3 @@
-(B) Add hotkey recorder control in SettingsView that captures the next local key event via NSEvent.addLocalMonitorForEvents, displays the binding as a label, and saves to HotkeyConfig on confirm +feature
 (B) Create HotkeyManagerTests.swift; add test: registering two distinct bindings does not cause either handler to fire incorrectly when the other's keys are pressed +testing
 (B) Add test in HotkeyManagerTests: chord binding fires only when second key is pressed within 500ms of first key +testing
 (B) Add test in HotkeyManagerTests: chord binding does NOT fire when second key arrives more than 500ms after first key +testing
