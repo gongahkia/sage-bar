@@ -7,6 +7,7 @@ class MenuBarManager {
     static let shared = MenuBarManager()
     private var statusItem: NSStatusItem!
     private var popover: NSPopover!
+    private let contextMenu = NSMenu()
     private var monitor: Any?
     private var throttleWorkItem: DispatchWorkItem?
     private var secondStatusItem: NSStatusItem? // dual icon support
@@ -20,11 +21,14 @@ class MenuBarManager {
         if let btn = statusItem.button {
             btn.image = NSImage(systemSymbolName: "chart.bar.fill", accessibilityDescription: "Claude Usage")
             btn.image?.isTemplate = true
-            btn.action = #selector(togglePopover)
+            btn.action = #selector(handleStatusItemClick(_:))
             btn.target = self
             btn.sendAction(on: [.leftMouseUp, .rightMouseUp])
         }
-        statusItem.menu = buildContextMenu()
+        contextMenu.removeAllItems()
+        for item in buildContextMenu().items {
+            contextMenu.addItem(item)
+        }
         popover = NSPopover()
         popover.contentSize = NSSize(width: 340, height: 480)
         popover.behavior = .transient
@@ -87,6 +91,16 @@ class MenuBarManager {
         } else {
             popover.show(relativeTo: btn.bounds, of: btn, preferredEdge: .minY)
             NSApp.activate(ignoringOtherApps: true)
+        }
+    }
+
+    @objc private func handleStatusItemClick(_ sender: NSStatusBarButton) {
+        guard let event = NSApp.currentEvent else { togglePopover(); return }
+        let isRightClick = event.type == .rightMouseUp || event.modifierFlags.contains(.control)
+        if isRightClick {
+            NSMenu.popUpContextMenu(contextMenu, with: event, for: sender)
+        } else {
+            togglePopover()
         }
     }
 
