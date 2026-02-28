@@ -209,7 +209,7 @@ private actor CacheStore {
     }
 
     private func normalizeDailySnapshots(_ snapshots: [UsageSnapshot]) -> [UsageSnapshot] {
-        let cumulativeModels: Set<String> = ["claude-code-local", "claude-ai-web"]
+        let cumulativeModels: Set<String> = ["claude-code-local", "claude-ai-web", "codex-local"]
         var eventSnapshots: [UsageSnapshot] = []
         var cumulativeSnapshots: [UsageSnapshot] = []
         for snap in snapshots {
@@ -251,6 +251,8 @@ private actor CacheStore {
             return "claude-code"
         case "claude-ai-web":
             return "claude-ai-web"
+        case "codex-local":
+            return "codex-local"
         default:
             if modelId.hasPrefix("claude-") {
                 return "anthropic"

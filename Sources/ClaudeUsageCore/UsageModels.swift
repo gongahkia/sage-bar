@@ -100,7 +100,7 @@ public struct UsageSnapshot: Codable, Equatable {
     }
 
     private static func inferLegacyCostConfidence(modelBreakdown: [ModelUsage]) -> CostConfidence {
-        let estimatedModelIDs: Set<String> = ["claude-ai-web", "claude-code-local"]
+        let estimatedModelIDs: Set<String> = ["claude-ai-web", "claude-code-local", "codex-local"]
         if modelBreakdown.contains(where: { estimatedModelIDs.contains($0.modelId) }) {
             return .estimated
         }

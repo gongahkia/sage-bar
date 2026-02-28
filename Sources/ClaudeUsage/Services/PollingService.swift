@@ -187,6 +187,21 @@ class PollingService: ObservableObject {
             )
             CacheManager.shared.append(snap)
             await clearFetchError(for: account.id)
+        case .codex:
+            var snap = CodexLogParser.shared.aggregateToday()
+            snap = UsageSnapshot(
+                accountId: account.id,
+                timestamp: snap.timestamp,
+                inputTokens: snap.inputTokens,
+                outputTokens: snap.outputTokens,
+                cacheCreationTokens: snap.cacheCreationTokens,
+                cacheReadTokens: snap.cacheReadTokens,
+                totalCostUSD: snap.totalCostUSD,
+                modelBreakdown: snap.modelBreakdown,
+                costConfidence: .estimated
+            )
+            CacheManager.shared.append(snap)
+            await clearFetchError(for: account.id)
         case .anthropicAPI:
             let key: String
             do {

@@ -12,7 +12,7 @@ final class iCloudSyncManagerTests: XCTestCase {
         } else {
             breakdown = []
         }
-        UsageSnapshot(accountId: accountId, timestamp: date, inputTokens: tokens, outputTokens: 0,
+        return UsageSnapshot(accountId: accountId, timestamp: date, inputTokens: tokens, outputTokens: 0,
             cacheCreationTokens: 0, cacheReadTokens: 0, totalCostUSD: 0, modelBreakdown: breakdown)
     }
 

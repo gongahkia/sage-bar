@@ -32,6 +32,8 @@ struct DiagnosticsView: View {
             }.padding(.horizontal, 12).padding(.vertical, 8)
         }
         .onAppear { entries = errorLogger.readLast(50) }
-        .onChange(of: errorLogger.lastError) { _ in entries = errorLogger.readLast(50) }
+        .onReceive(errorLogger.$lastError) { _ in
+            entries = errorLogger.readLast(50)
+        }
     }
 }

@@ -2,6 +2,7 @@ import Foundation
 
 enum AccountType: String, Codable, CaseIterable {
     case claudeCode = "claudeCode"     // no credentials needed
+    case codex = "codex"               // local Codex session logs
     case anthropicAPI = "anthropicAPI" // requires keychain key
     case claudeAI = "claudeAI"        // session-based web account
 }

@@ -32,7 +32,7 @@ final class NotificationManagerTests: XCTestCase {
         let second = snap(accountId: account.id, cost: 30)
         NotificationManager.shared.checkThreshold(snapshot: second, account: account, limitUSD: 10, webhookConfig: webhook)
         let secondMarked = UserDefaults.standard.object(forKey: key) as? Date
-        XCTAssertEqual(secondMarked?.timeIntervalSince1970, firstMarked.timeIntervalSince1970, accuracy: 0.001)
+        XCTAssertEqual(secondMarked?.timeIntervalSince1970 ?? -1, firstMarked.timeIntervalSince1970, accuracy: 0.001)
     }
 
     func testThresholdNotificationRearmsNextDay() {
@@ -53,4 +53,3 @@ final class NotificationManagerTests: XCTestCase {
         }
     }
 }
-

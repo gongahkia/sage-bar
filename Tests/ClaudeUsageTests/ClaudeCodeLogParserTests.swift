@@ -113,7 +113,7 @@ final class ClaudeCodeLogParserTests: XCTestCase {
         let projectsDir = tmpDir.appendingPathComponent("projects")
         try FileManager.default.createDirectory(at: projectsDir, withIntermediateDirectories: true)
         let jsonl = projectsDir.appendingPathComponent("session.jsonl")
-        try """{"type":"message","usage":{"input_tokens":42,"output_tokens":7}}\n"""
+        try "{\"type\":\"message\",\"usage\":{\"input_tokens\":42,\"output_tokens\":7}}\n"
             .write(to: jsonl, atomically: true, encoding: .utf8)
         // 1s fallback interval so test completes within 3s; no FSEvent fired = timer drives the notification
         let localParser = ClaudeCodeLogParser(claudeDir: tmpDir, fallbackInterval: 1)
@@ -140,7 +140,7 @@ final class ClaudeCodeLogParserTests: XCTestCase {
         defer { localParser.stopWatching() }
         DispatchQueue.global().asyncAfter(deadline: .now() + 0.5) {
             let file = subDir.appendingPathComponent("session.jsonl")
-            try? """{"type":"message","usage":{"input_tokens":1,"output_tokens":1}}\n"""
+            try? "{\"type\":\"message\",\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}\n"
                 .write(to: file, atomically: true, encoding: .utf8)
         }
         wait(for: [exp], timeout: 5)

@@ -184,6 +184,8 @@ class iCloudSyncManager: ObservableObject {
             return "claude-code"
         case "claude-ai-web":
             return "claude-ai-web"
+        case "codex-local":
+            return "codex-local"
         default:
             if modelId.hasPrefix("claude-") {
                 return "anthropic"

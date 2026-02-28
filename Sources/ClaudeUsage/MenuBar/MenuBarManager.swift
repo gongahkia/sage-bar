@@ -44,6 +44,11 @@ class MenuBarManager {
         ) { _ in
             Task { await PollingService.shared.handleClaudeCodeLogsChanged() }
         }
+        NotificationCenter.default.addObserver(
+            forName: .codexLogsChanged, object: nil, queue: .main
+        ) { _ in
+            Task { await PollingService.shared.handleClaudeCodeLogsChanged() }
+        }
     }
 
     private func buildContextMenu() -> NSMenu {

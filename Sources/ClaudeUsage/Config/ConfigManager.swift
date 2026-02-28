@@ -18,8 +18,13 @@ class ConfigManager {
                 return .default
             }
             let raw = try String(contentsOf: configFile, encoding: .utf8)
-            let table = try TOMLKit.TOML.parse(raw)
-            let data = try JSONSerialization.data(withJSONObject: table.toJSONObject())
+            if let rawData = raw.data(using: .utf8),
+               let decoded = try? JSONDecoder().decode(Config.self, from: rawData) {
+                return decoded
+            }
+            let table = try TOMLTable(string: raw)
+            let json = table.convert(to: .json)
+            guard let data = json.data(using: .utf8) else { return .default }
             return try JSONDecoder().decode(Config.self, from: data)
         } catch {
             return .default
@@ -37,29 +42,5 @@ class ConfigManager {
             try jsonData.write(to: tmp, options: .atomic)
             _ = try FileManager.default.replaceItemAt(configFile, withItemAt: tmp)
         } catch {}
-    }
-}
-
-private extension TOMLKit.TOMLTable {
-    func toJSONObject() -> [String: Any] {
-        var result: [String: Any] = [:]
-        for (key, value) in self {
-            result[key] = value.toJSONValue()
-        }
-        return result
-    }
-}
-
-private extension TOMLKit.TOMLValue {
-    func toJSONValue() -> Any {
-        switch self {
-        case .string(let s): return s
-        case .int(let i): return i
-        case .double(let d): return d
-        case .bool(let b): return b
-        case .array(let a): return a.map { $0.toJSONValue() }
-        case .table(let t): return t.toJSONObject()
-        default: return NSNull()
-        }
     }
 }

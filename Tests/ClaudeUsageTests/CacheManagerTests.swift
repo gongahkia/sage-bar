@@ -33,7 +33,7 @@ final class CacheManagerTests: XCTestCase {
         DispatchQueue.global().asyncAfter(deadline: .now() + 0.5) {
             let loaded = self.cm.load().filter { $0.accountId == self.accountId }
             XCTAssertEqual(loaded.count, 1)
-            XCTAssertEqual(loaded.first?.totalCostUSD, 1.5, accuracy: 0.001)
+            XCTAssertEqual(loaded.first?.totalCostUSD ?? -1, 1.5, accuracy: 0.001)
             exp.fulfill()
         }
         wait(for: [exp], timeout: 2)
@@ -117,7 +117,7 @@ final class CacheManagerTests: XCTestCase {
         cm.saveAnthropicRetryAfter(retryAfter, forAccount: accountId)
         let loaded = cm.loadAnthropicRetryAfter(forAccount: accountId)
         XCTAssertNotNil(loaded)
-        XCTAssertEqual(loaded?.timeIntervalSince1970, retryAfter.timeIntervalSince1970, accuracy: 1)
+        XCTAssertEqual(loaded?.timeIntervalSince1970 ?? -1, retryAfter.timeIntervalSince1970, accuracy: 1)
 
         cm.clearAnthropicRetryAfter(forAccount: accountId)
         XCTAssertNil(cm.loadAnthropicRetryAfter(forAccount: accountId))
@@ -154,7 +154,7 @@ final class CacheManagerTests: XCTestCase {
         wait(for: [exp], timeout: 2)
         let loaded = cm.load().filter { $0.accountId == accountId && $0.timestamp == ts }
         XCTAssertEqual(loaded.count, 1)
-        XCTAssertEqual(loaded.first?.totalCostUSD, 2.0, accuracy: 0.001)
+        XCTAssertEqual(loaded.first?.totalCostUSD ?? -1, 2.0, accuracy: 0.001)
     }
 
     func testTodayAggregateNormalizesCumulativeSnapshotsToLatestOnly() {
@@ -185,6 +185,37 @@ final class CacheManagerTests: XCTestCase {
         let agg = cm.todayAggregate(forAccount: accountId)
         XCTAssertEqual(agg.totalInputTokens, 150)
         XCTAssertEqual(agg.totalOutputTokens, 30)
+    }
+
+    func testTodayAggregateNormalizesCodexCumulativeSnapshotsToLatestOnly() {
+        let now = Date()
+        let early = UsageSnapshot(
+            accountId: accountId,
+            timestamp: now.addingTimeInterval(-600),
+            inputTokens: 120,
+            outputTokens: 25,
+            cacheCreationTokens: 0,
+            cacheReadTokens: 40,
+            totalCostUSD: 0,
+            modelBreakdown: [ModelUsage(modelId: "codex-local", inputTokens: 120, outputTokens: 25, cacheTokens: 40, costUSD: 0)],
+            costConfidence: .estimated
+        )
+        let latest = UsageSnapshot(
+            accountId: accountId,
+            timestamp: now,
+            inputTokens: 200,
+            outputTokens: 35,
+            cacheCreationTokens: 0,
+            cacheReadTokens: 55,
+            totalCostUSD: 0,
+            modelBreakdown: [ModelUsage(modelId: "codex-local", inputTokens: 200, outputTokens: 35, cacheTokens: 55, costUSD: 0)],
+            costConfidence: .estimated
+        )
+        cm.save([early, latest])
+        let agg = cm.todayAggregate(forAccount: accountId)
+        XCTAssertEqual(agg.totalInputTokens, 200)
+        XCTAssertEqual(agg.totalOutputTokens, 35)
+        XCTAssertEqual(agg.snapshots.first?.cacheReadTokens, 55)
     }
 
     func testLoadDeduplicatesDeterministicEventKeyAndPrefersBillingGrade() {
@@ -228,7 +259,7 @@ final class CacheManagerTests: XCTestCase {
 
         let loaded = cm.load()
         XCTAssertEqual(loaded.count, 1)
-        XCTAssertEqual(loaded.first?.totalCostUSD, 3.14, accuracy: 0.001)
+        XCTAssertEqual(loaded.first?.totalCostUSD ?? -1, 3.14, accuracy: 0.001)
 
         let migratedData = try Data(contentsOf: url)
         let dec = JSONDecoder(); dec.dateDecodingStrategy = .iso8601
@@ -252,7 +283,7 @@ final class CacheManagerTests: XCTestCase {
         try legacyData.write(to: url, options: .atomic)
 
         let loaded = cm.latestForecast(forAccount: accountId)
-        XCTAssertEqual(loaded?.projectedEOMCostUSD, 3.0, accuracy: 0.001)
+        XCTAssertEqual(loaded?.projectedEOMCostUSD ?? -1, 3.0, accuracy: 0.001)
 
         let migratedData = try Data(contentsOf: url)
         let dec = JSONDecoder(); dec.dateDecodingStrategy = .iso8601

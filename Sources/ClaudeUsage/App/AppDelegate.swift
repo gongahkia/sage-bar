@@ -35,6 +35,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // start log watcher
         ClaudeCodeLogParser.shared.startWatching()
+        CodexLogParser.shared.startWatching()
 
         // start iCloud metadata query
         if config.iCloudSync.enabled {
@@ -49,7 +50,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         updateTimer?.invalidate()
-        HotkeyManager.shared.unregister()
+        HotkeyManager.shared.unregisterAll()
         PollingService.shared.stop()
     }
 }

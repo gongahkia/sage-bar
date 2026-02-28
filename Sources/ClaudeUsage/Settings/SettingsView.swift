@@ -106,6 +106,8 @@ struct AccountsTab: View {
         switch account.type {
         case .claudeCode:
             return "✓ OK (local logs, no API)"
+        case .codex:
+            return "✓ OK (local Codex logs, no API)"
         case .anthropicAPI:
             guard let key = try? KeychainManager.retrieve(service: AppConstants.keychainService, account: account.id.uuidString) else {
                 return "✗ No API key stored"

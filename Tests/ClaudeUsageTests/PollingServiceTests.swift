@@ -108,6 +108,15 @@ final class PollingServiceTests: XCTestCase {
         XCTAssertEqual(latest?.isStale, true, "snapshot should be marked stale when fetchUsage returns nil")
     }
 
+    func testCodexBranchStoresEstimatedSnapshot() async {
+        let account = Account(name: "Codex Local", type: .codex, isActive: true)
+        await PollingService.shared.fetchAndStore(account: account, config: .default)
+        let latest = CacheManager.shared.latest(forAccount: account.id)
+        XCTAssertNotNil(latest, "codex account should persist a snapshot")
+        XCTAssertEqual(latest?.costConfidence, .estimated)
+        XCTAssertEqual(latest?.modelBreakdown.first?.modelId, "codex-local")
+    }
+
     func testAnthropicStartDateFallsBackToLast24HoursWithoutCursor() {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
         let start = PollingService.anthropicStartDate(cursor: nil, now: now)
