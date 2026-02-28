@@ -145,4 +145,38 @@ final class ClaudeCodeLogParserTests: XCTestCase {
         }
         wait(for: [exp], timeout: 5)
     }
+
+    func testAggregateTodayUsesEntryTimestampOverFileModificationDate() throws {
+        let projectsDir = tmpDir.appendingPathComponent("projects")
+        try FileManager.default.createDirectory(at: projectsDir, withIntermediateDirectories: true)
+        let file = projectsDir.appendingPathComponent("session.jsonl")
+        let now = Date()
+        let nowISO = ISO8601DateFormatter().string(from: now)
+        try """
+        {"type":"message","timestamp":"\(nowISO)","usage":{"input_tokens":9,"output_tokens":4}}
+        """.write(to: file, atomically: true, encoding: .utf8)
+        let oldMod = Calendar.current.date(byAdding: .day, value: -1, to: now) ?? now
+        try FileManager.default.setAttributes([.modificationDate: oldMod], ofItemAtPath: file.path)
+
+        let localParser = ClaudeCodeLogParser(claudeDir: tmpDir)
+        let snap = localParser.aggregateToday()
+        XCTAssertEqual(snap.inputTokens, 9)
+        XCTAssertEqual(snap.outputTokens, 4)
+    }
+
+    func testAggregatePeriodUsesEntryTimestampNotFileModificationDate() throws {
+        let projectsDir = tmpDir.appendingPathComponent("projects")
+        try FileManager.default.createDirectory(at: projectsDir, withIntermediateDirectories: true)
+        let file = projectsDir.appendingPathComponent("session.jsonl")
+        let oldEvent = Calendar.current.date(byAdding: .day, value: -3, to: Date()) ?? Date()
+        let oldISO = ISO8601DateFormatter().string(from: oldEvent)
+        try """
+        {"type":"message","timestamp":"\(oldISO)","usage":{"input_tokens":20,"output_tokens":8}}
+        """.write(to: file, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: file.path)
+
+        let localParser = ClaudeCodeLogParser(claudeDir: tmpDir)
+        let snaps = localParser.aggregatePeriod(days: 1)
+        XCTAssertTrue(snaps.isEmpty, "old event timestamp must be excluded even if file mtime is recent")
+    }
 }

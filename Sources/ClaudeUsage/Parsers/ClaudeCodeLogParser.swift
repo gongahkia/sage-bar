@@ -10,6 +10,9 @@ struct ClaudeCodeEntry: Codable {
     var type: String
     var message: ClaudeMessage?
     var usage: ClaudeUsageField?
+    var timestamp: String?
+    var created_at: String?
+    var time: String?
 }
 
 struct ClaudeMessage: Codable {
@@ -35,6 +38,16 @@ class ClaudeCodeLogParser {
     private var debounceWork: DispatchWorkItem?
     private var fallbackTimer: Timer?
     private var lastFSEventDate: Date?
+    private let isoTimestamp: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+    private let isoTimestampNoFraction: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
 
     private init() {
         self.claudeDir = FileManager.default.homeDirectoryForCurrentUser
@@ -98,12 +111,14 @@ class ClaudeCodeLogParser {
         var input = 0, output = 0, cacheCreate = 0, cacheRead = 0
         for url in discoverSessionFiles() {
             let attrs = try? FileManager.default.attributesOfItem(atPath: url.path)
-            guard let mod = attrs?[.modificationDate] as? Date,
-                  cal.dateComponents([.year,.month,.day], from: mod) == todayComps else { continue }
+            let mod = attrs?[.modificationDate] as? Date
             let size = (attrs?[.size] as? Int) ?? -1
+            guard let mod else { continue }
             if let prev = fileChecksums[url], prev.0 == mod, prev.1 == size { continue }
             fileChecksums[url] = (mod, size)
             for entry in parseFile(url) {
+                guard let entryDate = entryTimestamp(entry, fallback: mod),
+                      cal.dateComponents([.year,.month,.day], from: entryDate) == todayComps else { continue }
                 let u = entry.usage ?? entry.message?.usage
                 input += u?.input_tokens ?? 0
                 output += u?.output_tokens ?? 0
@@ -129,10 +144,11 @@ class ClaudeCodeLogParser {
         var dayMap: [DateComponents: (Int,Int,Int,Int)] = [:]
         for url in discoverSessionFiles() {
             let attrs = try? FileManager.default.attributesOfItem(atPath: url.path)
-            let mod = (attrs?[.modificationDate] as? Date) ?? Date()
+            let mod = attrs?[.modificationDate] as? Date
             for entry in parseFile(url) {
                 let u = entry.usage ?? entry.message?.usage
-                let comps = cal.dateComponents([.year,.month,.day], from: mod)
+                guard let eventDate = entryTimestamp(entry, fallback: mod) else { continue }
+                let comps = cal.dateComponents([.year,.month,.day], from: eventDate)
                 let prev = dayMap[comps] ?? (0,0,0,0)
                 dayMap[comps] = (
                     prev.0 + (u?.input_tokens ?? 0),
@@ -219,6 +235,15 @@ class ClaudeCodeLogParser {
         }
         debounceWork = w
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: w)
+    }
+
+    private func entryTimestamp(_ entry: ClaudeCodeEntry, fallback: Date?) -> Date? {
+        for raw in [entry.timestamp, entry.created_at, entry.time].compactMap({ $0 }) {
+            if let parsed = isoTimestamp.date(from: raw) ?? isoTimestampNoFraction.date(from: raw) {
+                return parsed
+            }
+        }
+        return fallback
     }
 }
 
