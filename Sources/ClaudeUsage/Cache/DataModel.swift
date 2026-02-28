@@ -16,6 +16,7 @@ struct UsageSnapshot: Codable {
     var cacheReadTokens: Int
     var totalCostUSD: Double
     var modelBreakdown: [ModelUsage]
+    var isStale: Bool = false
 }
 
 struct DailyAggregate {
