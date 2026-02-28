@@ -150,4 +150,13 @@ class AnthropicAPIClient {
             )
         }
     }
+
+    func cursor(from response: AnthropicUsageResponse) -> AnthropicIngestionCursor? {
+        let latest = response.data.max {
+            if $0.start_time == $1.start_time { return $0.model < $1.model }
+            return $0.start_time < $1.start_time
+        }
+        guard let latest else { return nil }
+        return AnthropicIngestionCursor(lastStartTime: latest.start_time, lastModel: latest.model)
+    }
 }

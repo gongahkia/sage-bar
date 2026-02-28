@@ -125,3 +125,8 @@ struct ModelHint: Codable {
     var estimatedSavingsUSD: Double
     var recommendedModel: String
 }
+
+struct AnthropicIngestionCursor: Codable {
+    var lastStartTime: String
+    var lastModel: String
+}

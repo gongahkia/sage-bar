@@ -128,9 +128,13 @@ class PollingService: ObservableObject {
             }
             do {
                 // Anthropic Usage API remains the canonical billing source for anthropicAPI accounts.
-                let snapshots = try await fetchAnthropicCanonicalSnapshots(accountId: account.id, apiKey: key)
+                let result = try await fetchAnthropicCanonicalSnapshots(accountId: account.id, apiKey: key)
+                let snapshots = result.snapshots
                 for snap in snapshots {
                     CacheManager.shared.append(snap)
+                }
+                if let cursor = result.cursor {
+                    CacheManager.shared.saveAnthropicCursor(cursor, forAccount: account.id)
                 }
             } catch APIError.invalidKey {
                 let msg = "Invalid API key for account \(account.id.uuidString)"
@@ -216,12 +220,12 @@ class PollingService: ObservableObject {
         }
     }
 
-    private func fetchAnthropicCanonicalSnapshots(accountId: UUID, apiKey: String) async throws -> [UsageSnapshot] {
+    private func fetchAnthropicCanonicalSnapshots(accountId: UUID, apiKey: String) async throws -> (snapshots: [UsageSnapshot], cursor: AnthropicIngestionCursor?) {
         let client = AnthropicAPIClient(apiKey: apiKey)
         let end = Date()
         let start = Calendar.current.date(byAdding: .day, value: -1, to: end)!
         let response = try await client.fetchUsage(startDate: start, endDate: end)
-        return client.convertToSnapshots(response, accountId: accountId)
+        return (client.convertToSnapshots(response, accountId: accountId), client.cursor(from: response))
     }
 }
 

@@ -7,6 +7,7 @@ class CacheManager {
     static let shared = CacheManager()
     private let cacheFile: URL
     private let forecastFile: URL
+    private let anthropicCursorFile: URL
     private let coordinator = NSFileCoordinator()
     private let queue = DispatchQueue(label: "dev.claudeusage.cache", qos: .utility)
     private static let retentionDays = 30
@@ -16,6 +17,7 @@ class CacheManager {
         try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
         self.cacheFile = base.appendingPathComponent("usage_cache.json")
         self.forecastFile = base.appendingPathComponent("forecast_cache.json")
+        self.anthropicCursorFile = base.appendingPathComponent("anthropic_cursors.json")
     }
 
     // MARK: – UsageSnapshot
@@ -136,6 +138,35 @@ class CacheManager {
             }
         } catch {
             ErrorLogger.shared.log("Forecast encode failed: \(error.localizedDescription)")
+        }
+    }
+
+    // MARK: - Anthropic cursor
+
+    func loadAnthropicCursor(forAccount id: UUID) -> AnthropicIngestionCursor? {
+        guard let data = try? Data(contentsOf: anthropicCursorFile) else { return nil }
+        let dec = JSONDecoder()
+        guard let all = try? dec.decode([String: AnthropicIngestionCursor].self, from: data) else {
+            ErrorLogger.shared.log("Anthropic cursor decode failed")
+            return nil
+        }
+        return all[id.uuidString]
+    }
+
+    func saveAnthropicCursor(_ cursor: AnthropicIngestionCursor, forAccount id: UUID) {
+        queue.async {
+            var all: [String: AnthropicIngestionCursor] = [:]
+            if let data = try? Data(contentsOf: self.anthropicCursorFile),
+               let decoded = try? self.decoder().decode([String: AnthropicIngestionCursor].self, from: data) {
+                all = decoded
+            }
+            all[id.uuidString] = cursor
+            do {
+                let data = try self.encoder().encode(all)
+                try data.write(to: self.anthropicCursorFile, options: .atomic)
+            } catch {
+                ErrorLogger.shared.log("Anthropic cursor write failed: \(error.localizedDescription)")
+            }
         }
     }
 }

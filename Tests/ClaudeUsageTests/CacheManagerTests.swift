@@ -88,4 +88,15 @@ final class CacheManagerTests: XCTestCase {
         let dec = JSONDecoder(); dec.dateDecodingStrategy = .iso8601
         XCTAssertNoThrow(try dec.decode([UsageSnapshot].self, from: data), "concurrent appends must not corrupt JSON")
     }
+
+    func testSaveAndLoadAnthropicCursorPerAccount() {
+        let cursor = AnthropicIngestionCursor(lastStartTime: "2026-02-28T00:00:00Z", lastModel: "claude-sonnet-4-6")
+        cm.saveAnthropicCursor(cursor, forAccount: accountId)
+        let exp = expectation(description: "cursor write")
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.3) { exp.fulfill() }
+        wait(for: [exp], timeout: 2)
+        let loaded = cm.loadAnthropicCursor(forAccount: accountId)
+        XCTAssertEqual(loaded?.lastStartTime, cursor.lastStartTime)
+        XCTAssertEqual(loaded?.lastModel, cursor.lastModel)
+    }
 }
