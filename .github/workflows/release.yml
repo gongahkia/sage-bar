@@ -56,7 +56,9 @@ jobs:
           DEVELOPER_ID_APPLICATION: ${{ secrets.DEVELOPER_ID_APPLICATION }}
         run: |
           xcrun codesign --force --deep --sign "$DEVELOPER_ID_APPLICATION" \
-            --options runtime ClaudeUsage.app
+            --options runtime \
+            --entitlements ClaudeUsage.entitlements \
+            ClaudeUsage.app
 
       - name: Create DMG
         run: |
