@@ -1,0 +1,94 @@
+(B) Update FSEventStream path list in ClaudeCodeLogParser to enumerate and watch each project subdirectory individually, not only the parent projects/ dir +fix
+(B) Add a 60-second repeating Timer fallback in ClaudeCodeLogParser that rescans all .jsonl files when no FSEvent has fired in the last interval +feature
+(B) Add test in ClaudeCodeLogParserTests: write a .jsonl file two levels deep under a temp projects/ dir and assert FSEvent callback fires +testing
+(B) Add test in ClaudeCodeLogParserTests: disable FSEvents watcher, wait 61 seconds, assert fallback timer triggered rescan and returned correct token totals +testing
+(B) Add test in ClaudeCodeLogParserTests: malformed (non-JSON) line in .jsonl is skipped and parsing continues to next line without crash +testing
+(B) Add test in ClaudeCodeLogParserTests: .jsonl file exceeding 50MB size cap is skipped and an error is logged via ErrorLogger +testing
+(B) Add test in ClaudeCodeLogParserTests: empty .jsonl file returns a zero-token ModelUsage result without crash +testing
+(B) Implement ClaudeAIClient.fetchUsage() using the claude.ai internal session API to retrieve daily messages used and messages remaining +feature
+(B) Implement session cookie extraction in ClaudeAIClient: read sessionKey from user-provided string in config (claude_ai.session_cookie field in TOML) +feature
+(B) Add claude_ai.session_cookie optional String field to SubConfigs.swift ClaudeAIConfig and wire it through ConfigManager TOML load/save +feature
+(B) Implement claudeAI case in PollingService.fetchAndStore(): call ClaudeAIClient.fetchUsage() and store resulting UsageSnapshot in CacheManager +feature
+(B) Add fallback in PollingService claudeAI case: on network error or HTTP non-200, retrieve last cached snapshot for that account and set isStale=true before storing +feature
+(B) Add isStale: Bool field to UsageSnapshot in DataModel.swift with default false; update all init sites +refactor
+(B) Show stale data badge in MenuBarPopoverView when the active account's most recent snapshot has isStale=true (e.g., "(stale)" suffix on last-synced label) +feature
+(B) Add test: ClaudeAIClient.fetchUsage() with a mocked 200 response containing valid JSON returns correct messagesRemaining and messagesUsed values +testing
+(B) Add test: ClaudeAIClient.fetchUsage() with mocked network error returns nil and does not throw unhandled exception +testing
+(B) Add test: PollingService claudeAI branch stores a snapshot with isStale=true in CacheManager when ClaudeAIClient returns nil +testing
+(B) Define AutomationAction enum in AutomationEngine.swift with cases: osascript(script: String), openURL(url: String), say(text: String), afplay(path: String), notification(title: String, body: String), httpGet(url: String) +security
+(B) Add static func AutomationAction.parse(commandString: String) -> AutomationAction? that maps allowlisted command prefix (osascript/open/say/afplay/terminal-notifier/curl) to the correct enum case +security
+(B) Rewrite AutomationEngine.fire(rule:snapshot:) to switch on AutomationAction, calling Process with explicit executableURL and arguments array, no /bin/sh -c +security
+(B) For AutomationAction.osascript: set Process executableURL = URL(fileURLWithPath: "/usr/bin/osascript") and pass script via -e argument directly +security
+(B) For AutomationAction.openURL: call NSWorkspace.shared.open(URL(string: url)) directly without Process +security
+(B) For AutomationAction.say: set Process executableURL = URL(fileURLWithPath: "/usr/bin/say") and pass text as single argument +security
+(B) For AutomationAction.afplay: set Process executableURL = URL(fileURLWithPath: "/usr/bin/afplay"), validate path starts with FileManager.default.homeDirectoryForCurrentUser before executing +security
+(B) For AutomationAction.httpGet: set Process executableURL = URL(fileURLWithPath: "/usr/bin/curl"), pass URL as sole argument with no additional flags allowed +security
+(B) For AutomationAction.notification: call UNUserNotificationCenter.current().add(UNNotificationRequest) directly without Process +security
+(B) Remove the regex injection denylist array and all associated string-scanning code from AutomationEngine after enum rewrite is complete +security
+(B) Add test in AutomationEngineFireTests: each AutomationAction case results in Process being launched with the correct executableURL path +testing
+(B) Add test in AutomationEngineFireTests: AutomationAction.parse() returns nil for unknown command string (e.g., "rm -rf /") +testing
+(B) Add test in AutomationEngineEvaluateTests: command string containing shell metacharacters (&&, ;, $(), backtick) fails AutomationAction.parse() and returns nil +testing
+(B) Remove Carbon HIToolbox import from HotkeyManager.swift and delete all EventHotKeyID/RegisterEventHotKey/UnregisterEventHotKey call sites +fix
+(B) Implement CGEventTap in HotkeyManager using CGEvent.tapCreate(tap:place:options:eventsOfInterest:callback:userInfo:) to intercept keyDown events globally +feature
+(B) Define HotkeyBinding struct in HotkeyManager.swift: id: String, keyCode: CGKeyCode, modifiers: CGEventFlags, handler: () -> Void +refactor
+(B) Refactor HotkeyManager to maintain var bindings: [HotkeyBinding] and match incoming CGEvent against each binding's keyCode+modifiers before firing handler +feature
+(B) Implement chord sequence support in HotkeyManager: store lastKeyEvent: (keyCode, timestamp); if second key arrives within 500ms and matches a registered chord binding, fire that binding's handler +feature
+(B) Add HotkeyConfig struct to SubConfigs.swift: primaryKeyCode: Int, primaryModifiers: [String], chordEnabled: Bool, chordSecondaryKeyCode: Int +feature
+(B) Wire HotkeyConfig through ConfigManager TOML load/save including default values (e.g., Cmd+Shift+U, chord disabled) +feature
+(B) Add hotkey recorder control in SettingsView that captures the next local key event via NSEvent.addLocalMonitorForEvents, displays the binding as a label, and saves to HotkeyConfig on confirm +feature
+(B) Create HotkeyManagerTests.swift; add test: registering two distinct bindings does not cause either handler to fire incorrectly when the other's keys are pressed +testing
+(B) Add test in HotkeyManagerTests: chord binding fires only when second key is pressed within 500ms of first key +testing
+(B) Add test in HotkeyManagerTests: chord binding does NOT fire when second key arrives more than 500ms after first key +testing
+(B) Replace all try? expressions in PollingService with try/catch blocks; in each catch block call ErrorLogger.shared.log(error.localizedDescription, file: #file, line: #line) +observability
+(B) Add @Published var lastFetchError: String? to PollingService and set it inside each catch block, clearing it to nil on successful fetch +observability
+(B) Create PollingServiceTests.swift; add test: mock fetch that throws causes ErrorLogger.shared.lastError to be non-nil after poll completes +testing
+(B) Add test in PollingServiceTests: when NWPathMonitor reports unsatisfied path, poll is skipped and ErrorLogger receives no entries +testing
+(B) Add test in PollingServiceTests: three accounts fetched concurrently all write distinct snapshots to CacheManager without data race (run with Thread Sanitizer enabled) +testing
+(B) Add PriceEntry struct validation in AnthropicAPIClient.loadPrices(): for each decoded entry assert inputPer1M > 0 and outputPer1M > 0, log warning via ErrorLogger for any invalid entry +fix
+(B) Call ErrorLogger.shared.log() with the model name when AnthropicAPIClient.cost(for:) is called with a model key absent from the loaded prices dict +observability
+(B) Add claude-3-5-haiku entry to prices.json with inputPer1M and outputPer1M values matching official Anthropic pricing page at time of next release +fix
+(B) Add claude-3-sonnet entry to prices.json if not present, matching official Anthropic pricing page +fix
+(B) Add test in AnthropicAPIClientTests: loadPrices() with a prices.json containing one entry where inputPer1M = 0 logs a warning but does not crash +testing
+(B) Add test in AnthropicAPIClientTests: loadPrices() with a malformed (invalid JSON) prices.json throws DecodingError and logs via ErrorLogger +testing
+(B) Add test in WebhookServiceTests: a 503 response triggers a retry and the request is attempted exactly (maxRetries+1) times total +testing
+(B) Add test in WebhookServiceTests: URLSession timeout (mock via URLProtocol) results in an error logged via ErrorLogger, not a silent failure +testing
+(B) Add test in WebhookServiceTests: a webhook URL missing the https:// scheme is rejected at config validation before any network call is made +testing
+(B) Add test in ForecastEngineTests: input with all-zero UsageSnapshots returns ForecastSnapshot where eodCost == 0, eowCost == 0, eomCost == 0 +testing
+(B) Add test in ForecastEngineTests: input with a single UsageSnapshot extrapolates eodCost proportionally to remaining hours in the day +testing
+(B) Add test in ForecastEngineTests: burn rate value decreases when second half of day snapshots show lower spend than first half +testing
+(B) Add test in iCloudSyncManagerTests: when remote file has a newer modificationDate than local, sync overwrites local with remote content +testing
+(B) Add test in iCloudSyncManagerTests: sync attempt with NWPath unsatisfied completes without crash and local data is unchanged +testing
+(B) Add test in CacheManagerTests: JSON written by the ClaudeUsage app target is readable via the same shared AppGroup container path used by ClaudeUsageCLI target +testing
+(B) Add test in CacheManagerTests: appending a snapshot older than 30 days triggers the retention rotation and that snapshot is absent from the result +testing
+(B) Add test in CacheManagerTests: two concurrent DispatchQueue.async append calls complete without corrupting the JSON file (validate via JSONDecoder after both complete) +testing
+(B) Add test in ConfigManagerTests: TOML file missing all optional fields (webhooks, sparkline, forecast) loads successfully using default struct values +testing
+(B) Add test in ConfigManagerTests: atomic write is verified by simulating a write error mid-operation, original config file must remain intact and readable +testing
+(B) Add test in KeychainManagerTests: store then retrieve API key round-trip returns identical string +testing
+(B) Add test in KeychainManagerTests: calling delete on a key that was never stored completes without throwing or crashing +testing
+(B) Add test in AnalyticsEngineTests: weekly aggregate correctly sums all daily snapshot costs across 7 DailyAggregate entries +testing
+(B) Add test in ModelOptimizerAnalyzerTests: when cost delta between current model and a cheaper available model exceeds the configured threshold, a ModelHint is returned +testing
+(B) Add --parallel flag to swift test invocation in ci.yml to parallelize test execution across available cores +infra
+(B) Add a build matrix in ci.yml with two jobs: one on macos-14 (arm64) and one on macos-13 (x86_64), both running swift build and swift test +infra
+(B) Add a step in ci.yml before swift build that runs python3 -c "import json,sys; json.load(open('Sources/ClaudeUsage/Resources/prices.json'))" and fails the job if prices.json is not valid JSON +infra
+(B) Add swift-format lint step to ci.yml: install via Homebrew and run swift-format lint --recursive Sources/ Tests/, fail job on any output +infra
+(B) Add a step in release.yml that runs swift test before the build step; if tests fail the release job exits with error before any binary is built +infra
+(B) Add a step in release.yml that asserts the git tag (e.g., v1.2.0) matches the CFBundleShortVersionString value in Sources/ClaudeUsage/Resources/Info.plist +infra
+(B) Add per-model cost breakdown section in MenuBarPopoverView: a collapsible list showing each model's display name, total tokens (input+output), and computed cost for the current period +feature
+(B) Show per-account last-fetch timestamp in MenuBarPopoverView for each account row formatted as relative time (e.g., "2m ago"), not only the global last-synced line +feature
+(B) Add Cmd+R keyboard shortcut handler inside MenuBarPopoverView that calls PollingService.shared.pollNow() to trigger an immediate manual refresh +feature
+(B) Add --models flag to ClaudeUsageCLI main.swift that reads the cache and prints a table of each model name with total input tokens, output tokens, and estimated cost +feature
+(B) Add --since DATE flag (ISO8601 date string) to ClaudeUsageCLI main.swift that filters all history and heatmap output to snapshots on or after that date +feature
+(B) Add --watch N flag to ClaudeUsageCLI main.swift that re-renders the TUI output every N seconds (default 30) using a RunLoop-based timer until Ctrl-C +feature
+(B) Ensure --forecast --format json in ClaudeUsageCLI main.swift outputs ForecastSnapshot as valid JSON to stdout; add the missing branch if not currently handled +fix
+(B) Add ErrorLogger.clearLog() method that truncates errors.log to zero bytes; wire it to a "Clear Errors" button in DiagnosticsView +observability
+(B) Create ErrorLoggerTests.swift; add test: writing entries until file exceeds 1MB triggers log rotation and the new file contains only the most recent 500 lines +testing
+(B) Add test in ErrorLoggerTests: clearLog() results in an empty errors.log file of 0 bytes +testing
+(B) Add costLimitUSD > 0 validation in Account.swift init; if value is 0 or negative call ErrorLogger.shared.log() with a descriptive warning +fix
+(B) Add "Test Connection" button per account row in SettingsView that calls the appropriate API client fetch method once and displays "OK" or the error message inline below the button +feature
+(B) Add cacheTokens: Int field (default 0) to ModelUsage in DataModel.swift to track prompt cache read and write tokens separately from regular input tokens +refactor
+(B) Update AnthropicAPIClient response decoding to populate ModelUsage.cacheTokens from cache_read_input_tokens + cache_creation_input_tokens fields in the API response +refactor
+(B) Update ClaudeCodeLogParser JSONL parsing to read cache_read_input_tokens and cache_creation_input_tokens from ClaudeUsageField and sum them into ModelUsage.cacheTokens +refactor
+(B) Update cost calculation in AnthropicAPIClient to apply cache token pricing: cache reads at 10% of inputPer1M rate using ModelUsage.cacheTokens +fix
+(B) Add GetCurrentUsage AppIntent in AppIntents.swift returning a struct with totalInputTokens, totalOutputTokens, totalCostUSD, accountName for the currently active account +feature
+(B) Add TriggerPoll AppIntent in AppIntents.swift that calls PollingService.shared.pollNow() asynchronously and returns a Bool indicating whether the poll completed without error +feature
+(B) Update ClaudeUsage.sdef to declare getCurrentUsage and triggerPoll AppleScript commands matching the new AppIntents with correct return type annotations +feature
