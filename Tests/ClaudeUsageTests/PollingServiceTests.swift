@@ -106,4 +106,19 @@ final class PollingServiceTests: XCTestCase {
         let latest = CacheManager.shared.latest(forAccount: testAccount.id)
         XCTAssertEqual(latest?.isStale, true, "snapshot should be marked stale when fetchUsage returns nil")
     }
+
+    func testAnthropicStartDateFallsBackToLast24HoursWithoutCursor() {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let start = PollingService.anthropicStartDate(cursor: nil, now: now)
+        XCTAssertEqual(start.timeIntervalSince(now), -86_400, accuracy: 1)
+    }
+
+    func testAnthropicStartDateUsesCursorDayBoundary() {
+        let cursor = AnthropicIngestionCursor(lastStartTime: "2026-02-20T15:42:00Z", lastModel: "claude-sonnet-4-6")
+        let start = PollingService.anthropicStartDate(cursor: cursor, now: Date())
+        let comps = Calendar.current.dateComponents([.hour, .minute, .second], from: start)
+        XCTAssertEqual(comps.hour, 0)
+        XCTAssertEqual(comps.minute, 0)
+        XCTAssertEqual(comps.second, 0)
+    }
 }

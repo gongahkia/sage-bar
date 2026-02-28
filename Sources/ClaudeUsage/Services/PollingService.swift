@@ -223,9 +223,17 @@ class PollingService: ObservableObject {
     private func fetchAnthropicCanonicalSnapshots(accountId: UUID, apiKey: String) async throws -> (snapshots: [UsageSnapshot], cursor: AnthropicIngestionCursor?) {
         let client = AnthropicAPIClient(apiKey: apiKey)
         let end = Date()
-        let start = Calendar.current.date(byAdding: .day, value: -1, to: end)!
+        let cursor = CacheManager.shared.loadAnthropicCursor(forAccount: accountId)
+        let start = Self.anthropicStartDate(cursor: cursor, now: end)
         let response = try await client.fetchUsage(startDate: start, endDate: end)
         return (client.convertToSnapshots(response, accountId: accountId), client.cursor(from: response))
+    }
+
+    static func anthropicStartDate(cursor: AnthropicIngestionCursor?, now: Date = Date()) -> Date {
+        let fallback = Calendar.current.date(byAdding: .day, value: -1, to: now) ?? now
+        guard let raw = cursor?.lastStartTime else { return fallback }
+        guard let ts = ISO8601DateFormatter().date(from: raw) else { return fallback }
+        return Calendar.current.startOfDay(for: ts)
     }
 }
 
