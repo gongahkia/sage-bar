@@ -133,4 +133,34 @@ final class CacheManagerTests: XCTestCase {
         XCTAssertEqual(loaded.count, 1)
         XCTAssertEqual(loaded.first?.totalCostUSD, 2.0, accuracy: 0.001)
     }
+
+    func testTodayAggregateNormalizesCumulativeSnapshotsToLatestOnly() {
+        let now = Date()
+        let early = UsageSnapshot(
+            accountId: accountId,
+            timestamp: now.addingTimeInterval(-600),
+            inputTokens: 100,
+            outputTokens: 20,
+            cacheCreationTokens: 0,
+            cacheReadTokens: 0,
+            totalCostUSD: 0,
+            modelBreakdown: [ModelUsage(modelId: "claude-code-local", inputTokens: 100, outputTokens: 20, costUSD: 0)],
+            costConfidence: .estimated
+        )
+        let latest = UsageSnapshot(
+            accountId: accountId,
+            timestamp: now,
+            inputTokens: 150,
+            outputTokens: 30,
+            cacheCreationTokens: 0,
+            cacheReadTokens: 0,
+            totalCostUSD: 0,
+            modelBreakdown: [ModelUsage(modelId: "claude-code-local", inputTokens: 150, outputTokens: 30, costUSD: 0)],
+            costConfidence: .estimated
+        )
+        cm.save([early, latest])
+        let agg = cm.todayAggregate(forAccount: accountId)
+        XCTAssertEqual(agg.totalInputTokens, 150)
+        XCTAssertEqual(agg.totalOutputTokens, 30)
+    }
 }

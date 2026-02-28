@@ -117,11 +117,11 @@ class CacheManager {
     func todayAggregate(forAccount id: UUID) -> DailyAggregate {
         let cal = Calendar.current
         let today = cal.dateComponents([.year,.month,.day], from: Date())
-        let snaps = load().filter {
+        let raw = load().filter {
             $0.accountId == id &&
             cal.dateComponents([.year,.month,.day], from: $0.timestamp) == today
         }
-        return DailyAggregate(date: today, snapshots: snaps)
+        return DailyAggregate(date: today, snapshots: normalizeDailySnapshots(raw))
     }
 
     // MARK: – ForecastSnapshot
@@ -196,5 +196,23 @@ class CacheManager {
     private func anthropicKey(for snapshot: UsageSnapshot) -> String {
         let model = snapshot.modelBreakdown.first?.modelId ?? ""
         return "\(snapshot.accountId.uuidString)|\(snapshot.timestamp.ISO8601Format())|\(model)"
+    }
+
+    private func normalizeDailySnapshots(_ snapshots: [UsageSnapshot]) -> [UsageSnapshot] {
+        let cumulativeModels: Set<String> = ["claude-code-local", "claude-ai-web"]
+        var eventSnapshots: [UsageSnapshot] = []
+        var cumulativeSnapshots: [UsageSnapshot] = []
+        for snap in snapshots {
+            let model = snap.modelBreakdown.first?.modelId ?? ""
+            if cumulativeModels.contains(model) {
+                cumulativeSnapshots.append(snap)
+            } else {
+                eventSnapshots.append(snap)
+            }
+        }
+        if let latestCumulative = cumulativeSnapshots.max(by: { $0.timestamp < $1.timestamp }) {
+            eventSnapshots.append(latestCumulative)
+        }
+        return eventSnapshots
     }
 }
