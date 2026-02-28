@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import OSLog
+import CryptoKit
 
 private let log = Logger(subsystem: "dev.claudeusage", category: "iCloudSync")
 
@@ -24,6 +25,7 @@ class iCloudSyncManager: ObservableObject {
     private var metadataQuery: NSMetadataQuery?
     private let coordinator = NSFileCoordinator()
     private let coordTimeout: TimeInterval = 5
+    private let lastSyncPayloadHashKey = "lastCloudSyncPayloadHash"
 
     private init() {}
 
@@ -70,7 +72,14 @@ class iCloudSyncManager: ObservableObject {
         CacheManager.shared.save(merged)
         let enc = JSONEncoder(); enc.dateEncodingStrategy = .iso8601
         guard let data = try? enc.encode(UsageCachePayload(snapshots: merged)) else { return }
-        await writeWithBackoff(data: data, to: remoteURL)
+        let hash = contentHash(for: data)
+        if UserDefaults.standard.string(forKey: lastSyncPayloadHashKey) == hash {
+            log.debug("iCloud sync write skipped: payload hash unchanged")
+            return
+        }
+        if await writeWithBackoff(data: data, to: remoteURL) {
+            UserDefaults.standard.set(hash, forKey: lastSyncPayloadHashKey)
+        }
     }
 
     /// dedup by deterministic event key: accountId + timestamp + modelId + sourceType
@@ -145,16 +154,22 @@ class iCloudSyncManager: ObservableObject {
         }.value
     }
 
-    private func writeWithBackoff(data: Data, to url: URL) async {
+    private func writeWithBackoff(data: Data, to url: URL) async -> Bool {
         let delays: [UInt64] = [1_000_000_000, 2_000_000_000, 4_000_000_000] // 1s, 2s, 4s
         for (i, delay) in delays.enumerated() {
-            if await coordinateWrite(data: data, to: url) { return }
+            if await coordinateWrite(data: data, to: url) { return true }
             if i < delays.count - 1 {
                 try? await Task.sleep(nanoseconds: delay)
             } else {
                 ErrorLogger.shared.log("iCloud sync write failed after \(delays.count) retries")
             }
         }
+        return false
+    }
+
+    internal func contentHash(for data: Data) -> String {
+        let digest = SHA256.hash(data: data)
+        return digest.map { String(format: "%02x", $0) }.joined()
     }
 
     private func mergeKey(for snapshot: UsageSnapshot) -> String {

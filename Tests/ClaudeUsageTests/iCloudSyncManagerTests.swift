@@ -70,4 +70,12 @@ final class iCloudSyncManagerTests: XCTestCase {
         let post = CacheManager.shared.load().filter { $0.accountId == accountId }
         XCTAssertEqual(post.first?.inputTokens, 77, "local data must be unchanged when iCloud unavailable")
     }
+
+    func testContentHashIsDeterministicAndChangesWithContent() {
+        let a = Data("same".utf8)
+        let b = Data("same".utf8)
+        let c = Data("different".utf8)
+        XCTAssertEqual(mgr.contentHash(for: a), mgr.contentHash(for: b))
+        XCTAssertNotEqual(mgr.contentHash(for: a), mgr.contentHash(for: c))
+    }
 }
