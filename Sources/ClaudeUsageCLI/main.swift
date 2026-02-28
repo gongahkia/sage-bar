@@ -1,5 +1,6 @@
 import Foundation
 import ClaudeUsageCore
+import TOMLKit
 
 // MARK: – Shared container path (mirrors AppConstants)
 let appGroup = "group.dev.claudeusage"
@@ -18,6 +19,15 @@ private func pad(_ value: String, width: Int) -> String {
     let clipped = value.count > width ? String(value.prefix(width)) : value
     if clipped.count >= width { return clipped }
     return clipped + String(repeating: " ", count: width - clipped.count)
+}
+
+private func loadConfigJSONObject(from file: URL) -> [String: Any]? {
+    guard let raw = try? String(contentsOf: file, encoding: .utf8) else { return nil }
+    guard let table = try? TOMLTable(string: raw) else { return nil }
+    let json = table.convert(to: .json)
+    guard let data = json.data(using: .utf8),
+          let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return nil }
+    return obj
 }
 
 // MARK: – Version
@@ -77,8 +87,7 @@ while let arg = iter.next() {
 
 if showConfig {
     let cfgPath = configDir.appendingPathComponent("config.toml")
-    if let raw = try? Data(contentsOf: cfgPath),
-       var obj = (try? JSONSerialization.jsonObject(with: raw)) as? [String: Any] {
+    if var obj = loadConfigJSONObject(from: cfgPath) {
         if var wh = obj["webhook"] as? [String: Any], let url = wh["url"] as? String, !url.isEmpty {
             wh["url"] = "***"; obj["webhook"] = wh
         }
