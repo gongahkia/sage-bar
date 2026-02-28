@@ -36,6 +36,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // start log watcher
         ClaudeCodeLogParser.shared.startWatching()
         CodexLogParser.shared.startWatching()
+        GeminiLogParser.shared.startWatching()
 
         // start iCloud metadata query
         if config.iCloudSync.enabled {

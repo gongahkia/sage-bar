@@ -192,7 +192,7 @@ struct MenuBarPopoverView: View {
         if let latest = CacheManager.shared.latest(forAccount: account.id) {
             return latest.costConfidence == .billingGrade ? "Billing-grade" : "Estimated"
         }
-        return account.type == .anthropicAPI ? "Billing-grade" : "Estimated"
+        return (account.type == .anthropicAPI || account.type == .openAIOrg) ? "Billing-grade" : "Estimated"
     }
 
     // MARK: – Re-auth banner

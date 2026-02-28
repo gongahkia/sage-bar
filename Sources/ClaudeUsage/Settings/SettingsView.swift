@@ -108,6 +108,29 @@ struct AccountsTab: View {
             return "✓ OK (local logs, no API)"
         case .codex:
             return "✓ OK (local Codex logs, no API)"
+        case .gemini:
+            return "✓ OK (local Gemini CLI logs, no API)"
+        case .openAIOrg:
+            guard let raw = try? KeychainManager.retrieve(service: AppConstants.keychainService, account: account.id.uuidString),
+                  let adminKey = ProviderCredentialCodec.openAIAdminKey(from: raw) else {
+                return "✗ No OpenAI admin key stored"
+            }
+            let client = OpenAIOrgUsageClient(adminAPIKey: adminKey)
+            return await client.validateAccess() ? "✓ OK" : "✗ Fetch failed (check admin key/org permissions)"
+        case .windsurfEnterprise:
+            guard let raw = try? KeychainManager.retrieve(service: AppConstants.keychainService, account: account.id.uuidString),
+                  let payload = ProviderCredentialCodec.windsurf(from: raw) else {
+                return "✗ Missing Windsurf service key payload"
+            }
+            let client = WindsurfEnterpriseClient(serviceKey: payload.serviceKey, groupName: payload.groupName)
+            return await client.validateAccess() ? "✓ OK" : "✗ Fetch failed (check service key/group)"
+        case .githubCopilot:
+            guard let raw = try? KeychainManager.retrieve(service: AppConstants.keychainService, account: account.id.uuidString),
+                  let payload = ProviderCredentialCodec.copilot(from: raw) else {
+                return "✗ Missing GitHub Copilot token/org payload"
+            }
+            let client = GitHubCopilotMetricsClient(token: payload.token, organization: payload.organization)
+            return await client.validateAccess() ? "✓ OK" : "✗ Fetch failed (check token scope/org access)"
         case .anthropicAPI:
             guard let key = try? KeychainManager.retrieve(service: AppConstants.keychainService, account: account.id.uuidString) else {
                 return "✗ No API key stored"
@@ -138,6 +161,11 @@ struct AddAccountSheet: View {
     @State private var type: AccountType = .claudeCode
     @State private var apiKey = ""
     @State private var sessionToken = ""
+    @State private var openAIAdminKey = ""
+    @State private var windsurfServiceKey = ""
+    @State private var windsurfGroupName = ""
+    @State private var githubToken = ""
+    @State private var githubOrganization = ""
     @State private var validating = false
     @State private var validationError: String?
 
@@ -156,6 +184,32 @@ struct AddAccountSheet: View {
                     Text(err).foregroundColor(.red).font(.caption)
                 }
             }
+            if type == .openAIOrg {
+                SecureField("OpenAI Admin Key", text: $openAIAdminKey)
+                Text("Requires an OpenAI admin key with organization usage/cost API access.")
+                    .font(.caption).foregroundColor(.secondary)
+                if let err = validationError {
+                    Text(err).foregroundColor(.red).font(.caption)
+                }
+            }
+            if type == .windsurfEnterprise {
+                SecureField("Windsurf Service Key", text: $windsurfServiceKey)
+                TextField("Group Name (optional)", text: $windsurfGroupName)
+                Text("Uses Windsurf enterprise analytics + team credit balance APIs.")
+                    .font(.caption).foregroundColor(.secondary)
+                if let err = validationError {
+                    Text(err).foregroundColor(.red).font(.caption)
+                }
+            }
+            if type == .githubCopilot {
+                SecureField("GitHub Token", text: $githubToken)
+                TextField("GitHub Organization", text: $githubOrganization)
+                Text("Token needs org Copilot metrics access (`read:org` or `read:enterprise`).")
+                    .font(.caption).foregroundColor(.secondary)
+                if let err = validationError {
+                    Text(err).foregroundColor(.red).font(.caption)
+                }
+            }
             if type == .claudeAI {
                 SecureField("Session Token (from claude.ai cookie)", text: $sessionToken)
                 Text("To get your session token: open claude.ai in browser → DevTools (⌥⌘I) → Application → Cookies → copy the value of 'sessionKey'.")
@@ -165,12 +219,13 @@ struct AddAccountSheet: View {
                 Spacer()
                 Button("Cancel") { dismiss() }
                 Button("Save") { save() }
-                    .disabled(name.isEmpty || (type == .anthropicAPI && apiKey.isEmpty) || (type == .claudeAI && sessionToken.isEmpty))
+                    .disabled(name.isEmpty || !canSave)
             }
         }.padding().frame(width: 360)
     }
 
     private func save() {
+        validationError = nil
         if type == .claudeAI {
             let a = Account(name: name, type: type)
             if !sessionToken.isEmpty {
@@ -178,6 +233,70 @@ struct AddAccountSheet: View {
             }
             onSave(a, nil)
             dismiss()
+            return
+        }
+        if type == .openAIOrg {
+            validating = true
+            Task {
+                let client = OpenAIOrgUsageClient(adminAPIKey: openAIAdminKey)
+                let valid = await client.validateAccess()
+                await MainActor.run {
+                    validating = false
+                    if valid {
+                        let payload = ProviderCredentialCodec.encodeOpenAI(OpenAIOrgCredentialPayload(adminKey: openAIAdminKey))
+                        let a = Account(name: name, type: type)
+                        onSave(a, payload)
+                        dismiss()
+                    } else {
+                        validationError = "Invalid OpenAI admin key or insufficient org permissions"
+                    }
+                }
+            }
+            return
+        }
+        if type == .windsurfEnterprise {
+            validating = true
+            Task {
+                let client = WindsurfEnterpriseClient(serviceKey: windsurfServiceKey, groupName: windsurfGroupName)
+                let valid = await client.validateAccess()
+                await MainActor.run {
+                    validating = false
+                    if valid {
+                        let payload = ProviderCredentialCodec.encodeWindsurf(
+                            WindsurfEnterpriseCredentialPayload(
+                                serviceKey: windsurfServiceKey,
+                                groupName: windsurfGroupName
+                            )
+                        )
+                        let a = Account(name: name, type: type)
+                        onSave(a, payload)
+                        dismiss()
+                    } else {
+                        validationError = "Invalid Windsurf service key or group access"
+                    }
+                }
+            }
+            return
+        }
+        if type == .githubCopilot {
+            validating = true
+            Task {
+                let client = GitHubCopilotMetricsClient(token: githubToken, organization: githubOrganization)
+                let valid = await client.validateAccess()
+                await MainActor.run {
+                    validating = false
+                    if valid {
+                        let payload = ProviderCredentialCodec.encodeCopilot(
+                            GitHubCopilotCredentialPayload(token: githubToken, organization: githubOrganization)
+                        )
+                        let a = Account(name: name, type: type)
+                        onSave(a, payload)
+                        dismiss()
+                    } else {
+                        validationError = "Invalid GitHub token/org, or Copilot metrics access not enabled"
+                    }
+                }
+            }
             return
         }
         if type == .anthropicAPI {
@@ -199,6 +318,24 @@ struct AddAccountSheet: View {
         } else {
             onSave(Account(name: name, type: type), nil)
             dismiss()
+        }
+    }
+
+    private var canSave: Bool {
+        switch type {
+        case .claudeCode, .codex, .gemini:
+            return true
+        case .anthropicAPI:
+            return !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        case .openAIOrg:
+            return !openAIAdminKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        case .windsurfEnterprise:
+            return !windsurfServiceKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        case .githubCopilot:
+            return !githubToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                && !githubOrganization.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        case .claudeAI:
+            return !sessionToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
     }
 }

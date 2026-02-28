@@ -218,6 +218,37 @@ final class CacheManagerTests: XCTestCase {
         XCTAssertEqual(agg.snapshots.first?.cacheReadTokens, 55)
     }
 
+    func testTodayAggregateNormalizesOpenAICumulativeSnapshotsToLatestOnly() {
+        let now = Date()
+        let early = UsageSnapshot(
+            accountId: accountId,
+            timestamp: now.addingTimeInterval(-600),
+            inputTokens: 90,
+            outputTokens: 25,
+            cacheCreationTokens: 0,
+            cacheReadTokens: 12,
+            totalCostUSD: 1.2,
+            modelBreakdown: [ModelUsage(modelId: "openai-org", inputTokens: 90, outputTokens: 25, cacheTokens: 12, costUSD: 1.2)],
+            costConfidence: .billingGrade
+        )
+        let latest = UsageSnapshot(
+            accountId: accountId,
+            timestamp: now,
+            inputTokens: 130,
+            outputTokens: 40,
+            cacheCreationTokens: 0,
+            cacheReadTokens: 20,
+            totalCostUSD: 2.4,
+            modelBreakdown: [ModelUsage(modelId: "openai-org", inputTokens: 130, outputTokens: 40, cacheTokens: 20, costUSD: 2.4)],
+            costConfidence: .billingGrade
+        )
+        cm.save([early, latest])
+        let agg = cm.todayAggregate(forAccount: accountId)
+        XCTAssertEqual(agg.totalInputTokens, 130)
+        XCTAssertEqual(agg.totalOutputTokens, 40)
+        XCTAssertEqual(agg.totalCostUSD, 2.4, accuracy: 0.0001)
+    }
+
     func testLoadDeduplicatesDeterministicEventKeyAndPrefersBillingGrade() {
         let ts = Date()
         let estimated = UsageSnapshot(

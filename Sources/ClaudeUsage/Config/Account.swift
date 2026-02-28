@@ -3,7 +3,11 @@ import Foundation
 enum AccountType: String, Codable, CaseIterable {
     case claudeCode = "claudeCode"     // no credentials needed
     case codex = "codex"               // local Codex session logs
+    case gemini = "gemini"             // local Gemini CLI session logs
     case anthropicAPI = "anthropicAPI" // requires keychain key
+    case openAIOrg = "openAIOrg"       // OpenAI organization usage/cost APIs
+    case windsurfEnterprise = "windsurfEnterprise" // Windsurf enterprise analytics APIs
+    case githubCopilot = "githubCopilot" // GitHub Copilot organization usage metrics
     case claudeAI = "claudeAI"        // session-based web account
 }
 

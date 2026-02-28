@@ -202,6 +202,138 @@ class PollingService: ObservableObject {
             )
             CacheManager.shared.append(snap)
             await clearFetchError(for: account.id)
+        case .gemini:
+            var snap = GeminiLogParser.shared.aggregateToday()
+            snap = UsageSnapshot(
+                accountId: account.id,
+                timestamp: snap.timestamp,
+                inputTokens: snap.inputTokens,
+                outputTokens: snap.outputTokens,
+                cacheCreationTokens: snap.cacheCreationTokens,
+                cacheReadTokens: snap.cacheReadTokens,
+                totalCostUSD: snap.totalCostUSD,
+                modelBreakdown: snap.modelBreakdown,
+                costConfidence: .estimated
+            )
+            CacheManager.shared.append(snap)
+            await clearFetchError(for: account.id)
+        case .openAIOrg:
+            let rawCredential: String
+            do {
+                rawCredential = try KeychainManager.retrieve(service: AppConstants.keychainService, account: account.id.uuidString)
+            } catch {
+                let msg = "No OpenAI admin key for account \(account.id.uuidString): \(error.localizedDescription)"
+                ErrorLogger.shared.log(msg)
+                await setFetchError(msg, for: account.id)
+                return
+            }
+            guard let adminKey = ProviderCredentialCodec.openAIAdminKey(from: rawCredential) else {
+                let msg = "Invalid OpenAI credential payload for account \(account.id.uuidString)"
+                ErrorLogger.shared.log(msg)
+                await setFetchError(msg, for: account.id)
+                return
+            }
+            do {
+                let client = OpenAIOrgUsageClient(adminAPIKey: adminKey)
+                let snap = try await client.fetchCurrentSnapshot(accountId: account.id)
+                CacheManager.shared.append(snap)
+                await clearFetchError(for: account.id)
+            } catch APIError.invalidKey {
+                let msg = "Invalid OpenAI admin key for account \(account.id.uuidString)"
+                ErrorLogger.shared.log(msg, file: #file, line: #line)
+                await setFetchError(msg, for: account.id)
+            } catch APIError.rateLimited(let retryAfter) {
+                let wait = max(1, retryAfter ?? 60)
+                let msg = "OpenAI usage API rate-limited for account \(account.id.uuidString); retry after \(wait)s"
+                ErrorLogger.shared.log(msg, file: #file, line: #line)
+                await setFetchError(msg, for: account.id)
+            } catch APIError.networkError(let underlying) {
+                let msg = "OpenAI usage API network error for account \(account.id.uuidString): \(underlying.localizedDescription)"
+                ErrorLogger.shared.log(msg, file: #file, line: #line)
+                await setFetchError(msg, for: account.id)
+            } catch {
+                let msg = "OpenAI usage API unexpected error for account \(account.id.uuidString): \(error.localizedDescription)"
+                ErrorLogger.shared.log(msg, file: #file, line: #line)
+                await setFetchError(msg, for: account.id)
+            }
+        case .windsurfEnterprise:
+            let rawCredential: String
+            do {
+                rawCredential = try KeychainManager.retrieve(service: AppConstants.keychainService, account: account.id.uuidString)
+            } catch {
+                let msg = "No Windsurf service key for account \(account.id.uuidString): \(error.localizedDescription)"
+                ErrorLogger.shared.log(msg)
+                await setFetchError(msg, for: account.id)
+                return
+            }
+            guard let payload = ProviderCredentialCodec.windsurf(from: rawCredential) else {
+                let msg = "Invalid Windsurf credential payload for account \(account.id.uuidString)"
+                ErrorLogger.shared.log(msg)
+                await setFetchError(msg, for: account.id)
+                return
+            }
+            do {
+                let client = WindsurfEnterpriseClient(serviceKey: payload.serviceKey, groupName: payload.groupName)
+                let snap = try await client.fetchCurrentSnapshot(accountId: account.id)
+                CacheManager.shared.append(snap)
+                await clearFetchError(for: account.id)
+            } catch APIError.invalidKey {
+                let msg = "Invalid Windsurf service key for account \(account.id.uuidString)"
+                ErrorLogger.shared.log(msg, file: #file, line: #line)
+                await setFetchError(msg, for: account.id)
+            } catch APIError.rateLimited(let retryAfter) {
+                let wait = max(1, retryAfter ?? 60)
+                let msg = "Windsurf API rate-limited for account \(account.id.uuidString); retry after \(wait)s"
+                ErrorLogger.shared.log(msg, file: #file, line: #line)
+                await setFetchError(msg, for: account.id)
+            } catch APIError.networkError(let underlying) {
+                let msg = "Windsurf API network error for account \(account.id.uuidString): \(underlying.localizedDescription)"
+                ErrorLogger.shared.log(msg, file: #file, line: #line)
+                await setFetchError(msg, for: account.id)
+            } catch {
+                let msg = "Windsurf API unexpected error for account \(account.id.uuidString): \(error.localizedDescription)"
+                ErrorLogger.shared.log(msg, file: #file, line: #line)
+                await setFetchError(msg, for: account.id)
+            }
+        case .githubCopilot:
+            let rawCredential: String
+            do {
+                rawCredential = try KeychainManager.retrieve(service: AppConstants.keychainService, account: account.id.uuidString)
+            } catch {
+                let msg = "No GitHub token for Copilot account \(account.id.uuidString): \(error.localizedDescription)"
+                ErrorLogger.shared.log(msg)
+                await setFetchError(msg, for: account.id)
+                return
+            }
+            guard let payload = ProviderCredentialCodec.copilot(from: rawCredential) else {
+                let msg = "Invalid GitHub Copilot credential payload for account \(account.id.uuidString)"
+                ErrorLogger.shared.log(msg)
+                await setFetchError(msg, for: account.id)
+                return
+            }
+            do {
+                let client = GitHubCopilotMetricsClient(token: payload.token, organization: payload.organization)
+                let snap = try await client.fetchCurrentSnapshot(accountId: account.id)
+                CacheManager.shared.append(snap)
+                await clearFetchError(for: account.id)
+            } catch APIError.invalidKey {
+                let msg = "Invalid GitHub token/permissions for Copilot account \(account.id.uuidString)"
+                ErrorLogger.shared.log(msg, file: #file, line: #line)
+                await setFetchError(msg, for: account.id)
+            } catch APIError.rateLimited(let retryAfter) {
+                let wait = max(1, retryAfter ?? 60)
+                let msg = "GitHub Copilot metrics API rate-limited for account \(account.id.uuidString); retry after \(wait)s"
+                ErrorLogger.shared.log(msg, file: #file, line: #line)
+                await setFetchError(msg, for: account.id)
+            } catch APIError.networkError(let underlying) {
+                let msg = "GitHub Copilot metrics API network error for account \(account.id.uuidString): \(underlying.localizedDescription)"
+                ErrorLogger.shared.log(msg, file: #file, line: #line)
+                await setFetchError(msg, for: account.id)
+            } catch {
+                let msg = "GitHub Copilot metrics API unexpected error for account \(account.id.uuidString): \(error.localizedDescription)"
+                ErrorLogger.shared.log(msg, file: #file, line: #line)
+                await setFetchError(msg, for: account.id)
+            }
         case .anthropicAPI:
             let key: String
             do {
@@ -308,7 +440,7 @@ class PollingService: ObservableObject {
                 cacheReadTokens: 0,
                 totalCostUSD: agg.totalCostUSD,
                 modelBreakdown: [],
-                costConfidence: account.type == .anthropicAPI ? .billingGrade : .estimated
+                costConfidence: Self.isBillingGradeAccountType(account.type) ? .billingGrade : .estimated
             )
             Task {
                 do {
@@ -333,7 +465,7 @@ class PollingService: ObservableObject {
                 cacheReadTokens: 0,
                 totalCostUSD: agg.totalCostUSD,
                 modelBreakdown: [],
-                costConfidence: account.type == .anthropicAPI ? .billingGrade : .estimated
+                costConfidence: Self.isBillingGradeAccountType(account.type) ? .billingGrade : .estimated
             )
             NotificationManager.shared.checkThreshold(
                 snapshot: snapshot,
@@ -357,7 +489,7 @@ class PollingService: ObservableObject {
                 cacheReadTokens: 0,
                 totalCostUSD: agg.totalCostUSD,
                 modelBreakdown: [],
-                costConfidence: account.type == .anthropicAPI ? .billingGrade : .estimated
+                costConfidence: Self.isBillingGradeAccountType(account.type) ? .billingGrade : .estimated
             )
             let triggered = AutomationEngine.evaluate(rules: config.automations, snapshot: snapshot)
             for rule in triggered where Self.isAutomationOffCooldown(rule, pollIntervalSeconds: config.pollIntervalSeconds) {
@@ -386,6 +518,10 @@ class PollingService: ObservableObject {
         guard let lastFiredAt = rule.lastFiredAt else { return true }
         let cooldown = max(1, pollIntervalSeconds)
         return now.timeIntervalSince(lastFiredAt) >= TimeInterval(cooldown)
+    }
+
+    private static func isBillingGradeAccountType(_ type: AccountType) -> Bool {
+        type == .anthropicAPI || type == .openAIOrg
     }
 
     private func fetchAnthropicCanonicalSnapshots(accountId: UUID, apiKey: String) async throws -> (snapshots: [UsageSnapshot], cursor: AnthropicIngestionCursor?) {

@@ -186,9 +186,23 @@ class iCloudSyncManager: ObservableObject {
             return "claude-ai-web"
         case "codex-local":
             return "codex-local"
+        case "gemini-local":
+            return "gemini-local"
+        case "openai-org":
+            return "openai-org"
+        case "windsurf-enterprise":
+            return "windsurf-enterprise"
+        case "copilot-metrics":
+            return "copilot-metrics"
         default:
+            if modelId.hasPrefix("gemini-") {
+                return "gemini-local"
+            }
             if modelId.hasPrefix("claude-") {
                 return "anthropic"
+            }
+            if modelId.hasPrefix("copilot-") {
+                return "copilot-metrics"
             }
             return "unknown"
         }

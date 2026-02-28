@@ -117,6 +117,15 @@ final class PollingServiceTests: XCTestCase {
         XCTAssertEqual(latest?.modelBreakdown.first?.modelId, "codex-local")
     }
 
+    func testGeminiBranchStoresEstimatedSnapshot() async {
+        let account = Account(name: "Gemini Local", type: .gemini, isActive: true)
+        await PollingService.shared.fetchAndStore(account: account, config: .default)
+        let latest = CacheManager.shared.latest(forAccount: account.id)
+        XCTAssertNotNil(latest, "gemini account should persist a snapshot")
+        XCTAssertEqual(latest?.costConfidence, .estimated)
+        XCTAssertEqual(latest?.modelBreakdown.first?.modelId, "gemini-local")
+    }
+
     func testAnthropicStartDateFallsBackToLast24HoursWithoutCursor() {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
         let start = PollingService.anthropicStartDate(cursor: nil, now: now)

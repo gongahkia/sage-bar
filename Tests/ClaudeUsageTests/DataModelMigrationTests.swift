@@ -76,4 +76,32 @@ final class DataModelMigrationTests: XCTestCase {
         let snap = try dec.decode(UsageSnapshot.self, from: Data(json.utf8))
         XCTAssertEqual(snap.costConfidence, .estimated)
     }
+
+    func testDecodeLegacyGeminiSnapshotInfersEstimatedConfidence() throws {
+        let id = UUID()
+        let json = """
+        {
+          "accountId": "\(id.uuidString)",
+          "timestamp": "2026-01-01T00:00:00Z",
+          "inputTokens": 20,
+          "outputTokens": 5,
+          "cacheCreationTokens": 0,
+          "cacheReadTokens": 3,
+          "totalCostUSD": 0,
+          "modelBreakdown": [
+            {
+              "modelId": "gemini-local",
+              "inputTokens": 20,
+              "outputTokens": 5,
+              "cacheTokens": 3,
+              "costUSD": 0
+            }
+          ]
+        }
+        """
+        let dec = JSONDecoder()
+        dec.dateDecodingStrategy = .iso8601
+        let snap = try dec.decode(UsageSnapshot.self, from: Data(json.utf8))
+        XCTAssertEqual(snap.costConfidence, .estimated)
+    }
 }
