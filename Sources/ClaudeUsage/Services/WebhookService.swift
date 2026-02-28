@@ -32,6 +32,7 @@ class WebhookService {
             throw APIError.networkError(URLError(.badURL))
         }
         let data = buildPayload(event: event, snapshot: snapshot, template: config.payloadTemplate)
+        try validateTemplateJSONIfNeeded(template: config.payloadTemplate, payload: data)
         var lastError: Error?
         let idempotencyKey = UUID().uuidString
         for attempt in 0...maxRetries {
@@ -147,6 +148,18 @@ class WebhookService {
             return true
         default:
             return false
+        }
+    }
+
+    private func validateTemplateJSONIfNeeded(template: String?, payload: Data) throws {
+        guard let template = template?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !template.isEmpty,
+              template.hasPrefix("{") || template.hasPrefix("[") else { return }
+        do {
+            _ = try JSONSerialization.jsonObject(with: payload)
+        } catch {
+            ErrorLogger.shared.log("Webhook payload template produced invalid JSON after substitution", level: "WARN")
+            throw APIError.decodingFailed
         }
     }
 }
