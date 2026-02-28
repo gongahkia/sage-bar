@@ -1,4 +1,3 @@
-(B) Add test in ClaudeCodeLogParserTests: .jsonl file exceeding 50MB size cap is skipped and an error is logged via ErrorLogger +testing
 (B) Add test in ClaudeCodeLogParserTests: empty .jsonl file returns a zero-token ModelUsage result without crash +testing
 (B) Implement ClaudeAIClient.fetchUsage() using the claude.ai internal session API to retrieve daily messages used and messages remaining +feature
 (B) Implement session cookie extraction in ClaudeAIClient: read sessionKey from user-provided string in config (claude_ai.session_cookie field in TOML) +feature

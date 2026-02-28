@@ -91,6 +91,22 @@ final class ClaudeCodeLogParserTests: XCTestCase {
         }
     }
 
+    // MARK: - size cap
+
+    func testOversizedJSONLSkippedAndErrorLogged() throws {
+        let url = tmpDir.appendingPathComponent("big.jsonl")
+        FileManager.default.createFile(atPath: url.path, contents: nil)
+        let handle = try FileHandle(forWritingTo: url)
+        handle.truncateFile(atOffset: 50 * 1024 * 1024 + 1) // sparse file, no real data
+        handle.closeFile()
+        let entries = parser.parseFile(url)
+        XCTAssertTrue(entries.isEmpty, "oversized file should return empty array")
+        let exp = expectation(description: "ErrorLogger sets lastError")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { exp.fulfill() }
+        wait(for: [exp], timeout: 1)
+        XCTAssertNotNil(ErrorLogger.shared.lastError, "ErrorLogger should have received oversized-file warning")
+    }
+
     // MARK: - FSEvent watcher
 
     func testFallbackTimerTriggersRescan() throws {
