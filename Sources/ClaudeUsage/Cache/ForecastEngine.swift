@@ -16,7 +16,12 @@ struct ForecastEngine {
         let elapsed = last.timestamp.timeIntervalSince(first.timestamp) / 3600.0
         guard elapsed > 0 else { return nil }
         let cumulativeCost = todaySnaps.reduce(0) { $0 + $1.totalCostUSD }
-        let burnPerHour = cumulativeCost / elapsed
+        let burnPerHour = burnRateFromHourlyBuckets(
+            snapshots: todaySnaps,
+            calendar: cal,
+            cumulativeCost: cumulativeCost,
+            fallbackElapsedHours: elapsed
+        )
 
         let startOfDay = cal.startOfDay(for: now)
         let hoursSinceMidnight = now.timeIntervalSince(startOfDay) / 3600.0
@@ -40,5 +45,26 @@ struct ForecastEngine {
             projectedEOMCostUSD: eom,
             burnRatePerHour: burnPerHour
         )
+    }
+
+    private static func burnRateFromHourlyBuckets(
+        snapshots: [UsageSnapshot],
+        calendar: Calendar,
+        cumulativeCost: Double,
+        fallbackElapsedHours: Double
+    ) -> Double {
+        var hourlyTotals: [Date: Double] = [:]
+        for snap in snapshots {
+            let comps = calendar.dateComponents([.year, .month, .day, .hour], from: snap.timestamp)
+            guard let hour = calendar.date(from: comps) else { continue }
+            hourlyTotals[hour, default: 0] += snap.totalCostUSD
+        }
+        guard let firstHour = hourlyTotals.keys.min(),
+              let lastHour = hourlyTotals.keys.max() else {
+            return cumulativeCost / fallbackElapsedHours
+        }
+        let spanHours = lastHour.timeIntervalSince(firstHour) / 3600.0
+        guard spanHours > 0 else { return cumulativeCost / fallbackElapsedHours }
+        return cumulativeCost / spanHours
     }
 }

@@ -50,6 +50,19 @@ final class ForecastEngineTests: XCTestCase {
         XCTAssertEqual(result.burnRatePerHour, 3.0, accuracy: 0.001)
     }
 
+    func testBurnRateUsesHourlyBucketSpanForCumulativeDeltas() {
+        let cal = Calendar.current
+        var comps = cal.dateComponents([.year, .month, .day], from: Date())
+        comps.hour = 2; comps.minute = 30; comps.second = 0
+        let now = cal.date(from: comps)!
+        let snaps = [
+            snap(4.0, at: now.addingTimeInterval(-2 * 3600 + 120)), // bucket hour-2
+            snap(2.0, at: now.addingTimeInterval(-300)),             // current bucket
+        ]
+        let result = ForecastEngine.compute(history: snaps, now: now)!
+        XCTAssertEqual(result.burnRatePerHour, 3.0, accuracy: 0.001)
+    }
+
     // MARK: - Task 57: all-zero snapshots → zero projections
 
     func testAllZeroSnapshotsReturnZeroCosts() {
