@@ -156,9 +156,10 @@ struct MenuBarPopoverView: View {
 
     // MARK: – Poll health
     private var pollHealthRow: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        let stale = currentAccount.flatMap { CacheManager.shared.latest(forAccount: $0.id) }?.isStale ?? false
+        return VStack(alignment: .leading, spacing: 2) {
             if let last = polling.lastPollDate {
-                statRow("Last synced", value: last.formatted(.relative(presentation: .named)))
+                statRow("Last synced", value: last.formatted(.relative(presentation: .named)) + (stale ? " (stale)" : ""))
                 let next = last.addingTimeInterval(TimeInterval(config.pollIntervalSeconds))
                 statRow("Next poll", value: next.formatted(.relative(presentation: .named)))
             } else {
