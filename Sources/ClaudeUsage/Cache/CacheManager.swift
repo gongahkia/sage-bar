@@ -5,6 +5,16 @@ private let log = Logger(subsystem: "dev.claudeusage", category: "CacheManager")
 
 private actor CacheStore {
     private static let retentionDays = 30
+    private static let fractionalISO8601Formatter: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+    private static let plainISO8601Formatter: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
 
     private let cacheFile: URL
     private let forecastFile: URL
@@ -20,13 +30,24 @@ private actor CacheStore {
 
     private func encoder() -> JSONEncoder {
         let e = JSONEncoder()
-        e.dateEncodingStrategy = .iso8601
+        e.dateEncodingStrategy = .custom { date, encoder in
+            var container = encoder.singleValueContainer()
+            try container.encode(Self.fractionalISO8601Formatter.string(from: date))
+        }
         return e
     }
 
     private func decoder() -> JSONDecoder {
         let d = JSONDecoder()
-        d.dateDecodingStrategy = .iso8601
+        d.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let raw = try container.decode(String.self)
+            if let parsed = Self.fractionalISO8601Formatter.date(from: raw)
+                ?? Self.plainISO8601Formatter.date(from: raw) {
+                return parsed
+            }
+            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid ISO8601 date: \(raw)")
+        }
         return d
     }
 

@@ -12,12 +12,38 @@ public struct ModelUsage: Codable, Equatable {
     public var cacheTokens: Int
     public var costUSD: Double
 
+    enum CodingKeys: String, CodingKey {
+        case modelId
+        case inputTokens
+        case outputTokens
+        case cacheTokens
+        case costUSD
+    }
+
     public init(modelId: String, inputTokens: Int, outputTokens: Int, cacheTokens: Int = 0, costUSD: Double) {
         self.modelId = modelId
         self.inputTokens = inputTokens
         self.outputTokens = outputTokens
         self.cacheTokens = cacheTokens
         self.costUSD = costUSD
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        modelId = try c.decode(String.self, forKey: .modelId)
+        inputTokens = try c.decode(Int.self, forKey: .inputTokens)
+        outputTokens = try c.decode(Int.self, forKey: .outputTokens)
+        cacheTokens = try c.decodeIfPresent(Int.self, forKey: .cacheTokens) ?? 0
+        costUSD = try c.decode(Double.self, forKey: .costUSD)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(modelId, forKey: .modelId)
+        try c.encode(inputTokens, forKey: .inputTokens)
+        try c.encode(outputTokens, forKey: .outputTokens)
+        try c.encode(cacheTokens, forKey: .cacheTokens)
+        try c.encode(costUSD, forKey: .costUSD)
     }
 }
 

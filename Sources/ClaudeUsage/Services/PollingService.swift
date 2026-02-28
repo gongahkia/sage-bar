@@ -7,6 +7,9 @@ private let log = Logger(subsystem: "dev.claudeusage", category: "PollingService
 
 class PollingService: ObservableObject {
     static let shared = PollingService()
+    static var anthropicClientFactory: (String) -> AnthropicAPIClient = { apiKey in
+        AnthropicAPIClient(apiKey: apiKey)
+    }
     @MainActor @Published var lastPollDate: Date?
     @MainActor @Published var isPolling: Bool = false
     @MainActor @Published var lastFetchError: String?
@@ -525,7 +528,7 @@ class PollingService: ObservableObject {
     }
 
     private func fetchAnthropicCanonicalSnapshots(accountId: UUID, apiKey: String) async throws -> (snapshots: [UsageSnapshot], cursor: AnthropicIngestionCursor?) {
-        let client = AnthropicAPIClient(apiKey: apiKey)
+        let client = Self.anthropicClientFactory(apiKey)
         let end = Date()
         let cursor = CacheManager.shared.loadAnthropicCursor(forAccount: accountId)
         let start = Self.anthropicStartDate(cursor: cursor, now: end)

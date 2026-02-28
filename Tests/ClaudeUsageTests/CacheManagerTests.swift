@@ -152,7 +152,7 @@ final class CacheManagerTests: XCTestCase {
         let exp = expectation(description: "upsert")
         DispatchQueue.global().asyncAfter(deadline: .now() + 0.3) { exp.fulfill() }
         wait(for: [exp], timeout: 2)
-        let loaded = cm.load().filter { $0.accountId == accountId && $0.timestamp == ts }
+        let loaded = cm.load().filter { $0.accountId == accountId }
         XCTAssertEqual(loaded.count, 1)
         XCTAssertEqual(loaded.first?.totalCostUSD ?? -1, 2.0, accuracy: 0.001)
     }
@@ -275,7 +275,7 @@ final class CacheManagerTests: XCTestCase {
         )
 
         cm.save([estimated, billing])
-        let loaded = cm.load().filter { $0.accountId == accountId && $0.timestamp == ts }
+        let loaded = cm.load().filter { $0.accountId == accountId }
         XCTAssertEqual(loaded.count, 1)
         XCTAssertEqual(loaded.first?.costConfidence, .billingGrade)
         XCTAssertEqual(loaded.first?.inputTokens, 12)

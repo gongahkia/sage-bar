@@ -29,13 +29,15 @@ struct ForecastEngine {
         let eod = max(0, cumulativeCost + burnPerHour * hoursLeftInDay)
 
         let weekday = cal.component(.weekday, from: now) // 1=Sun
-        let daysLeftInWeek = Double(8 - weekday) // days until end of Sun
-        let eow = max(0, cumulativeCost + burnPerHour * daysLeftInWeek * 24)
+        let fullDaysAfterTodayInWeek = weekday == 1 ? 0.0 : Double(8 - weekday) // Mon->6 ... Sat->1
+        let hoursLeftInWeek = hoursLeftInDay + fullDaysAfterTodayInWeek * 24.0
+        let eow = max(0, cumulativeCost + burnPerHour * hoursLeftInWeek)
 
         let range = cal.range(of: .day, in: .month, for: now)!
         let dayOfMonth = cal.component(.day, from: now)
-        let daysLeftInMonth = Double(range.count - dayOfMonth)
-        let eom = max(0, cumulativeCost + burnPerHour * daysLeftInMonth * 24)
+        let fullDaysAfterTodayInMonth = Double(max(0, range.count - dayOfMonth))
+        let hoursLeftInMonth = hoursLeftInDay + fullDaysAfterTodayInMonth * 24.0
+        let eom = max(0, cumulativeCost + burnPerHour * hoursLeftInMonth)
 
         return ForecastSnapshot(
             accountId: accountId,

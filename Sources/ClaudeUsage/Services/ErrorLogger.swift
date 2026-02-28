@@ -65,13 +65,17 @@ final class ErrorLogger: ObservableObject {
     }
 
     private func rotateIfNeeded() {
-        guard let attrs = try? FileManager.default.attributesOfItem(atPath: logFile.path),
-              let size = attrs[.size] as? Int, size > maxBytes,
-              let text = try? String(contentsOf: logFile, encoding: .utf8) else { return }
+        guard let text = try? String(contentsOf: logFile, encoding: .utf8) else { return }
         let lines = text.components(separatedBy: "\n").filter { !$0.isEmpty }
-        let kept = lines.suffix(retainLines).joined(separator: "\n") + "\n"
-        try? kept.write(to: logFile, atomically: true, encoding: .utf8)
-        log("Log rotated — kept last \(retainLines) lines", level: "INFO")
+        let size = (try? FileManager.default.attributesOfItem(atPath: logFile.path))?[.size] as? Int ?? 0
+        let exceedsSize = size > maxBytes
+        let exceedsLineLimit = lines.count > (retainLines + 1)
+        guard exceedsSize || exceedsLineLimit else { return }
+
+        var kept = Array(lines.suffix(retainLines))
+        kept.append("[\(isoTimestamp())] [INFO] ErrorLogger:0 - Log rotated (kept last \(retainLines) lines)")
+        let rotated = kept.joined(separator: "\n") + "\n"
+        try? rotated.write(to: logFile, atomically: true, encoding: .utf8)
     }
 
     private func isoTimestamp() -> String {

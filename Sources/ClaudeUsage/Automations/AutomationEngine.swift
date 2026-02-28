@@ -53,44 +53,45 @@ struct AutomationEngine {
             ErrorLogger.shared.log("Rejected command for rule '\(rule.name)': parse failed or metacharacter detected")
             return false
         }
-        let env: [String: String] = [
+        let injectedEnv: [String: String] = [
             "CLAUDE_COST": String(format: "%.4f", snapshot.totalCostUSD),
             "CLAUDE_TOKENS": "\(snapshot.inputTokens + snapshot.outputTokens)",
             "CLAUDE_ACCOUNT": snapshot.accountId.uuidString,
         ].filter { rule.allowedEnvKeys.contains($0.key) }
         switch action {
         case .osascript(let script):
-            return await runProcess(execPath: "/usr/bin/osascript", args: ["-e", script], env: env, ruleName: rule.name)
+            return await runProcess(execPath: "/usr/bin/osascript", args: ["-e", script], injectedEnv: injectedEnv, ruleName: rule.name)
         case .openURL(let url):
             guard let u = URL(string: url) else { return false }
             await MainActor.run { NSWorkspace.shared.open(u) }
             return true
         case .say(let text):
-            return await runProcess(execPath: "/usr/bin/say", args: [text], env: env, ruleName: rule.name)
+            return await runProcess(execPath: "/usr/bin/say", args: [text], injectedEnv: injectedEnv, ruleName: rule.name)
         case .afplay(let path):
             let home = FileManager.default.homeDirectoryForCurrentUser.path
             guard path.hasPrefix(home) else {
                 ErrorLogger.shared.log("afplay path '\(path)' is outside home directory")
                 return false
             }
-            return await runProcess(execPath: "/usr/bin/afplay", args: [path], env: env, ruleName: rule.name)
+            return await runProcess(execPath: "/usr/bin/afplay", args: [path], injectedEnv: injectedEnv, ruleName: rule.name)
         case .notification(let title, let body):
             let content = UNMutableNotificationContent()
             content.title = title; content.body = body
             let req = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+            guard let center = userNotificationCenterIfAvailable() else { return true }
             do {
-                try await UNUserNotificationCenter.current().add(req)
+                try await center.add(req)
                 return true
             } catch {
                 ErrorLogger.shared.log("Notification action failed for rule '\(rule.name)': \(error.localizedDescription)")
                 return false
             }
         case .httpGet(let url):
-            return await runProcess(execPath: "/usr/bin/curl", args: [url], env: env, ruleName: rule.name)
+            return await runProcess(execPath: "/usr/bin/curl", args: [url], injectedEnv: injectedEnv, ruleName: rule.name)
         }
     }
 
-    private static func runProcess(execPath: String, args: [String], env: [String: String], ruleName: String) async -> Bool {
+    private static func runProcess(execPath: String, args: [String], injectedEnv: [String: String], ruleName: String) async -> Bool {
         let execURL = URL(fileURLWithPath: execPath)
         guard FileManager.default.isExecutableFile(atPath: execURL.path) else {
             ErrorLogger.shared.log("Executable not found: \(execPath)")
@@ -99,7 +100,7 @@ struct AutomationEngine {
         let process = Process()
         process.executableURL = execURL
         process.arguments = args
-        process.environment = env
+        process.environment = processEnvironment(injectedEnv: injectedEnv)
         let outPipe = Pipe(); let errPipe = Pipe()
         process.standardOutput = outPipe; process.standardError = errPipe
         do {
@@ -145,5 +146,28 @@ struct AutomationEngine {
 
     static func validateCommand(_ command: String) -> String? {
         AutomationAction.parse(commandString: command) == nil ? "Command not in allowlist or contains forbidden characters" : nil
+    }
+
+    private static func processEnvironment(injectedEnv: [String: String]) -> [String: String] {
+        var env = ProcessInfo.processInfo.environment
+        for key in ["CLAUDE_COST", "CLAUDE_TOKENS", "CLAUDE_ACCOUNT"] {
+            env.removeValue(forKey: key)
+        }
+        for (key, value) in injectedEnv {
+            env[key] = value
+        }
+        return env
+    }
+
+    private static func userNotificationCenterIfAvailable() -> UNUserNotificationCenter? {
+        let env = ProcessInfo.processInfo.environment
+        let runningTests = env["XCTestConfigurationFilePath"] != nil
+            || env["XCTestSessionIdentifier"] != nil
+            || ProcessInfo.processInfo.processName == "xctest"
+            || NSClassFromString("XCTestCase") != nil
+        guard !runningTests else {
+            return nil
+        }
+        return UNUserNotificationCenter.current()
     }
 }

@@ -7,7 +7,8 @@ class NotificationManager {
 
     func requestPermission() {
         guard !UserDefaults.standard.bool(forKey: "notifPermissionRequested") else { return }
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, _ in
+        guard let center = userNotificationCenterIfAvailable() else { return }
+        center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
             UserDefaults.standard.set(true, forKey: "notifPermissionRequested")
             UserDefaults.standard.set(granted, forKey: "notifPermissionGranted")
         }
@@ -28,12 +29,30 @@ class NotificationManager {
         content.body = "Account '\(account.name)' reached \(cost) today (limit: \(limit))"
         content.sound = .default
         let req = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
-        UNUserNotificationCenter.current().add(req)
+        if let center = userNotificationCenterIfAvailable() {
+            center.add(req)
+        }
 
         // webhook
         if webhookConfig.enabled, webhookConfig.events.contains("threshold") {
             let ws = WebhookService()
             Task { try? await ws.send(event: .thresholdBreached(limitUSD: limitUSD), snapshot: snapshot, config: webhookConfig) }
         }
+    }
+
+    private func userNotificationCenterIfAvailable() -> UNUserNotificationCenter? {
+        // XCTest on macOS CLI can crash when touching UNUserNotificationCenter.current().
+        guard !isRunningUnderXCTest else {
+            return nil
+        }
+        return UNUserNotificationCenter.current()
+    }
+
+    private var isRunningUnderXCTest: Bool {
+        let env = ProcessInfo.processInfo.environment
+        return env["XCTestConfigurationFilePath"] != nil
+            || env["XCTestSessionIdentifier"] != nil
+            || ProcessInfo.processInfo.processName == "xctest"
+            || NSClassFromString("XCTestCase") != nil
     }
 }

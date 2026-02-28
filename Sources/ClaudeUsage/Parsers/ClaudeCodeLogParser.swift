@@ -150,7 +150,8 @@ class ClaudeCodeLogParser {
         }
         let dec = JSONDecoder()
         var results: [ClaudeCodeEntry] = []
-        let lines = text.split(separator: "\n", omittingEmptySubsequences: true)
+        let normalizedText = normalizeConcatenatedJSONObjects(text)
+        let lines = normalizedText.split(omittingEmptySubsequences: true, whereSeparator: \.isNewline)
         var startIndex = 0
         if incremental {
             let prev = lineCheckpoints[url] ?? 0
@@ -170,6 +171,49 @@ class ClaudeCodeLogParser {
             persistLineCheckpoints()
         }
         return results
+    }
+
+    // Some appenders write JSON objects without newline delimiters.
+    // Normalize `}{` boundaries into newline-separated JSONL records.
+    private func normalizeConcatenatedJSONObjects(_ text: String) -> String {
+        var normalized = String()
+        normalized.reserveCapacity(text.count + 32)
+        var inString = false
+        var escaping = false
+        var pendingBoundary = false
+
+        for ch in text {
+            if inString {
+                normalized.append(ch)
+                if escaping {
+                    escaping = false
+                } else if ch == "\\" {
+                    escaping = true
+                } else if ch == "\"" {
+                    inString = false
+                }
+                continue
+            }
+
+            if ch == "\"" {
+                normalized.append(ch)
+                inString = true
+                continue
+            }
+
+            if ch.isWhitespace {
+                normalized.append(ch)
+                continue
+            }
+
+            if pendingBoundary, ch == "{", normalized.last?.isNewline != true {
+                normalized.append("\n")
+            }
+            normalized.append(ch)
+            pendingBoundary = (ch == "}")
+        }
+
+        return normalized
     }
 
     func aggregateToday() -> UsageSnapshot {

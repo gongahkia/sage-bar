@@ -9,6 +9,11 @@ final class PollingServiceTests: XCTestCase {
         try await super.setUp()
         // register mock so default URLSession network calls are intercepted
         URLProtocol.registerClass(MockURLProtocol.self)
+        PollingService.anthropicClientFactory = { apiKey in
+            let config = URLSessionConfiguration.ephemeral
+            config.protocolClasses = [MockURLProtocol.self]
+            return AnthropicAPIClient(apiKey: apiKey, session: URLSession(configuration: config))
+        }
         // make network calls fail (simulates nil return from fetchUsage)
         MockURLProtocol.requestHandler = { _ in throw URLError(.notConnectedToInternet) }
         // store a fake token so PollingService doesn't bail at keychain step
@@ -26,6 +31,7 @@ final class PollingServiceTests: XCTestCase {
 
     override func tearDown() async throws {
         URLProtocol.unregisterClass(MockURLProtocol.self)
+        PollingService.anthropicClientFactory = { AnthropicAPIClient(apiKey: $0) }
         try? KeychainManager.delete(service: service, account: accountId.uuidString)
         try? FileManager.default.removeItem(at: AppConstants.sharedContainerURL.appendingPathComponent("model_hints.json"))
         try await super.tearDown()
