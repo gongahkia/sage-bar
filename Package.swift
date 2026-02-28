@@ -10,7 +10,6 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/LebJe/TOMLKit.git", from: "0.5.0"),
-        .package(url: "https://github.com/sindresorhus/LaunchAtLogin-Modern", from: "1.0.0"),
         .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.0.0"),
     ],
     targets: [
@@ -23,7 +22,6 @@ let package = Package(
             dependencies: [
                 "ClaudeUsageCore",
                 "TOMLKit",
-                .product(name: "LaunchAtLogin", package: "LaunchAtLogin-Modern"),
                 .product(name: "Sparkle", package: "Sparkle"),
             ],
             path: "Sources/ClaudeUsage",
