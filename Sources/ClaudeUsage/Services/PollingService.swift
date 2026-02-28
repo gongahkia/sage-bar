@@ -364,7 +364,12 @@ class PollingService: ObservableObject {
         let end = Date()
         let cursor = CacheManager.shared.loadAnthropicCursor(forAccount: accountId)
         let start = Self.anthropicStartDate(cursor: cursor, now: end)
-        let response = try await client.fetchUsage(startDate: start, endDate: end)
+        let response = try await fetchAnthropicUsageWithRetry(
+            client: client,
+            accountId: accountId,
+            startDate: start,
+            endDate: end
+        )
         return (client.convertToSnapshots(response, accountId: accountId), client.cursor(from: response))
     }
 
@@ -373,6 +378,47 @@ class PollingService: ObservableObject {
         guard let raw = cursor?.lastStartTime else { return fallback }
         guard let ts = ISO8601DateFormatter().date(from: raw) else { return fallback }
         return Calendar.current.startOfDay(for: ts)
+    }
+
+    private func fetchAnthropicUsageWithRetry(
+        client: AnthropicAPIClient,
+        accountId: UUID,
+        startDate: Date,
+        endDate: Date,
+        maxAttempts: Int = 4
+    ) async throws -> AnthropicUsageResponse {
+        precondition(maxAttempts >= 1)
+        var attempt = 0
+        while true {
+            try Task.checkCancellation()
+            do {
+                return try await client.fetchUsage(startDate: startDate, endDate: endDate)
+            } catch APIError.rateLimited(let retryAfter) where attempt < maxAttempts - 1 {
+                let delay = Self.jitteredBackoffDelayNanos(attempt: attempt, retryAfterSeconds: retryAfter)
+                log.warning("Anthropic rate-limited for \(accountId.uuidString), retrying in \(Double(delay) / 1_000_000_000, format: .fixed(precision: 2))s")
+                try await Task.sleep(nanoseconds: delay)
+                attempt += 1
+            } catch APIError.serverError(let code) where (500...599).contains(code) && attempt < maxAttempts - 1 {
+                let delay = Self.jitteredBackoffDelayNanos(attempt: attempt, retryAfterSeconds: nil)
+                log.warning("Anthropic 5xx (\(code)) for \(accountId.uuidString), retrying in \(Double(delay) / 1_000_000_000, format: .fixed(precision: 2))s")
+                try await Task.sleep(nanoseconds: delay)
+                attempt += 1
+            } catch {
+                throw error
+            }
+        }
+    }
+
+    private static func jitteredBackoffDelayNanos(attempt: Int, retryAfterSeconds: Int?) -> UInt64 {
+        if let retryAfterSeconds, retryAfterSeconds > 0 {
+            let base = Double(retryAfterSeconds)
+            let jitter = Double.random(in: 0...(base * 0.25))
+            return UInt64((base + jitter) * 1_000_000_000)
+        }
+        let exponent = min(attempt, 5)
+        let base = pow(2.0, Double(exponent))
+        let jitter = Double.random(in: 0...(base * 0.35))
+        return UInt64((base + jitter) * 1_000_000_000)
     }
 
     private func scheduleDebouncedLogRefresh(delayNanos: UInt64 = 400_000_000) async {
