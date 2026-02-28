@@ -125,12 +125,10 @@ class PollingService: ObservableObject {
                 ErrorLogger.shared.log("Keychain failure for account \(account.id): \(error.localizedDescription)")
                 return
             }
-            let client = AnthropicAPIClient(apiKey: key)
-            let end = Date()
-            let start = Calendar.current.date(byAdding: .day, value: -1, to: end)!
             do {
-                let response = try await client.fetchUsage(startDate: start, endDate: end)
-                for snap in client.convertToSnapshots(response, accountId: account.id) {
+                // Anthropic Usage API remains the canonical billing source for anthropicAPI accounts.
+                let snapshots = try await fetchAnthropicCanonicalSnapshots(accountId: account.id, apiKey: key)
+                for snap in snapshots {
                     CacheManager.shared.append(snap)
                 }
             } catch APIError.invalidKey {
@@ -212,6 +210,14 @@ class PollingService: ObservableObject {
                 }
             }
         }
+    }
+
+    private func fetchAnthropicCanonicalSnapshots(accountId: UUID, apiKey: String) async throws -> [UsageSnapshot] {
+        let client = AnthropicAPIClient(apiKey: apiKey)
+        let end = Date()
+        let start = Calendar.current.date(byAdding: .day, value: -1, to: end)!
+        let response = try await client.fetchUsage(startDate: start, endDate: end)
+        return client.convertToSnapshots(response, accountId: accountId)
     }
 }
 
