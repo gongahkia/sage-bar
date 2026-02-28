@@ -95,6 +95,12 @@ class PollingService: ObservableObject {
         // threshold notifications
         checkThresholds(config: config, accounts: activeAccounts)
 
+        // automation evaluation
+        let matchedAutomations = evaluateAutomations(config: config, accounts: activeAccounts)
+        if !matchedAutomations.isEmpty {
+            log.info("Automation evaluation matched \(matchedAutomations.count) rule(s)")
+        }
+
         // daily digest check
         checkDailyDigest(config: config, accounts: activeAccounts)
 
@@ -243,6 +249,27 @@ class PollingService: ObservableObject {
                 webhookConfig: config.webhook
             )
         }
+    }
+
+    private func evaluateAutomations(config: Config, accounts: [Account]) -> [(AutomationRule, UsageSnapshot)] {
+        var matched: [(AutomationRule, UsageSnapshot)] = []
+        for account in accounts {
+            let agg = CacheManager.shared.todayAggregate(forAccount: account.id)
+            let snapshot = UsageSnapshot(
+                accountId: account.id,
+                timestamp: Date(),
+                inputTokens: agg.totalInputTokens,
+                outputTokens: agg.totalOutputTokens,
+                cacheCreationTokens: 0,
+                cacheReadTokens: 0,
+                totalCostUSD: agg.totalCostUSD,
+                modelBreakdown: [],
+                costConfidence: account.type == .anthropicAPI ? .billingGrade : .estimated
+            )
+            let triggered = AutomationEngine.evaluate(rules: config.automations, snapshot: snapshot)
+            matched.append(contentsOf: triggered.map { ($0, snapshot) })
+        }
+        return matched
     }
 
     private func fetchAnthropicCanonicalSnapshots(accountId: UUID, apiKey: String) async throws -> (snapshots: [UsageSnapshot], cursor: AnthropicIngestionCursor?) {
