@@ -268,7 +268,9 @@ class PollingService: ObservableObject {
                 costConfidence: account.type == .anthropicAPI ? .billingGrade : .estimated
             )
             let triggered = AutomationEngine.evaluate(rules: config.automations, snapshot: snapshot)
-            matched.append(contentsOf: triggered.map { ($0, snapshot) })
+            for rule in triggered where Self.isAutomationOffCooldown(rule, pollIntervalSeconds: config.pollIntervalSeconds) {
+                matched.append((rule, snapshot))
+            }
         }
         return matched
     }
@@ -286,6 +288,12 @@ class PollingService: ObservableObject {
         if didMutateConfig {
             ConfigManager.shared.save(config)
         }
+    }
+
+    static func isAutomationOffCooldown(_ rule: AutomationRule, pollIntervalSeconds: Int, now: Date = Date()) -> Bool {
+        guard let lastFiredAt = rule.lastFiredAt else { return true }
+        let cooldown = max(1, pollIntervalSeconds)
+        return now.timeIntervalSince(lastFiredAt) >= TimeInterval(cooldown)
     }
 
     private func fetchAnthropicCanonicalSnapshots(accountId: UUID, apiKey: String) async throws -> (snapshots: [UsageSnapshot], cursor: AnthropicIngestionCursor?) {

@@ -121,4 +121,18 @@ final class PollingServiceTests: XCTestCase {
         XCTAssertEqual(comps.minute, 0)
         XCTAssertEqual(comps.second, 0)
     }
+
+    func testAutomationCooldownBlocksImmediateRefire() {
+        var rule = AutomationRule(name: "cooldown", triggerType: "cost_gt", threshold: 1, shellCommand: "say hi")
+        rule.lastFiredAt = Date()
+        XCTAssertFalse(PollingService.isAutomationOffCooldown(rule, pollIntervalSeconds: 300, now: Date()))
+    }
+
+    func testAutomationCooldownAllowsWhenUnfiredOrExpired() {
+        var firedRule = AutomationRule(name: "cooldown-ok", triggerType: "cost_gt", threshold: 1, shellCommand: "say hi")
+        firedRule.lastFiredAt = Date().addingTimeInterval(-600)
+        let freshRule = AutomationRule(name: "new", triggerType: "cost_gt", threshold: 1, shellCommand: "say hi")
+        XCTAssertTrue(PollingService.isAutomationOffCooldown(firedRule, pollIntervalSeconds: 300, now: Date()))
+        XCTAssertTrue(PollingService.isAutomationOffCooldown(freshRule, pollIntervalSeconds: 300, now: Date()))
+    }
 }
