@@ -137,8 +137,7 @@ guard var snapshots = try? decoder.decode([UsageSnapshot].self, from: data) else
 if let filter = accountFilter {
     let cfgPath = configDir.appendingPathComponent("config.toml")
     var knownIds: [String] = []
-    if let raw = try? Data(contentsOf: cfgPath),
-       let obj = (try? JSONSerialization.jsonObject(with: raw)) as? [String: Any],
+    if let obj = loadConfigJSONObject(from: cfgPath),
        let accounts = obj["accounts"] as? [[String: Any]] {
         knownIds = accounts.compactMap { $0["id"] as? String }
     }
