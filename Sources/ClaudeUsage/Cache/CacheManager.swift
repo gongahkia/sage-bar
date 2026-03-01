@@ -34,6 +34,7 @@ private actor CacheStore {
     private let anthropicRetryAfterFile: URL
     private let lastSuccessFile: URL
     private var snapshotMemoryCache: [UsageSnapshot]?
+    private var snapshotsByAccountIndex: [UUID: [UsageSnapshot]]?
     private var writesSinceCompaction = 0
 
     init(baseURL: URL) {
@@ -73,6 +74,7 @@ private actor CacheStore {
         }
         guard let data = try? Data(contentsOf: cacheFile) else {
             snapshotMemoryCache = []
+            snapshotsByAccountIndex = [:]
             return []
         }
         if data.count > Self.maxSnapshotCacheBytes {
@@ -101,6 +103,7 @@ private actor CacheStore {
             }
             log.debug("Cache loaded: \(dailyCompacted.count) snapshots (schema \(decoded.schemaVersion))")
             snapshotMemoryCache = dailyCompacted
+            snapshotsByAccountIndex = buildSnapshotsByAccountIndex(dailyCompacted)
             return dailyCompacted
         }
         if let legacy = try? decoder().decode([UsageSnapshot].self, from: data) {
@@ -109,6 +112,7 @@ private actor CacheStore {
             let dailyCompacted = compactDailyCumulativeSnapshots(deduped)
             saveSnapshots(dailyCompacted)
             snapshotMemoryCache = dailyCompacted
+            snapshotsByAccountIndex = buildSnapshotsByAccountIndex(dailyCompacted)
             return dailyCompacted
         }
         let fallback = snapshotMemoryCache ?? []
@@ -125,6 +129,7 @@ private actor CacheStore {
             let data = try encoder().encode(payload)
             try AtomicFileWriter.write(data, to: cacheFile)
             snapshotMemoryCache = snapshots
+            snapshotsByAccountIndex = buildSnapshotsByAccountIndex(snapshots)
             log.debug("Cache saved: \(snapshots.count) snapshots")
         } catch {
             ErrorLogger.shared.log("Cache write failed: \(error.localizedDescription)")
@@ -476,7 +481,20 @@ private actor CacheStore {
     }
 
     private func snapshotsIndexedByAccount() -> [UUID: [UsageSnapshot]] {
-        Dictionary(grouping: loadSnapshots(), by: \.accountId)
+        if let cached = snapshotsByAccountIndex {
+            return cached
+        }
+        let grouped = buildSnapshotsByAccountIndex(loadSnapshots())
+        snapshotsByAccountIndex = grouped
+        return grouped
+    }
+
+    private func buildSnapshotsByAccountIndex(_ snapshots: [UsageSnapshot]) -> [UUID: [UsageSnapshot]] {
+        var grouped = Dictionary(grouping: snapshots, by: \.accountId)
+        for accountId in grouped.keys {
+            grouped[accountId]?.sort { $0.timestamp < $1.timestamp }
+        }
+        return grouped
     }
 }
 
