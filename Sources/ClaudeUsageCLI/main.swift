@@ -28,6 +28,61 @@ private struct ForecastCachePayload: Codable {
     var forecasts: [ForecastSnapshot]
 }
 
+private struct ModelHintPayload: Codable {
+    enum SavingsConfidence: String, Codable {
+        case measured
+        case profileEstimated
+        case heuristicEstimated
+    }
+
+    var accountId: UUID
+    var date: Date
+    var expensiveModelTokens: Int
+    var cheaperAlternativeExists: Bool
+    var estimatedSavingsUSD: Double
+    var recommendedModel: String
+    var savingsConfidence: SavingsConfidence
+
+    enum CodingKeys: String, CodingKey {
+        case accountId
+        case date
+        case expensiveModelTokens
+        case cheaperAlternativeExists
+        case estimatedSavingsUSD
+        case recommendedModel
+        case savingsConfidence
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        accountId = try c.decode(UUID.self, forKey: .accountId)
+        date = try c.decode(Date.self, forKey: .date)
+        expensiveModelTokens = try c.decode(Int.self, forKey: .expensiveModelTokens)
+        cheaperAlternativeExists = try c.decode(Bool.self, forKey: .cheaperAlternativeExists)
+        estimatedSavingsUSD = try c.decode(Double.self, forKey: .estimatedSavingsUSD)
+        recommendedModel = try c.decode(String.self, forKey: .recommendedModel)
+        savingsConfidence = try c.decodeIfPresent(SavingsConfidence.self, forKey: .savingsConfidence) ?? .measured
+    }
+}
+
+private func providerName(forRecommendedModel model: String) -> String {
+    let normalized = model.lowercased()
+    if normalized.hasPrefix("claude") { return "Anthropic" }
+    if normalized.hasPrefix("gpt") || normalized.hasPrefix("o1") || normalized.hasPrefix("o3") || normalized.hasPrefix("o4") {
+        return "OpenAI"
+    }
+    if normalized.hasPrefix("gemini") { return "Google Gemini" }
+    return "Unknown"
+}
+
+private func confidenceLabel(_ confidence: ModelHintPayload.SavingsConfidence) -> String {
+    switch confidence {
+    case .measured: return "measured"
+    case .profileEstimated: return "profile"
+    case .heuristicEstimated: return "heuristic"
+    }
+}
+
 private func pad(_ value: String, width: Int) -> String {
     let clipped = value.count > width ? String(value.prefix(width)) : value
     if clipped.count >= width { return clipped }
@@ -72,6 +127,7 @@ var showErrors = false
 var errorsCount = 20
 var showConfig = false
 var showModels = false
+var showOptimizerHints = false
 var sinceDate: Date? = nil
 var sinceParseError: String? = nil
 var watchInterval: Int? = nil
@@ -92,6 +148,7 @@ while let arg = iter.next() {
     case "--heatmap": showHeatmap = true
     case "--config": showConfig = true
     case "--models": showModels = true
+    case "--optimizer-hints": showOptimizerHints = true
     case "--since":
         if let raw = iter.next() {
             let iso = ISO8601DateFormatter(); iso.formatOptions = [.withFullDate]
@@ -105,7 +162,7 @@ while let arg = iter.next() {
         if let raw = iter.next(), let n = Int(raw) { watchInterval = n } else { watchInterval = 30 }
     case "--errors": showErrors = true
     case "--help":
-        print("claude-usage [--account NAME] [--no-color] [--format json] [--forecast] [--history] [--heatmap] [--models] [--since DATE] [--watch N] [--config] [--errors[=N]] [--version]")
+        print("claude-usage [--account NAME] [--no-color] [--format json] [--forecast] [--history] [--heatmap] [--models] [--optimizer-hints] [--since DATE] [--watch N] [--config] [--errors[=N]] [--version]")
         exit(0)
     default:
         if arg.hasPrefix("--errors="), let n = Int(arg.dropFirst("--errors=".count)) {
@@ -186,6 +243,7 @@ guard var snapshots else {
 }
 
 // filter by account name/id; validate filter against config accounts
+var matchedAccountIDSetForFilter: Set<String>? = nil
 if let filter = accountFilter {
     let cfgPath = configDir.appendingPathComponent("config.toml")
     var accountRows: [(id: String, name: String)] = []
@@ -219,6 +277,7 @@ if let filter = accountFilter {
         exit(1)
     }
     let matchedSet = Set(matchedIDs.map { $0.lowercased() })
+    matchedAccountIDSetForFilter = matchedSet
     snapshots = snapshots.filter { matchedSet.contains($0.accountId.uuidString.lowercased()) }
 }
 
@@ -272,7 +331,7 @@ func normalizeByAccountWithinDay(_ snapshots: [UsageSnapshot]) -> [UsageSnapshot
 
 // MARK: – Output
 
-if formatJSON && !showForecast && !showModels {
+if formatJSON && !showForecast && !showModels && !showOptimizerHints {
     let enc = JSONEncoder()
     enc.dateEncodingStrategy = .iso8601
     enc.outputFormatting = .prettyPrinted
@@ -297,6 +356,69 @@ if showModels {
         print(String(repeating: "─", count: 80))
         for (id, inp, out2, cost) in rows {
             print("\(pad(id, width: 40)) | \(pad("\(inp)", width: 12)) | \(pad("\(out2)", width: 12)) | \(String(format: "$%.4f", cost))")
+        }
+    }
+    exit(0)
+}
+
+if showOptimizerHints {
+    let hintsFile = sharedContainer.appendingPathComponent("model_hints.json")
+    guard let data = try? Data(contentsOf: hintsFile),
+          let decodedHints = try? decoder.decode([ModelHintPayload].self, from: data) else {
+        if formatJSON {
+            print("[]")
+        } else {
+            print("No optimizer hints available.")
+        }
+        exit(0)
+    }
+    let hints = matchedAccountIDSetForFilter.map { matched in
+        decodedHints.filter { matched.contains($0.accountId.uuidString.lowercased()) }
+    } ?? decodedHints
+
+    let accountNameByID: [String: String] = {
+        guard let obj = loadConfigJSONObject(from: configFile),
+              let accounts = obj["accounts"] as? [[String: Any]] else { return [:] }
+        var out: [String: String] = [:]
+        for row in accounts {
+            guard let id = row["id"] as? String else { continue }
+            let name = (row["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            out[id.lowercased()] = name.isEmpty ? id : name
+        }
+        return out
+    }()
+
+    if formatJSON {
+        let rows: [[String: Any]] = hints.map { hint in
+            let accountID = hint.accountId.uuidString.lowercased()
+            return [
+                "account_id": hint.accountId.uuidString,
+                "account_name": accountNameByID[accountID] ?? hint.accountId.uuidString,
+                "provider": providerName(forRecommendedModel: hint.recommendedModel),
+                "recommended_model": hint.recommendedModel,
+                "estimated_savings_usd": hint.estimatedSavingsUSD,
+                "expensive_model_tokens": hint.expensiveModelTokens,
+                "confidence": confidenceLabel(hint.savingsConfidence),
+                "generated_at": ISO8601DateFormatter().string(from: hint.date),
+            ]
+        }
+        if let out = try? JSONSerialization.data(withJSONObject: rows, options: .prettyPrinted),
+           let s = String(data: out, encoding: .utf8) {
+            print(s)
+        } else {
+            print("[]")
+        }
+    } else {
+        print("\(pad("Account", width: 24)) | \(pad("Provider", width: 14)) | \(pad("Confidence", width: 10)) | \(pad("Recommended", width: 20)) | Savings")
+        print(String(repeating: "─", count: 96))
+        for hint in hints.sorted(by: { $0.estimatedSavingsUSD > $1.estimatedSavingsUSD }) {
+            let accountID = hint.accountId.uuidString.lowercased()
+            let accountName = accountNameByID[accountID] ?? hint.accountId.uuidString
+            let provider = providerName(forRecommendedModel: hint.recommendedModel)
+            let confidence = confidenceLabel(hint.savingsConfidence)
+            print(
+                "\(pad(accountName, width: 24)) | \(pad(provider, width: 14)) | \(pad(confidence, width: 10)) | \(pad(hint.recommendedModel, width: 20)) | \(String(format: "$%.2f", hint.estimatedSavingsUSD))"
+            )
         }
     }
     exit(0)

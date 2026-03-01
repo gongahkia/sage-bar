@@ -59,4 +59,16 @@ final class CLIFormattingRegressionTests: XCTestCase {
             "CLI --heatmap should normalize cumulative snapshots within each account/day bucket"
         )
     }
+
+    func testOptimizerHintsFlagIsExposedAndHandled() throws {
+        let content = try cliMainSource()
+        XCTAssertTrue(
+            content.contains("--optimizer-hints"),
+            "CLI help text should advertise --optimizer-hints"
+        )
+        XCTAssertTrue(
+            content.contains("if showOptimizerHints {"),
+            "CLI should include an explicit execution path for optimizer hints output"
+        )
+    }
 }
