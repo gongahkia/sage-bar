@@ -9,7 +9,11 @@ struct AnalyticsEngine {
             $0.accountId == account &&
             cal.dateComponents([.year,.month], from: $0.timestamp) == monthComps
         }
-        return DailyAggregate(date: cal.dateComponents([.year,.month,.day], from: now), snapshots: filtered)
+        let normalized = Dictionary(grouping: filtered) { cal.startOfDay(for: $0.timestamp) }
+            .values
+            .flatMap { normalizeDailySnapshots($0) }
+            .sorted { $0.timestamp < $1.timestamp }
+        return DailyAggregate(date: cal.dateComponents([.year,.month,.day], from: now), snapshots: normalized)
     }
 
     static func rollingAverage(snapshots: [UsageSnapshot], days: Int, account: UUID) -> Double {
@@ -18,7 +22,9 @@ struct AnalyticsEngine {
         guard !filtered.isEmpty else { return 0 }
         let dailyTotals = Dictionary(grouping: filtered) {
             Calendar.current.startOfDay(for: $0.timestamp)
-        }.mapValues { $0.reduce(0) { $0 + $1.totalCostUSD } }
+        }.mapValues { daySnapshots in
+            normalizeDailySnapshots(daySnapshots).reduce(0) { $0 + $1.totalCostUSD }
+        }
         return dailyTotals.values.reduce(0, +) / Double(dailyTotals.count)
     }
 
@@ -37,5 +43,35 @@ struct AnalyticsEngine {
         return grid.map { row in
             row.map { val in maxVal > 0 ? val / maxVal : 0 }
         }
+    }
+
+    private static func normalizeDailySnapshots(_ snapshots: [UsageSnapshot]) -> [UsageSnapshot] {
+        var eventSnapshots: [UsageSnapshot] = []
+        var cumulativeSnapshots: [UsageSnapshot] = []
+        for snapshot in snapshots {
+            if isCumulativeSnapshot(snapshot) {
+                cumulativeSnapshots.append(snapshot)
+            } else {
+                eventSnapshots.append(snapshot)
+            }
+        }
+        if let latestCumulative = cumulativeSnapshots.max(by: { $0.timestamp < $1.timestamp }) {
+            eventSnapshots.append(latestCumulative)
+        }
+        return eventSnapshots
+    }
+
+    private static func isCumulativeSnapshot(_ snapshot: UsageSnapshot) -> Bool {
+        let model = snapshot.modelBreakdown.first?.modelId ?? ""
+        let cumulativeModels: Set<String> = [
+            "claude-code-local",
+            "claude-ai-web",
+            "codex-local",
+            "gemini-local",
+            "openai-org",
+            "windsurf-enterprise",
+            "copilot-metrics",
+        ]
+        return cumulativeModels.contains(model)
     }
 }
