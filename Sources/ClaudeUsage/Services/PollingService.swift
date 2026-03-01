@@ -2,6 +2,7 @@ import Foundation
 import Combine
 import Network
 import OSLog
+import CryptoKit
 
 private let log = Logger(subsystem: "dev.claudeusage", category: "PollingService")
 
@@ -716,10 +717,19 @@ class PollingService: ObservableObject {
             let enc = JSONEncoder()
             enc.dateEncodingStrategy = .iso8601
             let data = try enc.encode(hints)
+            if let existing = try? Data(contentsOf: url),
+               modelHintsPayloadHash(existing) == modelHintsPayloadHash(data) {
+                return
+            }
             try AtomicFileWriter.write(data, to: url)
         } catch {
             ErrorLogger.shared.log("Failed to persist model hints: \(error.localizedDescription)")
         }
+    }
+
+    private func modelHintsPayloadHash(_ data: Data) -> String {
+        let digest = SHA256.hash(data: data)
+        return digest.map { String(format: "%02x", $0) }.joined()
     }
 
     private func fetchAnthropicUsageWithRetry(
