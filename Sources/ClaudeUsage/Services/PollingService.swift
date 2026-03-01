@@ -126,6 +126,10 @@ class PollingService: ObservableObject {
                 if launched >= maxConcurrency { _ = await group.next() }
                 group.addTask { [account] in
                     guard !Task.isCancelled else { return nil }
+                    let jitter = self.accountPollJitterNanos(accountId: account.id, activeAccountCount: activeAccounts.count)
+                    if jitter > 0 {
+                        try? await Task.sleep(nanoseconds: jitter)
+                    }
                     await self.fetchAndStore(account: account, config: config)
                     let hasError = await MainActor.run {
                         self.fetchErrorsByAccount[account.id] != nil
@@ -662,6 +666,13 @@ class PollingService: ObservableObject {
             self.pendingLogRefresh = false
             return pending
         }
+    }
+
+    private func accountPollJitterNanos(accountId: UUID, activeAccountCount: Int) -> UInt64 {
+        guard activeAccountCount > 1 else { return 0 }
+        let hash = accountId.uuidString.utf8.reduce(UInt64(0)) { ($0 &* 33) &+ UInt64($1) }
+        let jitterMillis = hash % 350
+        return jitterMillis * 1_000_000
     }
 
     private func setFetchError(_ message: String, for accountId: UUID) async {
