@@ -142,21 +142,20 @@ private actor CacheStore {
     }
 
     func latestSnapshot(forAccount id: UUID) -> UsageSnapshot? {
-        loadSnapshots().filter { $0.accountId == id }.max(by: { $0.timestamp < $1.timestamp })
+        snapshotsIndexedByAccount()[id]?.max(by: { $0.timestamp < $1.timestamp })
     }
 
     func historySnapshots(forAccount id: UUID, days: Int) -> [UsageSnapshot] {
         let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date())!
-        return loadSnapshots()
-            .filter { $0.accountId == id && $0.timestamp >= cutoff }
+        return (snapshotsIndexedByAccount()[id] ?? [])
+            .filter { $0.timestamp >= cutoff }
             .sorted { $0.timestamp < $1.timestamp }
     }
 
     func todayAggregate(forAccount id: UUID) -> DailyAggregate {
         let cal = Calendar.current
         let today = cal.dateComponents([.year,.month,.day], from: Date())
-        let raw = loadSnapshots().filter {
-            $0.accountId == id &&
+        let raw = (snapshotsIndexedByAccount()[id] ?? []).filter {
             cal.dateComponents([.year,.month,.day], from: $0.timestamp) == today
         }
         return DailyAggregate(date: today, snapshots: normalizeDailySnapshots(raw))
@@ -382,6 +381,10 @@ private actor CacheStore {
         let confidence = snapshot.costConfidence == .billingGrade ? 1 : 0
         let freshness = snapshot.isStale ? 0 : 1
         return (confidence, freshness, tokenTotal, snapshot.totalCostUSD, snapshot.timestamp.timeIntervalSince1970)
+    }
+
+    private func snapshotsIndexedByAccount() -> [UUID: [UsageSnapshot]] {
+        Dictionary(grouping: loadSnapshots(), by: \.accountId)
     }
 }
 
