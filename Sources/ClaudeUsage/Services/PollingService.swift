@@ -140,29 +140,37 @@ class PollingService: ObservableObject {
 
         let activeAccounts = config.accounts.filter { $0.isActive }
         let concurrencyLimit = min(max(1, activeAccounts.count), maxConcurrencyUpperCap)
+        let chunkSize = max(1, concurrencyLimit * 2)
         var updatedIds: [UUID] = []
 
-        await withTaskGroup(of: UUID?.self) { group in
-            var launched = 0
-            for account in activeAccounts {
-                if launched >= concurrencyLimit { _ = await group.next() }
-                group.addTask { [account] in
-                    guard !Task.isCancelled else { return nil }
-                    let jitter = self.accountPollJitterNanos(accountId: account.id, activeAccountCount: activeAccounts.count)
-                    if jitter > 0 {
-                        try? await Task.sleep(nanoseconds: jitter)
+        var chunkStart = 0
+        while chunkStart < activeAccounts.count {
+            guard !Task.isCancelled else { return }
+            let chunkEnd = min(chunkStart + chunkSize, activeAccounts.count)
+            let chunk = Array(activeAccounts[chunkStart..<chunkEnd])
+            await withTaskGroup(of: UUID?.self) { group in
+                var launched = 0
+                for account in chunk {
+                    if launched >= concurrencyLimit { _ = await group.next() }
+                    group.addTask { [account] in
+                        guard !Task.isCancelled else { return nil }
+                        let jitter = self.accountPollJitterNanos(accountId: account.id, activeAccountCount: activeAccounts.count)
+                        if jitter > 0 {
+                            try? await Task.sleep(nanoseconds: jitter)
+                        }
+                        await self.fetchAndStore(account: account, config: config)
+                        let hasError = await MainActor.run {
+                            self.fetchErrorsByAccount[account.id] != nil
+                        }
+                        return hasError ? nil : account.id
                     }
-                    await self.fetchAndStore(account: account, config: config)
-                    let hasError = await MainActor.run {
-                        self.fetchErrorsByAccount[account.id] != nil
-                    }
-                    return hasError ? nil : account.id
+                    launched += 1
                 }
-                launched += 1
+                for await id in group {
+                    if let id { updatedIds.append(id) }
+                }
             }
-            for await id in group {
-                if let id { updatedIds.append(id) }
-            }
+            chunkStart = chunkEnd
         }
         let failures = max(0, activeAccounts.count - updatedIds.count)
         await MainActor.run {
