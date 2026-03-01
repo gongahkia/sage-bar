@@ -61,13 +61,21 @@ private struct OpenAIModelAccumulator {
 }
 
 class OpenAIOrgUsageClient {
+    private static let requestTimeoutSeconds: TimeInterval = 25
     private let adminAPIKey: String
     private let session: URLSession
     private let baseURL = URL(string: "https://api.openai.com")!
 
     init(adminAPIKey: String, session: URLSession? = nil) {
         self.adminAPIKey = adminAPIKey
-        self.session = session ?? URLSession(configuration: .ephemeral)
+        self.session = session ?? Self.makeDefaultSession()
+    }
+
+    private static func makeDefaultSession() -> URLSession {
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = requestTimeoutSeconds
+        config.timeoutIntervalForResource = requestTimeoutSeconds * 2
+        return URLSession(configuration: config)
     }
 
     func validateAccess(now: Date = Date()) async -> Bool {

@@ -38,6 +38,7 @@ private struct PriceEntry: Decodable {
 }
 
 class AnthropicAPIClient {
+    private static let requestTimeoutSeconds: TimeInterval = 20
     static func loadPrices(from url: URL) -> [String: (inputPer1M: Double, outputPer1M: Double)] {
         let data: Data
         do { data = try Data(contentsOf: url) } catch {
@@ -74,7 +75,14 @@ class AnthropicAPIClient {
 
     init(apiKey: String, session: URLSession? = nil) {
         self.apiKey = apiKey
-        self.session = session ?? URLSession(configuration: .ephemeral)
+        self.session = session ?? Self.makeDefaultSession()
+    }
+
+    private static func makeDefaultSession() -> URLSession {
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = requestTimeoutSeconds
+        config.timeoutIntervalForResource = requestTimeoutSeconds * 2
+        return URLSession(configuration: config)
     }
 
     private func request(path: String, queryItems: [URLQueryItem] = []) -> URLRequest {

@@ -66,6 +66,7 @@ private struct GitHubCopilotDotcomPullRequestsModel: Decodable {
 }
 
 class GitHubCopilotMetricsClient {
+    private static let requestTimeoutSeconds: TimeInterval = 20
     private let token: String
     private let organization: String
     private let session: URLSession
@@ -74,7 +75,14 @@ class GitHubCopilotMetricsClient {
     init(token: String, organization: String, session: URLSession? = nil) {
         self.token = token
         self.organization = organization
-        self.session = session ?? URLSession(configuration: .ephemeral)
+        self.session = session ?? Self.makeDefaultSession()
+    }
+
+    private static func makeDefaultSession() -> URLSession {
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = requestTimeoutSeconds
+        config.timeoutIntervalForResource = requestTimeoutSeconds * 2
+        return URLSession(configuration: config)
     }
 
     func validateAccess(now: Date = Date()) async -> Bool {

@@ -70,6 +70,7 @@ private struct WindsurfTeamCreditBalanceResponse: Decodable {
 }
 
 class WindsurfEnterpriseClient {
+    private static let requestTimeoutSeconds: TimeInterval = 20
     private let serviceKey: String
     private let groupName: String?
     private let session: URLSession
@@ -79,7 +80,14 @@ class WindsurfEnterpriseClient {
     init(serviceKey: String, groupName: String? = nil, session: URLSession? = nil) {
         self.serviceKey = serviceKey
         self.groupName = groupName?.trimmingCharacters(in: .whitespacesAndNewlines)
-        self.session = session ?? URLSession(configuration: .ephemeral)
+        self.session = session ?? Self.makeDefaultSession()
+    }
+
+    private static func makeDefaultSession() -> URLSession {
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = requestTimeoutSeconds
+        config.timeoutIntervalForResource = requestTimeoutSeconds * 2
+        return URLSession(configuration: config)
     }
 
     func validateAccess() async -> Bool {
