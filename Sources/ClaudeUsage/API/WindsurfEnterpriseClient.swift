@@ -168,7 +168,10 @@ class WindsurfEnterpriseClient {
         req.httpBody = try JSONEncoder().encode(payload)
         do {
             let (data, resp) = try await session.data(for: req)
-            let http = resp as! HTTPURLResponse
+            guard let http = resp as? HTTPURLResponse else {
+                ErrorLogger.shared.log("Windsurf API request received non-HTTP response for \(path)", level: "WARN")
+                throw APIError.networkError(URLError(.badServerResponse))
+            }
             try mapStatus(http.statusCode, headers: http.allHeaderFields)
             do {
                 return try JSONDecoder().decode(T.self, from: data)
