@@ -165,4 +165,62 @@ final class WebhookServiceTests: XCTestCase {
         }
         XCTAssertFalse(called, "invalid JSON template must fail before any network call")
     }
+
+    func testTemplateSubstitutionCanProduceInvalidJSONAndIsRejected() async {
+        var called = false
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [MockURLProtocol.self]
+        MockURLProtocol.requestHandler = { _ in
+            called = true
+            let resp = HTTPURLResponse(url: URL(string: "https://example.com/hook")!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (resp, Data())
+        }
+        let mockSession = URLSession(configuration: config)
+        let svc = WebhookService(session: mockSession, maxRetries: 0)
+        let template = "{\"event\":\"{{event}}\",\"date\":{{date}}}"
+        let whConfig = WebhookConfig(enabled: true, url: "https://example.com/hook", events: [], payloadTemplate: template)
+
+        do {
+            try await svc.send(event: .dailyDigest, snapshot: snap(), config: whConfig)
+            XCTFail("template should be rejected after substitution creates invalid JSON")
+        } catch let error as APIError {
+            guard case .decodingFailed = error else {
+                XCTFail("expected decodingFailed, got \(error)")
+                return
+            }
+        } catch {
+            XCTFail("unexpected error \(error)")
+        }
+
+        XCTAssertFalse(called, "invalid post-substitution JSON must fail before network dispatch")
+    }
+
+    func testMalformedJSONArrayTemplateRejectedBeforeDispatch() async {
+        var called = false
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [MockURLProtocol.self]
+        MockURLProtocol.requestHandler = { _ in
+            called = true
+            let resp = HTTPURLResponse(url: URL(string: "https://example.com/hook")!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (resp, Data())
+        }
+        let mockSession = URLSession(configuration: config)
+        let svc = WebhookService(session: mockSession, maxRetries: 0)
+        let template = "[{\"event\":\"{{event}}\"}"
+        let whConfig = WebhookConfig(enabled: true, url: "https://example.com/hook", events: [], payloadTemplate: template)
+
+        do {
+            try await svc.send(event: .dailyDigest, snapshot: snap(), config: whConfig)
+            XCTFail("malformed JSON array template should throw")
+        } catch let error as APIError {
+            guard case .decodingFailed = error else {
+                XCTFail("expected decodingFailed, got \(error)")
+                return
+            }
+        } catch {
+            XCTFail("unexpected error \(error)")
+        }
+
+        XCTAssertFalse(called, "malformed JSON array template must fail before network dispatch")
+    }
 }
