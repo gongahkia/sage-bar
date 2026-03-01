@@ -15,19 +15,20 @@ class ConfigManager {
         do {
             try FileManager.default.createDirectory(at: configDir, withIntermediateDirectories: true)
             guard FileManager.default.fileExists(atPath: configFile.path) else {
-                return .default
+                return normalize(.default)
             }
             let raw = try String(contentsOf: configFile, encoding: .utf8)
             if let rawData = raw.data(using: .utf8),
                let decoded = try? JSONDecoder().decode(Config.self, from: rawData) {
-                return decoded
+                return normalize(decoded)
             }
             let table = try TOMLTable(string: raw)
             let json = table.convert(to: .json)
-            guard let data = json.data(using: .utf8) else { return .default }
-            return try JSONDecoder().decode(Config.self, from: data)
+            guard let data = json.data(using: .utf8) else { return normalize(.default) }
+            let decoded = try JSONDecoder().decode(Config.self, from: data)
+            return normalize(decoded)
         } catch {
-            return .default
+            return normalize(.default)
         }
     }
 
@@ -42,5 +43,16 @@ class ConfigManager {
             try jsonData.write(to: tmp, options: .atomic)
             _ = try FileManager.default.replaceItemAt(configFile, withItemAt: tmp)
         } catch {}
+    }
+
+    private func normalize(_ config: Config) -> Config {
+        var normalized = config
+        normalized.accounts.sort {
+            if $0.order == $1.order {
+                return $0.createdAt < $1.createdAt
+            }
+            return $0.order < $1.order
+        }
+        return normalized
     }
 }
