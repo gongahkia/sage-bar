@@ -34,6 +34,7 @@ class PollingService: ObservableObject {
     private let healthWindowSize = 20
     private let circuitBreakerThreshold = 3
     private let circuitBreakerDurationSeconds: TimeInterval = 300
+    @MainActor private var nextPollCycleID: Int = 1
 
     private init() {
         pathMonitor.pathUpdateHandler = { [weak self] path in
@@ -85,9 +86,13 @@ class PollingService: ObservableObject {
 
     func pollOnce() async {
         let token = UUID()
+        let cycleID = await MainActor.run { () -> Int in
+            defer { self.nextPollCycleID += 1 }
+            return self.nextPollCycleID
+        }
         let task = Task { [weak self] in
             guard let self else { return }
-            await self.runPollCycle()
+            await self.runPollCycle(cycleID: cycleID)
         }
         await MainActor.run {
             self.currentTask = task
@@ -102,16 +107,16 @@ class PollingService: ObservableObject {
         }
     }
 
-    private func runPollCycle() async {
+    private func runPollCycle(cycleID: Int) async {
         guard !Task.isCancelled else { return }
         let available = await MainActor.run { self.networkAvailable }
         guard available else {
-            log.warning("Network unavailable, skipping poll")
+            log.warning("[poll_cycle=\(cycleID)] Network unavailable, skipping poll")
             ErrorLogger.shared.log("Network unavailable, skipping poll", level: "WARN")
             return
         }
         var config = ConfigManager.shared.load()
-        log.info("Poll started: \(config.accounts.filter { $0.isActive }.count) active accounts")
+        log.info("[poll_cycle=\(cycleID)] Poll started: \(config.accounts.filter { $0.isActive }.count) active accounts")
         await MainActor.run { self.isPolling = true }
         defer {
             Task { @MainActor in
@@ -119,7 +124,7 @@ class PollingService: ObservableObject {
                 if !updatedIds.isEmpty {
                     self.lastPollDate = Date()
                 }
-                log.info("Poll completed")
+                log.info("[poll_cycle=\(cycleID)] Poll completed")
             }
         }
 
