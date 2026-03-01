@@ -613,9 +613,9 @@ class PollingService: ObservableObject {
     private func fetchAnthropicCanonicalSnapshots(accountId: UUID, apiKey: String) async throws -> (snapshots: [UsageSnapshot], cursor: AnthropicIngestionCursor?) {
         let client = Self.anthropicClientFactory(apiKey)
         let end = Date()
-        let cursor = await CacheManager.shared.loadAnthropicCursorAsync(forAccount: accountId)
-        let start = Self.anthropicStartDate(cursor: cursor, now: end)
-        let response = try await fetchAnthropicUsageWithRetry(
+        let storedCursor = await CacheManager.shared.loadAnthropicCursorAsync(forAccount: accountId)
+        let start = Self.anthropicStartDate(cursor: storedCursor, now: end)
+        let response = try await fetchAnthropicUsageChunked(
             client: client,
             accountId: accountId,
             startDate: start,
@@ -692,6 +692,38 @@ class PollingService: ObservableObject {
                 throw error
             }
         }
+    }
+
+    private func fetchAnthropicUsageChunked(
+        client: AnthropicAPIClient,
+        accountId: UUID,
+        startDate: Date,
+        endDate: Date
+    ) async throws -> AnthropicUsageResponse {
+        let maxChunkDays = 7
+        let calendar = Calendar.current
+        var chunkStart = startDate
+        var mergedData: [AnthropicUsagePeriod] = []
+        while chunkStart < endDate {
+            let next = calendar.date(byAdding: .day, value: maxChunkDays, to: chunkStart) ?? endDate
+            let chunkEnd = min(next, endDate)
+            let response = try await fetchAnthropicUsageWithRetry(
+                client: client,
+                accountId: accountId,
+                startDate: chunkStart,
+                endDate: chunkEnd
+            )
+            mergedData.append(contentsOf: response.data)
+            if chunkEnd >= endDate { break }
+            chunkStart = chunkEnd
+            try Task.checkCancellation()
+        }
+        return AnthropicUsageResponse(
+            data: mergedData,
+            has_more: false,
+            first_id: mergedData.first?.start_time,
+            last_id: mergedData.last?.start_time
+        )
     }
 
     private static func jitteredBackoffDelayNanos(attempt: Int, retryAfterSeconds: Int?) -> UInt64 {
