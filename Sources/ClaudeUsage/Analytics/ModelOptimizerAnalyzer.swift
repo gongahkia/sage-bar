@@ -12,6 +12,18 @@ struct ModelOptimizerAnalyzer {
         let outputPer1M: Double
     }
 
+    private enum PricingConfidenceLabel: String {
+        case measured
+        case profileEstimated
+        case heuristicEstimated
+    }
+
+    private struct PricingEstimate {
+        let currentCostUSD: Double
+        let cheaperCostUSD: Double
+        let confidence: PricingConfidenceLabel
+    }
+
     private struct TaxonomyRule {
         let exactModelIDs: Set<String>
         let prefixMatchers: [String]
@@ -36,13 +48,13 @@ struct ModelOptimizerAnalyzer {
         ),
     ]
 
-    private static let fallbackCurrentPricingByFamily: [ProviderFamily: Pricing] = [
+    private static let heuristicCurrentPricingByFamily: [ProviderFamily: Pricing] = [
         .claude: Pricing(inputPer1M: 3.00, outputPer1M: 15.00),
         .codex: Pricing(inputPer1M: 2.00, outputPer1M: 8.00),
         .gemini: Pricing(inputPer1M: 1.25, outputPer1M: 5.00),
     ]
 
-    private static let fallbackCheaperPricingByFamily: [ProviderFamily: Pricing] = [
+    private static let heuristicCheaperPricingByFamily: [ProviderFamily: Pricing] = [
         .claude: Pricing(inputPer1M: 0.25, outputPer1M: 1.25),
         .codex: Pricing(inputPer1M: 0.15, outputPer1M: 0.60),
         .gemini: Pricing(inputPer1M: 0.10, outputPer1M: 0.40),
@@ -71,22 +83,17 @@ struct ModelOptimizerAnalyzer {
         let currentOutputTotal = familyExpensive.reduce(0) { $0 + $1.outputTokens }
         let measuredCurrentCost = familyExpensive.reduce(0) { $0 + max(0, $1.costUSD) }
 
-        guard let currentPricing = fallbackCurrentPricingByFamily[family],
-              let cheaperPricing = fallbackCheaperPricingByFamily[family],
-              let recommendedModel = recommendedModelByFamily[family] else { return nil }
-
-        let estimatedCurrentCost = estimatedCostUSD(
-            inputTokens: currentInputTotal,
-            outputTokens: currentOutputTotal,
-            pricing: currentPricing
-        )
-        let currentCostTotal = measuredCurrentCost > 0 ? measuredCurrentCost : estimatedCurrentCost
-        let cheaperCost = estimatedCostUSD(
-            inputTokens: currentInputTotal,
-            outputTokens: currentOutputTotal,
-            pricing: cheaperPricing
-        )
-        let savings = currentCostTotal - cheaperCost
+        guard let recommendedModel = recommendedModelByFamily[family],
+              let pricingEstimate = pricingEstimate(
+                  family: family,
+                  expensiveUsage: familyExpensive,
+                  recommendedModel: recommendedModel,
+                  measuredCurrentCost: measuredCurrentCost,
+                  inputTokens: currentInputTotal,
+                  outputTokens: currentOutputTotal
+              ) else { return nil }
+        let savings = pricingEstimate.currentCostUSD - pricingEstimate.cheaperCostUSD
+        _ = pricingEstimate.confidence
 
         guard savings > 0 else { return nil }
 
@@ -124,6 +131,70 @@ struct ModelOptimizerAnalyzer {
             }
         }
         return nil
+    }
+
+    private static func pricingEstimate(
+        family: ProviderFamily,
+        expensiveUsage: [ModelUsage],
+        recommendedModel: String,
+        measuredCurrentCost: Double,
+        inputTokens: Int,
+        outputTokens: Int
+    ) -> PricingEstimate? {
+        guard let fallbackCurrent = heuristicCurrentPricingByFamily[family],
+              let fallbackCheaper = heuristicCheaperPricingByFamily[family] else { return nil }
+
+        let recommendedProfilePricing = pricingProfile(for: recommendedModel)
+        let recommendedPricing = recommendedProfilePricing ?? fallbackCheaper
+        let cheaperCost = estimatedCostUSD(
+            inputTokens: inputTokens,
+            outputTokens: outputTokens,
+            pricing: recommendedPricing
+        )
+
+        if measuredCurrentCost > 0 {
+            return PricingEstimate(
+                currentCostUSD: measuredCurrentCost,
+                cheaperCostUSD: cheaperCost,
+                confidence: .measured
+            )
+        }
+
+        var currentEstimatedCost = 0.0
+        var usedHeuristicForCurrent = false
+        for usage in expensiveUsage {
+            let profilePricing = pricingProfile(for: usage.modelId)
+            if profilePricing == nil {
+                usedHeuristicForCurrent = true
+            }
+            let effectivePricing = profilePricing ?? fallbackCurrent
+            currentEstimatedCost += estimatedCostUSD(
+                inputTokens: usage.inputTokens,
+                outputTokens: usage.outputTokens,
+                pricing: effectivePricing
+            )
+        }
+        let usedHeuristicForRecommended = recommendedProfilePricing == nil
+        let confidence: PricingConfidenceLabel = (usedHeuristicForCurrent || usedHeuristicForRecommended)
+            ? .heuristicEstimated
+            : .profileEstimated
+        return PricingEstimate(
+            currentCostUSD: currentEstimatedCost,
+            cheaperCostUSD: cheaperCost,
+            confidence: confidence
+        )
+    }
+
+    private static func pricingProfile(for modelId: String) -> Pricing? {
+        let normalized = modelId.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalized.isEmpty else { return nil }
+        let matchedKey = AnthropicAPIClient.pricingConstants.keys
+            .filter { normalized == $0 || normalized.hasPrefix($0) }
+            .sorted { $0.count > $1.count }
+            .first
+        guard let matchedKey,
+              let entry = AnthropicAPIClient.pricingConstants[matchedKey] else { return nil }
+        return Pricing(inputPer1M: entry.inputPer1M, outputPer1M: entry.outputPer1M)
     }
 
     private static func estimatedCostUSD(inputTokens: Int, outputTokens: Int, pricing: Pricing) -> Double {
