@@ -116,6 +116,8 @@ class CodexLogParser {
     private var lineCheckpoints: [URL: Int]
     private var dailyAccumulator: DailyAccumulator?
     private var fileTotalsByURL: [URL: TokenTotals]
+    private var decodeFailuresByFile: [URL: Int] = [:]
+    private let quarantineFailureThreshold = 20
 
     private let isoTimestamp: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
@@ -219,6 +221,9 @@ class CodexLogParser {
                 let preview = String(line.prefix(200))
                 let lineNumber = startIndex + offset + 1
                 ErrorLogger.shared.log("Malformed Codex JSONL line \(lineNumber) in \(url.lastPathComponent): \(preview)", level: "WARN")
+                if recordDecodeFailureAndMaybeQuarantine(for: url) {
+                    break
+                }
             }
         }
         if incremental {
@@ -226,6 +231,29 @@ class CodexLogParser {
             persistLineCheckpoints()
         }
         return results
+    }
+
+    private func recordDecodeFailureAndMaybeQuarantine(for url: URL) -> Bool {
+        let nextCount = (decodeFailuresByFile[url] ?? 0) + 1
+        decodeFailuresByFile[url] = nextCount
+        guard nextCount >= quarantineFailureThreshold else { return false }
+        decodeFailuresByFile[url] = 0
+        let quarantineDir = codexDir.appendingPathComponent("quarantine")
+        try? FileManager.default.createDirectory(at: quarantineDir, withIntermediateDirectories: true)
+        let destination = quarantineDir.appendingPathComponent("\(UUID().uuidString)-\(url.lastPathComponent)")
+        do {
+            try FileManager.default.moveItem(at: url, to: destination)
+            lineCheckpoints.removeValue(forKey: url)
+            fileTotalsByURL.removeValue(forKey: url)
+            fileChecksums.removeValue(forKey: url)
+            persistLineCheckpoints()
+            persistFileTotals()
+            ErrorLogger.shared.log("Quarantined corrupt Codex log file \(url.lastPathComponent) after repeated decode failures", level: "WARN")
+            return true
+        } catch {
+            ErrorLogger.shared.log("Failed to quarantine corrupt Codex log file \(url.lastPathComponent): \(error.localizedDescription)", level: "WARN")
+            return false
+        }
     }
 
     func aggregateToday() -> UsageSnapshot {
