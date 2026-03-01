@@ -21,6 +21,7 @@ final class ModelOptimizerAnalyzerTests: XCTestCase {
         let hint = ModelOptimizerAnalyzer.analyze(breakdown: mu, accountId: accountId, config: enabledConfig)
         XCTAssertNotNil(hint)
         XCTAssertEqual(hint?.recommendedModel, "claude-3-haiku")
+        XCTAssertEqual(hint?.savingsConfidence, .measured)
         XCTAssertGreaterThan(hint?.estimatedSavingsUSD ?? 0, 0)
     }
 
@@ -44,6 +45,7 @@ final class ModelOptimizerAnalyzerTests: XCTestCase {
         let hint = ModelOptimizerAnalyzer.analyze(breakdown: mu, accountId: accountId, config: enabledConfig)
         XCTAssertNotNil(hint)
         XCTAssertEqual(hint?.recommendedModel, "gpt-4o-mini")
+        XCTAssertEqual(hint?.savingsConfidence, .profileEstimated)
         XCTAssertGreaterThan(hint?.estimatedSavingsUSD ?? 0, 0)
     }
 
@@ -52,6 +54,7 @@ final class ModelOptimizerAnalyzerTests: XCTestCase {
         let hint = ModelOptimizerAnalyzer.analyze(breakdown: mu, accountId: accountId, config: enabledConfig)
         XCTAssertNotNil(hint)
         XCTAssertEqual(hint?.recommendedModel, "gemini-2.0-flash")
+        XCTAssertEqual(hint?.savingsConfidence, .profileEstimated)
         XCTAssertGreaterThan(hint?.estimatedSavingsUSD ?? 0, 0)
     }
 
@@ -67,5 +70,29 @@ final class ModelOptimizerAnalyzerTests: XCTestCase {
         let hint = ModelOptimizerAnalyzer.analyze(breakdown: mu, accountId: accountId, config: enabledConfig)
         XCTAssertNotNil(hint)
         XCTAssertEqual(hint?.recommendedModel, "gemini-2.0-flash")
+    }
+
+    func testMissingProfileFallsBackToHeuristicConfidence() {
+        let mu = [usage(model: "codex-ultra-unknown", input: 1_000_000, output: 500, cost: 0)]
+        let hint = ModelOptimizerAnalyzer.analyze(breakdown: mu, accountId: accountId, config: enabledConfig)
+        XCTAssertNotNil(hint)
+        XCTAssertEqual(hint?.recommendedModel, "gpt-4o-mini")
+        XCTAssertEqual(hint?.savingsConfidence, .heuristicEstimated)
+    }
+
+    func testModelHintDecodingDefaultsSavingsConfidenceWhenMissing() throws {
+        let json = """
+        {
+          "accountId": "\(accountId.uuidString)",
+          "date": 1735689600,
+          "expensiveModelTokens": 200,
+          "cheaperAlternativeExists": true,
+          "estimatedSavingsUSD": 1.25,
+          "recommendedModel": "gpt-4o-mini"
+        }
+        """
+        let data = Data(json.utf8)
+        let hint = try JSONDecoder().decode(ModelHint.self, from: data)
+        XCTAssertEqual(hint.savingsConfidence, .measured)
     }
 }

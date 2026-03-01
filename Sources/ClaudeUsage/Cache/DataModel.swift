@@ -39,12 +39,58 @@ struct ForecastCachePayload: Codable {
 }
 
 struct ModelHint: Codable {
+    enum SavingsConfidence: String, Codable {
+        case measured
+        case profileEstimated
+        case heuristicEstimated
+    }
+
     var accountId: UUID
     var date: Date
     var expensiveModelTokens: Int
     var cheaperAlternativeExists: Bool
     var estimatedSavingsUSD: Double
     var recommendedModel: String
+    var savingsConfidence: SavingsConfidence
+
+    enum CodingKeys: String, CodingKey {
+        case accountId
+        case date
+        case expensiveModelTokens
+        case cheaperAlternativeExists
+        case estimatedSavingsUSD
+        case recommendedModel
+        case savingsConfidence
+    }
+
+    init(
+        accountId: UUID,
+        date: Date,
+        expensiveModelTokens: Int,
+        cheaperAlternativeExists: Bool,
+        estimatedSavingsUSD: Double,
+        recommendedModel: String,
+        savingsConfidence: SavingsConfidence
+    ) {
+        self.accountId = accountId
+        self.date = date
+        self.expensiveModelTokens = expensiveModelTokens
+        self.cheaperAlternativeExists = cheaperAlternativeExists
+        self.estimatedSavingsUSD = estimatedSavingsUSD
+        self.recommendedModel = recommendedModel
+        self.savingsConfidence = savingsConfidence
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        accountId = try c.decode(UUID.self, forKey: .accountId)
+        date = try c.decode(Date.self, forKey: .date)
+        expensiveModelTokens = try c.decode(Int.self, forKey: .expensiveModelTokens)
+        cheaperAlternativeExists = try c.decode(Bool.self, forKey: .cheaperAlternativeExists)
+        estimatedSavingsUSD = try c.decode(Double.self, forKey: .estimatedSavingsUSD)
+        recommendedModel = try c.decode(String.self, forKey: .recommendedModel)
+        savingsConfidence = try c.decodeIfPresent(SavingsConfidence.self, forKey: .savingsConfidence) ?? .measured
+    }
 }
 
 struct AnthropicIngestionCursor: Codable {

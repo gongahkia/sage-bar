@@ -12,16 +12,10 @@ struct ModelOptimizerAnalyzer {
         let outputPer1M: Double
     }
 
-    private enum PricingConfidenceLabel: String {
-        case measured
-        case profileEstimated
-        case heuristicEstimated
-    }
-
     private struct PricingEstimate {
         let currentCostUSD: Double
         let cheaperCostUSD: Double
-        let confidence: PricingConfidenceLabel
+        let confidence: ModelHint.SavingsConfidence
     }
 
     private struct TaxonomyRule {
@@ -103,7 +97,8 @@ struct ModelOptimizerAnalyzer {
             expensiveModelTokens: expensiveTokens,
             cheaperAlternativeExists: true,
             estimatedSavingsUSD: savings,
-            recommendedModel: recommendedModel
+            recommendedModel: recommendedModel,
+            savingsConfidence: pricingEstimate.confidence
         )
     }
 
@@ -175,7 +170,7 @@ struct ModelOptimizerAnalyzer {
             )
         }
         let usedHeuristicForRecommended = recommendedProfilePricing == nil
-        let confidence: PricingConfidenceLabel = (usedHeuristicForCurrent || usedHeuristicForRecommended)
+        let confidence: ModelHint.SavingsConfidence = (usedHeuristicForCurrent || usedHeuristicForRecommended)
             ? .heuristicEstimated
             : .profileEstimated
         return PricingEstimate(
