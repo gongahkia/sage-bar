@@ -190,6 +190,8 @@ class CodexLogParser {
             ErrorLogger.shared.log("Skipping oversized Codex log file \(url.lastPathComponent) (\(size / 1024 / 1024)MB)", level: "WARN")
             return []
         }
+        let wallStartNanos = DispatchTime.now().uptimeNanoseconds
+        let cpuStartMs = ParserMetricsStore.currentProcessCPUTimeMs()
         let fileHandle: FileHandle
         do {
             fileHandle = try FileHandle(forReadingFrom: url)
@@ -294,7 +296,9 @@ class CodexLogParser {
             filesScanned: 1,
             linesParsed: results.count,
             linesRejected: rejectedCount,
-            bytesRead: bytesRead
+            bytesRead: bytesRead,
+            cpuTimeMs: max(0, ParserMetricsStore.currentProcessCPUTimeMs() - cpuStartMs),
+            wallTimeMs: Int((DispatchTime.now().uptimeNanoseconds - wallStartNanos) / 1_000_000)
         )
         return results
     }

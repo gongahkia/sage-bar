@@ -143,11 +143,32 @@ class GeminiLogParser {
             ErrorLogger.shared.log("Skipping oversized Gemini session file \(url.lastPathComponent)", level: "WARN")
             return nil
         }
+        let wallStartNanos = DispatchTime.now().uptimeNanoseconds
+        let cpuStartMs = ParserMetricsStore.currentProcessCPUTimeMs()
         do {
             let data = try Data(contentsOf: url)
-            return try JSONDecoder().decode(GeminiConversationRecord.self, from: data)
+            let record = try JSONDecoder().decode(GeminiConversationRecord.self, from: data)
+            ParserMetricsStore.shared.record(
+                parser: "gemini",
+                filesScanned: 1,
+                linesParsed: record.messages.count,
+                linesRejected: 0,
+                bytesRead: data.count,
+                cpuTimeMs: max(0, ParserMetricsStore.currentProcessCPUTimeMs() - cpuStartMs),
+                wallTimeMs: Int((DispatchTime.now().uptimeNanoseconds - wallStartNanos) / 1_000_000)
+            )
+            return record
         } catch {
             ErrorLogger.shared.log("Cannot parse Gemini session file at \(url.path): \(error.localizedDescription)", level: "WARN")
+            ParserMetricsStore.shared.record(
+                parser: "gemini",
+                filesScanned: 1,
+                linesParsed: 0,
+                linesRejected: 1,
+                bytesRead: 0,
+                cpuTimeMs: max(0, ParserMetricsStore.currentProcessCPUTimeMs() - cpuStartMs),
+                wallTimeMs: Int((DispatchTime.now().uptimeNanoseconds - wallStartNanos) / 1_000_000)
+            )
             return nil
         }
     }

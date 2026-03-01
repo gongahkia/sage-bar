@@ -4,6 +4,7 @@ struct DiagnosticsView: View {
     @ObservedObject private var errorLogger = ErrorLogger.shared
     @ObservedObject private var polling = PollingService.shared
     @State private var entries: [String] = []
+    @State private var parserMetrics: [ParserMetricsSnapshot] = []
     
     @MainActor
     private var pollSkipSummary: String {
@@ -52,11 +53,37 @@ struct DiagnosticsView: View {
                 Spacer()
             }
             .padding(.horizontal, 12)
-            .padding(.bottom, 8)
+            .padding(.bottom, 4)
+            if !parserMetrics.isEmpty {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Parser metrics")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                    ForEach(parserMetrics) { metric in
+                        Text(
+                            "\(metric.parser) runs:\(metric.runs) files:\(metric.filesScanned) parsed:\(metric.linesParsed) rejected:\(metric.linesRejected) cpu:\(metric.cpuTimeMs)ms wall:\(metric.wallTimeMs)ms"
+                        )
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(.secondary)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.bottom, 8)
+            }
         }
-        .onAppear { entries = errorLogger.readLast(50) }
+        .onAppear {
+            entries = errorLogger.readLast(50)
+            reloadParserMetrics()
+        }
         .onReceive(errorLogger.$lastError) { _ in
             entries = errorLogger.readLast(50)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .usageDidUpdate)) { _ in
+            reloadParserMetrics()
+        }
+    }
+
+    private func reloadParserMetrics() {
+        parserMetrics = ParserMetricsStore.shared.snapshot()
     }
 }
