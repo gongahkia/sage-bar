@@ -159,7 +159,8 @@ if let filter = accountFilter {
         fputs("Account '\(filter)' not found in config\n", stderr)
         exit(1)
     }
-    snapshots = snapshots.filter { matched.contains($0.accountId.uuidString) }
+    let matchedSet = Set(matched.map { $0.lowercased() })
+    snapshots = snapshots.filter { matchedSet.contains($0.accountId.uuidString.lowercased()) }
 }
 
 // MARK: – --since filter (task 81)
