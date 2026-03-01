@@ -35,6 +35,7 @@ private actor CacheStore {
     private let lastSuccessFile: URL
     private var snapshotMemoryCache: [UsageSnapshot]?
     private var snapshotsByAccountIndex: [UUID: [UsageSnapshot]]?
+    private var aggregateByAccountDayIndex: [UUID: [DateComponents: DailyAggregate]]?
     private var writesSinceCompaction = 0
 
     init(baseURL: URL) {
@@ -75,6 +76,7 @@ private actor CacheStore {
         guard let data = try? Data(contentsOf: cacheFile) else {
             snapshotMemoryCache = []
             snapshotsByAccountIndex = [:]
+            aggregateByAccountDayIndex = [:]
             return []
         }
         if data.count > Self.maxSnapshotCacheBytes {
@@ -104,6 +106,7 @@ private actor CacheStore {
             log.debug("Cache loaded: \(dailyCompacted.count) snapshots (schema \(decoded.schemaVersion))")
             snapshotMemoryCache = dailyCompacted
             snapshotsByAccountIndex = buildSnapshotsByAccountIndex(dailyCompacted)
+            aggregateByAccountDayIndex = buildAggregateByAccountDayIndex(dailyCompacted)
             return dailyCompacted
         }
         if let legacy = try? decoder().decode([UsageSnapshot].self, from: data) {
@@ -113,6 +116,7 @@ private actor CacheStore {
             saveSnapshots(dailyCompacted)
             snapshotMemoryCache = dailyCompacted
             snapshotsByAccountIndex = buildSnapshotsByAccountIndex(dailyCompacted)
+            aggregateByAccountDayIndex = buildAggregateByAccountDayIndex(dailyCompacted)
             return dailyCompacted
         }
         let fallback = snapshotMemoryCache ?? []
@@ -124,28 +128,44 @@ private actor CacheStore {
     }
 
     func saveSnapshots(_ snapshots: [UsageSnapshot]) {
+        guard persistSnapshots(snapshots) else { return }
+        snapshotsByAccountIndex = buildSnapshotsByAccountIndex(snapshots)
+        aggregateByAccountDayIndex = buildAggregateByAccountDayIndex(snapshots)
+    }
+
+    private func persistSnapshots(_ snapshots: [UsageSnapshot]) -> Bool {
         do {
             let payload = UsageCachePayload(snapshots: snapshots)
             let data = try encoder().encode(payload)
             try AtomicFileWriter.write(data, to: cacheFile)
             snapshotMemoryCache = snapshots
-            snapshotsByAccountIndex = buildSnapshotsByAccountIndex(snapshots)
             log.debug("Cache saved: \(snapshots.count) snapshots")
+            return true
         } catch {
             ErrorLogger.shared.log("Cache write failed: \(error.localizedDescription)")
+            return false
         }
     }
 
     func appendSnapshot(_ snapshot: UsageSnapshot) {
         guard !Task.isCancelled else { return }
         let cutoff = Calendar.current.date(byAdding: .day, value: -Self.retentionDays, to: Date())!
-        var snapshots = loadSnapshots().filter { $0.timestamp >= cutoff }
+        let existingSnapshots = loadSnapshots()
+        var snapshots = existingSnapshots.filter { $0.timestamp >= cutoff }
         guard !Task.isCancelled else { return }
         if shouldDropDuplicateCumulativeSnapshot(snapshot, existingSnapshots: snapshots) {
             return
         }
+        let didPrune = snapshots.count != existingSnapshots.count
+        let willTriggerCompaction = snapshots.count >= Self.compactionEntryThreshold
+            && (writesSinceCompaction + 1) >= Self.compactionWriteInterval
         snapshots.append(snapshot)
         writesSinceCompaction += 1
+        if !didPrune && !willTriggerCompaction {
+            guard persistSnapshots(snapshots) else { return }
+            updateIndicesIncrementally(with: snapshot)
+            return
+        }
         snapshots = compactIfNeeded(snapshots)
         guard !Task.isCancelled else { return }
         saveSnapshots(snapshots)
@@ -181,16 +201,13 @@ private actor CacheStore {
         let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date())!
         return (snapshotsIndexedByAccount()[id] ?? [])
             .filter { $0.timestamp >= cutoff }
-            .sorted { $0.timestamp < $1.timestamp }
     }
 
     func todayAggregate(forAccount id: UUID) -> DailyAggregate {
         let cal = Calendar.current
         let today = cal.dateComponents([.year,.month,.day], from: Date())
-        let raw = (snapshotsIndexedByAccount()[id] ?? []).filter {
-            cal.dateComponents([.year,.month,.day], from: $0.timestamp) == today
-        }
-        return DailyAggregate(date: today, snapshots: normalizeDailySnapshots(raw))
+        return aggregateIndexedByAccountDay()[id]?[today]
+            ?? DailyAggregate(date: today, snapshots: [])
     }
 
     func latestForecast(forAccount id: UUID) -> ForecastSnapshot? {
@@ -495,6 +512,57 @@ private actor CacheStore {
             grouped[accountId]?.sort { $0.timestamp < $1.timestamp }
         }
         return grouped
+    }
+
+    private func aggregateIndexedByAccountDay() -> [UUID: [DateComponents: DailyAggregate]] {
+        if let cached = aggregateByAccountDayIndex {
+            return cached
+        }
+        let grouped = buildAggregateByAccountDayIndex(loadSnapshots())
+        aggregateByAccountDayIndex = grouped
+        return grouped
+    }
+
+    private func buildAggregateByAccountDayIndex(_ snapshots: [UsageSnapshot]) -> [UUID: [DateComponents: DailyAggregate]] {
+        let cal = Calendar.current
+        var grouped: [UUID: [DateComponents: [UsageSnapshot]]] = [:]
+        for snapshot in snapshots {
+            let day = cal.dateComponents([.year, .month, .day], from: snapshot.timestamp)
+            grouped[snapshot.accountId, default: [:]][day, default: []].append(snapshot)
+        }
+
+        var aggregates: [UUID: [DateComponents: DailyAggregate]] = [:]
+        for (accountId, byDay) in grouped {
+            var accountAggregates: [DateComponents: DailyAggregate] = [:]
+            for (day, daySnapshots) in byDay {
+                let ordered = daySnapshots.sorted { $0.timestamp < $1.timestamp }
+                accountAggregates[day] = DailyAggregate(
+                    date: day,
+                    snapshots: normalizeDailySnapshots(ordered)
+                )
+            }
+            aggregates[accountId] = accountAggregates
+        }
+        return aggregates
+    }
+
+    private func updateIndicesIncrementally(with snapshot: UsageSnapshot) {
+        var byAccount = snapshotsIndexedByAccount()
+        var accountSnapshots = byAccount[snapshot.accountId] ?? []
+        accountSnapshots.append(snapshot)
+        accountSnapshots.sort { $0.timestamp < $1.timestamp }
+        byAccount[snapshot.accountId] = accountSnapshots
+        snapshotsByAccountIndex = byAccount
+
+        let day = Calendar.current.dateComponents([.year, .month, .day], from: snapshot.timestamp)
+        var aggregateIndex = aggregateIndexedByAccountDay()
+        var byDay = aggregateIndex[snapshot.accountId] ?? [:]
+        var daySnapshots = byDay[day]?.snapshots ?? []
+        daySnapshots.append(snapshot)
+        daySnapshots.sort { $0.timestamp < $1.timestamp }
+        byDay[day] = DailyAggregate(date: day, snapshots: normalizeDailySnapshots(daySnapshots))
+        aggregateIndex[snapshot.accountId] = byDay
+        aggregateByAccountDayIndex = aggregateIndex
     }
 }
 
