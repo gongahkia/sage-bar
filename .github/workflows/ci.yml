@@ -42,6 +42,16 @@ jobs:
         run: python3 -c "import json,sys; json.load(open('Sources/ClaudeUsage/Resources/prices.json'))"
       - name: Build app target (release)
         run: swift build --target ClaudeUsage -c release -Xswiftc -warnings-as-errors
+      - name: Gate Config/Polling compile diagnostics
+        shell: bash
+        run: |
+          set -o pipefail
+          LOG_FILE="$(mktemp)"
+          swift build --target ClaudeUsage 2>&1 | tee "$LOG_FILE"
+          if rg -n "Sources/ClaudeUsage/Config/Config.swift:.*(warning|error):|Sources/ClaudeUsage/Services/PollingService.swift:.*(warning|error):" "$LOG_FILE"; then
+            echo "Compile diagnostics found in Config.swift or PollingService.swift."
+            exit 1
+          fi
       - name: Build CLI target (release)
         run: swift build --target ClaudeUsageCLI -c release -Xswiftc -warnings-as-errors
       - name: Build
