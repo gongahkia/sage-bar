@@ -137,6 +137,9 @@ class WebhookService {
         guard let url = URL(string: config.url), url.scheme == "https" else {
             return .failure(APIError.networkError(URLError(.badURL)))
         }
+        guard isAllowedHost(url.host, allowedHosts: config.allowedHosts) else {
+            return .failure(APIError.networkError(URLError(.badURL)))
+        }
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")

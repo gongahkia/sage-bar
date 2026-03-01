@@ -150,6 +150,32 @@ final class WebhookServiceTests: XCTestCase {
         XCTAssertFalse(called, "http:// URL should be rejected without making any network call")
     }
 
+    func testSendTestRejectsDisallowedHostWithoutNetworkCall() async {
+        var called = false
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [MockURLProtocol.self]
+        MockURLProtocol.requestHandler = { _ in
+            called = true
+            let resp = HTTPURLResponse(url: URL(string: "https://example.com/hook")!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (resp, Data())
+        }
+        let mockSession = URLSession(configuration: config)
+        let svc = WebhookService(session: mockSession, maxRetries: 0)
+        let whConfig = WebhookConfig(
+            enabled: true,
+            url: "https://example.com/hook",
+            events: [],
+            payloadTemplate: nil,
+            allowedHosts: ["hooks.slack.com"]
+        )
+
+        let result = await svc.sendTest(config: whConfig)
+        XCTAssertFalse(called, "sendTest should reject disallowed hosts before making any network call")
+        if case .success = result {
+            XCTFail("sendTest should fail when host is not allowed")
+        }
+    }
+
     func testInvalidJSONTemplateRejectedBeforeDispatch() async {
         var called = false
         let config = URLSessionConfiguration.ephemeral
