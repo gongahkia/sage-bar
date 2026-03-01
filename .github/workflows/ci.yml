@@ -36,3 +36,5 @@ jobs:
         run: swift build
       - name: Test
         run: swift test --parallel
+      - name: Test (Thread Sanitizer)
+        run: swift test --sanitize=thread
