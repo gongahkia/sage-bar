@@ -31,6 +31,11 @@ class WebhookService {
             ErrorLogger.shared.log(msg, level: "WARN")
             throw APIError.networkError(URLError(.badURL))
         }
+        guard isAllowedHost(url.host, allowedHosts: config.allowedHosts) else {
+            let msg = "Webhook URL host '\(url.host ?? "unknown")' is not in allowedHosts"
+            ErrorLogger.shared.log(msg, level: "WARN")
+            throw APIError.networkError(URLError(.badURL))
+        }
         let data = buildPayload(event: event, snapshot: snapshot, template: config.payloadTemplate)
         try validateTemplateJSONIfNeeded(template: config.payloadTemplate, payload: data)
         var lastError: Error?
@@ -162,5 +167,20 @@ class WebhookService {
             ErrorLogger.shared.log("Webhook payload template produced invalid JSON after substitution", level: "WARN")
             throw APIError.decodingFailed
         }
+    }
+
+    private func isAllowedHost(_ host: String?, allowedHosts: [String]) -> Bool {
+        guard let host = host?.lowercased(), !host.isEmpty else { return false }
+        for pattern in allowedHosts.map({ $0.lowercased() }) {
+            if pattern.hasPrefix("*.") {
+                let suffix = String(pattern.dropFirst(2))
+                if host == suffix || host.hasSuffix("." + suffix) {
+                    return true
+                }
+            } else if host == pattern {
+                return true
+            }
+        }
+        return false
     }
 }

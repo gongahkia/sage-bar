@@ -51,8 +51,41 @@ struct WebhookConfig: Codable, Equatable {
     var url: String
     var events: [String] // "threshold" | "daily_digest" | "weekly_summary"
     var payloadTemplate: String?
+    var allowedHosts: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case enabled
+        case url
+        case events
+        case payloadTemplate
+        case allowedHosts
+    }
+
+    init(enabled: Bool, url: String, events: [String], payloadTemplate: String?, allowedHosts: [String] = ["hooks.slack.com", "discord.com", "api.github.com"]) {
+        self.enabled = enabled
+        self.url = url
+        self.events = events
+        self.payloadTemplate = payloadTemplate
+        self.allowedHosts = allowedHosts
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        enabled = try c.decode(Bool.self, forKey: .enabled)
+        url = try c.decode(String.self, forKey: .url)
+        events = try c.decode([String].self, forKey: .events)
+        payloadTemplate = try c.decodeIfPresent(String.self, forKey: .payloadTemplate)
+        allowedHosts = try c.decodeIfPresent([String].self, forKey: .allowedHosts) ?? Self.default.allowedHosts
+    }
+
     static var `default`: WebhookConfig {
-        WebhookConfig(enabled: false, url: "", events: [], payloadTemplate: nil)
+        WebhookConfig(
+            enabled: false,
+            url: "",
+            events: [],
+            payloadTemplate: nil,
+            allowedHosts: ["hooks.slack.com", "discord.com", "api.github.com"]
+        )
     }
 }
 
