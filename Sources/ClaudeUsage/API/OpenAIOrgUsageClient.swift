@@ -2,6 +2,9 @@ import Foundation
 
 private struct OpenAIBucketPage<Result: Decodable>: Decodable {
     var data: [OpenAIBucket<Result>]?
+    var has_more: Bool?
+    var next_page: String?
+    var next_cursor: String?
 }
 
 private struct OpenAIBucket<Result: Decodable>: Decodable {
@@ -173,49 +176,74 @@ class OpenAIOrgUsageClient {
 
     private func fetchUsageBuckets(startUnix: Int, endUnix: Int) async throws -> [OpenAIBucket<OpenAICompletionsUsageResult>] {
         do {
-            let page: OpenAIBucketPage<OpenAICompletionsUsageResult> = try await fetchBucketPage(
+            return try await fetchAllBucketPages(
                 path: "/v1/organization/usage/completions",
                 startUnix: startUnix,
                 endUnix: endUnix,
                 groupBy: .model
             )
-            return page.data ?? []
         } catch APIError.serverError(let code) where code == 400 {
-            let page: OpenAIBucketPage<OpenAICompletionsUsageResult> = try await fetchBucketPage(
+            return try await fetchAllBucketPages(
                 path: "/v1/organization/usage/completions",
                 startUnix: startUnix,
                 endUnix: endUnix,
                 groupBy: nil
             )
-            return page.data ?? []
         }
     }
 
     private func fetchCostBuckets(startUnix: Int, endUnix: Int) async throws -> [OpenAIBucket<OpenAICostResult>] {
         do {
-            let page: OpenAIBucketPage<OpenAICostResult> = try await fetchBucketPage(
+            return try await fetchAllBucketPages(
                 path: "/v1/organization/costs",
                 startUnix: startUnix,
                 endUnix: endUnix,
                 groupBy: .lineItem
             )
-            return page.data ?? []
         } catch APIError.serverError(let code) where code == 400 {
-            let page: OpenAIBucketPage<OpenAICostResult> = try await fetchBucketPage(
+            return try await fetchAllBucketPages(
                 path: "/v1/organization/costs",
                 startUnix: startUnix,
                 endUnix: endUnix,
                 groupBy: nil
             )
-            return page.data ?? []
         }
+    }
+
+    private func fetchAllBucketPages<T: Decodable>(
+        path: String,
+        startUnix: Int,
+        endUnix: Int,
+        groupBy: OpenAIGroupBy?
+    ) async throws -> [OpenAIBucket<T>] {
+        var allBuckets: [OpenAIBucket<T>] = []
+        var pageToken: String? = nil
+        var seenTokens: Set<String> = []
+        var pageCount = 0
+        while pageCount < 20 {
+            let page: OpenAIBucketPage<T> = try await fetchBucketPage(
+                path: path,
+                startUnix: startUnix,
+                endUnix: endUnix,
+                groupBy: groupBy,
+                page: pageToken
+            )
+            allBuckets.append(contentsOf: page.data ?? [])
+            let next = page.next_page ?? page.next_cursor
+            guard page.has_more == true, let next, !next.isEmpty, !seenTokens.contains(next) else { break }
+            seenTokens.insert(next)
+            pageToken = next
+            pageCount += 1
+        }
+        return allBuckets
     }
 
     private func fetchBucketPage<T: Decodable>(
         path: String,
         startUnix: Int,
         endUnix: Int,
-        groupBy: OpenAIGroupBy?
+        groupBy: OpenAIGroupBy?,
+        page: String?
     ) async throws -> OpenAIBucketPage<T> {
         var queryItems = [
             URLQueryItem(name: "start_time", value: "\(startUnix)"),
@@ -225,6 +253,9 @@ class OpenAIOrgUsageClient {
         ]
         if let groupBy {
             queryItems.append(URLQueryItem(name: "group_by", value: groupBy.rawValue))
+        }
+        if let page, !page.isEmpty {
+            queryItems.append(URLQueryItem(name: "page", value: page))
         }
         let req = request(path: path, queryItems: queryItems)
         do {
