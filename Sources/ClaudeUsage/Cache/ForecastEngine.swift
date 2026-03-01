@@ -15,9 +15,17 @@ struct ForecastEngine {
         let last = todaySnaps.last!
         let elapsed = last.timestamp.timeIntervalSince(first.timestamp) / 3600.0
         guard elapsed > 0 else { return nil }
-        let cumulativeCost = todaySnaps.reduce(0) { $0 + $1.totalCostUSD }
+        let eventCost = todaySnaps
+            .filter { !isCumulativeSnapshot($0) }
+            .reduce(0) { $0 + max(0, $1.totalCostUSD) }
+        let latestCumulativeCost = todaySnaps
+            .filter { isCumulativeSnapshot($0) }
+            .map(\.totalCostUSD)
+            .max() ?? 0
+        let cumulativeCost = max(0, eventCost + latestCumulativeCost)
+        let deltas = dailyCostDeltas(from: todaySnaps)
         let burnPerHour = burnRateFromHourlyBuckets(
-            snapshots: todaySnaps,
+            deltas: deltas,
             calendar: cal,
             cumulativeCost: cumulativeCost,
             fallbackElapsedHours: elapsed
@@ -50,16 +58,16 @@ struct ForecastEngine {
     }
 
     private static func burnRateFromHourlyBuckets(
-        snapshots: [UsageSnapshot],
+        deltas: [(timestamp: Date, costDelta: Double)],
         calendar: Calendar,
         cumulativeCost: Double,
         fallbackElapsedHours: Double
     ) -> Double {
         var hourlyTotals: [Date: Double] = [:]
-        for snap in snapshots {
-            let comps = calendar.dateComponents([.year, .month, .day, .hour], from: snap.timestamp)
+        for delta in deltas where delta.costDelta > 0 {
+            let comps = calendar.dateComponents([.year, .month, .day, .hour], from: delta.timestamp)
             guard let hour = calendar.date(from: comps) else { continue }
-            hourlyTotals[hour, default: 0] += snap.totalCostUSD
+            hourlyTotals[hour, default: 0] += delta.costDelta
         }
         guard let firstHour = hourlyTotals.keys.min(),
               let lastHour = hourlyTotals.keys.max() else {
@@ -67,6 +75,47 @@ struct ForecastEngine {
         }
         let spanHours = lastHour.timeIntervalSince(firstHour) / 3600.0
         guard spanHours > 0 else { return cumulativeCost / fallbackElapsedHours }
-        return cumulativeCost / spanHours
+        let totalDelta = hourlyTotals.values.reduce(0, +)
+        return totalDelta / spanHours
+    }
+
+    private static func dailyCostDeltas(from snapshots: [UsageSnapshot]) -> [(timestamp: Date, costDelta: Double)] {
+        var deltas: [(Date, Double)] = []
+        var previousCumulativeCost: Double?
+        for snapshot in snapshots {
+            if isCumulativeSnapshot(snapshot) {
+                let currentCost = max(0, snapshot.totalCostUSD)
+                let delta: Double
+                if let previous = previousCumulativeCost {
+                    delta = currentCost >= previous ? (currentCost - previous) : currentCost
+                } else {
+                    delta = currentCost
+                }
+                previousCumulativeCost = currentCost
+                if delta > 0 {
+                    deltas.append((snapshot.timestamp, delta))
+                }
+            } else {
+                let delta = max(0, snapshot.totalCostUSD)
+                if delta > 0 {
+                    deltas.append((snapshot.timestamp, delta))
+                }
+            }
+        }
+        return deltas
+    }
+
+    private static func isCumulativeSnapshot(_ snapshot: UsageSnapshot) -> Bool {
+        let model = snapshot.modelBreakdown.first?.modelId ?? ""
+        let cumulativeModels: Set<String> = [
+            "claude-code-local",
+            "claude-ai-web",
+            "codex-local",
+            "gemini-local",
+            "openai-org",
+            "windsurf-enterprise",
+            "copilot-metrics",
+        ]
+        return cumulativeModels.contains(model)
     }
 }
