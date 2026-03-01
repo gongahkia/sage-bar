@@ -111,11 +111,14 @@ private actor CacheStore {
     }
 
     func appendSnapshot(_ snapshot: UsageSnapshot) {
+        guard !Task.isCancelled else { return }
         let cutoff = Calendar.current.date(byAdding: .day, value: -Self.retentionDays, to: Date())!
         var snapshots = loadSnapshots().filter { $0.timestamp >= cutoff }
+        guard !Task.isCancelled else { return }
         snapshots.append(snapshot)
         writesSinceCompaction += 1
         snapshots = compactIfNeeded(snapshots)
+        guard !Task.isCancelled else { return }
         saveSnapshots(snapshots)
     }
 
