@@ -19,7 +19,7 @@ class PollingService: ObservableObject {
     private var timer: Timer?
     private var currentTask: Task<Void, Never>?
     @MainActor private var currentPollToken: UUID?
-    private let maxConcurrency = 3
+    private let maxConcurrencyUpperCap = 6
     private let pathMonitor = NWPathMonitor()
     @MainActor private var networkAvailable = true
     @MainActor private var pendingLogRefresh = false
@@ -120,12 +120,13 @@ class PollingService: ObservableObject {
         }
 
         let activeAccounts = config.accounts.filter { $0.isActive }
+        let concurrencyLimit = min(max(1, activeAccounts.count), maxConcurrencyUpperCap)
         var updatedIds: [UUID] = []
 
         await withTaskGroup(of: UUID?.self) { group in
             var launched = 0
             for account in activeAccounts {
-                if launched >= maxConcurrency { _ = await group.next() }
+                if launched >= concurrencyLimit { _ = await group.next() }
                 group.addTask { [account] in
                     guard !Task.isCancelled else { return nil }
                     let jitter = self.accountPollJitterNanos(accountId: account.id, activeAccountCount: activeAccounts.count)
