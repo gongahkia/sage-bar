@@ -84,7 +84,7 @@ struct AccountsTab: View {
             }.padding(.horizontal)
         }
         .sheet(isPresented: $showAddSheet) {
-            AddAccountSheet { newAccount, key in
+            AddAccountSheet(showExperimentalProviders: config.display.showExperimentalProviders) { newAccount, key in
                 config.accounts.append(newAccount)
                 if let key, !key.isEmpty {
                     try? KeychainManager.store(key: key, service: AppConstants.keychainService, account: newAccount.id.uuidString)
@@ -233,6 +233,7 @@ struct AccountsTab: View {
 }
 
 struct AddAccountSheet: View {
+    var showExperimentalProviders: Bool
     var onSave: (Account, String?) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
@@ -252,7 +253,7 @@ struct AddAccountSheet: View {
             Text("Add Account").font(.headline)
             TextField("Name", text: $name)
             Picker("Type", selection: $type) {
-                ForEach(AccountType.allCases, id: \.self) { t in
+                ForEach(providerOptions, id: \.self) { t in
                     Text(t.rawValue).tag(t)
                 }
             }
@@ -300,6 +301,12 @@ struct AddAccountSheet: View {
                     .disabled(name.isEmpty || !canSave)
             }
         }.padding().frame(width: 360)
+    }
+
+    private var providerOptions: [AccountType] {
+        showExperimentalProviders
+            ? AccountType.allCases
+            : AccountType.allCases.filter(\.isCoreProvider)
     }
 
     private func save() {
