@@ -8,6 +8,15 @@ private actor CacheStore {
     private static let maxSnapshotCacheBytes = 25 * 1024 * 1024
     private static let compactionEntryThreshold = 1000
     private static let compactionWriteInterval = 50
+    private static let cumulativeSourceTypes: Set<String> = [
+        "claude-code",
+        "claude-ai-web",
+        "codex-local",
+        "gemini-local",
+        "openai-org",
+        "windsurf-enterprise",
+        "copilot-metrics",
+    ]
     private static let fractionalISO8601Formatter: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -122,6 +131,9 @@ private actor CacheStore {
         let cutoff = Calendar.current.date(byAdding: .day, value: -Self.retentionDays, to: Date())!
         var snapshots = loadSnapshots().filter { $0.timestamp >= cutoff }
         guard !Task.isCancelled else { return }
+        if shouldDropDuplicateCumulativeSnapshot(snapshot, existingSnapshots: snapshots) {
+            return
+        }
         snapshots.append(snapshot)
         writesSinceCompaction += 1
         snapshots = compactIfNeeded(snapshots)
@@ -314,6 +326,35 @@ private actor CacheStore {
             eventSnapshots.append(latestCumulative)
         }
         return eventSnapshots
+    }
+
+    private func shouldDropDuplicateCumulativeSnapshot(_ incoming: UsageSnapshot, existingSnapshots: [UsageSnapshot]) -> Bool {
+        guard isCumulativeSnapshot(incoming) else { return false }
+        let cal = Calendar.current
+        guard let latestSameDay = existingSnapshots
+            .filter({ existing in
+                existing.accountId == incoming.accountId
+                    && cal.isDate(existing.timestamp, inSameDayAs: incoming.timestamp)
+                    && isCumulativeSnapshot(existing)
+            })
+            .max(by: { $0.timestamp < $1.timestamp }) else {
+            return false
+        }
+        return cumulativeTotalsEqual(latestSameDay, incoming)
+    }
+
+    private func isCumulativeSnapshot(_ snapshot: UsageSnapshot) -> Bool {
+        let modelId = snapshot.modelBreakdown.map(\.modelId).sorted().first ?? "unknown"
+        let source = sourceType(forModel: modelId)
+        return Self.cumulativeSourceTypes.contains(source)
+    }
+
+    private func cumulativeTotalsEqual(_ lhs: UsageSnapshot, _ rhs: UsageSnapshot) -> Bool {
+        lhs.inputTokens == rhs.inputTokens
+            && lhs.outputTokens == rhs.outputTokens
+            && lhs.cacheCreationTokens == rhs.cacheCreationTokens
+            && lhs.cacheReadTokens == rhs.cacheReadTokens
+            && abs(lhs.totalCostUSD - rhs.totalCostUSD) < 0.000_001
     }
 
     private func deduplicateSnapshots(_ snapshots: [UsageSnapshot]) -> [UsageSnapshot] {

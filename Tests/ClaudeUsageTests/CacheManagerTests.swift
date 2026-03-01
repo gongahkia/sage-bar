@@ -26,6 +26,20 @@ final class CacheManagerTests: XCTestCase {
             cacheCreationTokens: 0, cacheReadTokens: 0, totalCostUSD: cost, modelBreakdown: [])
     }
 
+    private func cumulativeSnap(input: Int, output: Int, cost: Double, at date: Date, modelId: String = "codex-local") -> UsageSnapshot {
+        UsageSnapshot(
+            accountId: accountId,
+            timestamp: date,
+            inputTokens: input,
+            outputTokens: output,
+            cacheCreationTokens: 0,
+            cacheReadTokens: 0,
+            totalCostUSD: cost,
+            modelBreakdown: [ModelUsage(modelId: modelId, inputTokens: input, outputTokens: output, costUSD: cost)],
+            costConfidence: .estimated
+        )
+    }
+
     func testAppendAndRead() {
         let exp = expectation(description: "append")
         let s = snap(1.5)
@@ -247,6 +261,20 @@ final class CacheManagerTests: XCTestCase {
         XCTAssertEqual(agg.totalInputTokens, 130)
         XCTAssertEqual(agg.totalOutputTokens, 40)
         XCTAssertEqual(agg.totalCostUSD, 2.4, accuracy: 0.0001)
+    }
+
+    func testAppendDropsDuplicateUnchangedCumulativeSnapshotForSameDay() {
+        let now = Date()
+        let earlier = cumulativeSnap(input: 210, output: 55, cost: 2.1, at: now.addingTimeInterval(-120))
+        let duplicateLater = cumulativeSnap(input: 210, output: 55, cost: 2.1, at: now)
+
+        cm.save([earlier])
+        cm.append(duplicateLater)
+
+        let loaded = cm.load().filter { $0.accountId == accountId }
+        XCTAssertEqual(loaded.count, 1)
+        XCTAssertEqual(loaded.first?.inputTokens, 210)
+        XCTAssertEqual(loaded.first?.outputTokens, 55)
     }
 
     func testLoadDeduplicatesDeterministicEventKeyAndPrefersBillingGrade() {
