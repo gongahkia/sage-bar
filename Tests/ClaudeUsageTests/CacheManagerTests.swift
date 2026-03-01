@@ -281,6 +281,101 @@ final class CacheManagerTests: XCTestCase {
         XCTAssertEqual(loaded.first?.inputTokens, 12)
     }
 
+    func testLoadDeduplicatePrefersFreshSnapshotWhenConfidenceMatches() {
+        let ts = Date()
+        let stale = UsageSnapshot(
+            accountId: accountId,
+            timestamp: ts,
+            inputTokens: 20,
+            outputTokens: 5,
+            cacheCreationTokens: 0,
+            cacheReadTokens: 0,
+            totalCostUSD: 0.3,
+            modelBreakdown: [ModelUsage(modelId: "claude-sonnet-4-6", inputTokens: 20, outputTokens: 5, costUSD: 0.3)],
+            isStale: true,
+            costConfidence: .billingGrade
+        )
+        let fresh = UsageSnapshot(
+            accountId: accountId,
+            timestamp: ts,
+            inputTokens: 18,
+            outputTokens: 4,
+            cacheCreationTokens: 0,
+            cacheReadTokens: 0,
+            totalCostUSD: 0.25,
+            modelBreakdown: [ModelUsage(modelId: "claude-sonnet-4-6", inputTokens: 18, outputTokens: 4, costUSD: 0.25)],
+            isStale: false,
+            costConfidence: .billingGrade
+        )
+
+        cm.save([stale, fresh])
+        let loaded = cm.load().filter { $0.accountId == accountId }
+        XCTAssertEqual(loaded.count, 1)
+        XCTAssertEqual(loaded.first?.isStale, false)
+    }
+
+    func testLoadDeduplicatePrefersHigherTokenTotalWhenConfidenceAndFreshnessMatch() {
+        let ts = Date()
+        let lowTokens = UsageSnapshot(
+            accountId: accountId,
+            timestamp: ts,
+            inputTokens: 10,
+            outputTokens: 2,
+            cacheCreationTokens: 0,
+            cacheReadTokens: 0,
+            totalCostUSD: 0.1,
+            modelBreakdown: [ModelUsage(modelId: "claude-sonnet-4-6", inputTokens: 10, outputTokens: 2, costUSD: 0.1)],
+            costConfidence: .billingGrade
+        )
+        let highTokens = UsageSnapshot(
+            accountId: accountId,
+            timestamp: ts,
+            inputTokens: 40,
+            outputTokens: 10,
+            cacheCreationTokens: 5,
+            cacheReadTokens: 5,
+            totalCostUSD: 0.1,
+            modelBreakdown: [ModelUsage(modelId: "claude-sonnet-4-6", inputTokens: 40, outputTokens: 10, cacheTokens: 10, costUSD: 0.1)],
+            costConfidence: .billingGrade
+        )
+
+        cm.save([lowTokens, highTokens])
+        let loaded = cm.load().filter { $0.accountId == accountId }
+        XCTAssertEqual(loaded.count, 1)
+        XCTAssertEqual(loaded.first?.inputTokens, 40)
+        XCTAssertEqual(loaded.first?.cacheReadTokens, 5)
+    }
+
+    func testLoadReturnsSnapshotsSortedByTimestamp() {
+        let newer = UsageSnapshot(
+            accountId: accountId,
+            timestamp: Date(),
+            inputTokens: 1,
+            outputTokens: 1,
+            cacheCreationTokens: 0,
+            cacheReadTokens: 0,
+            totalCostUSD: 0.1,
+            modelBreakdown: [ModelUsage(modelId: "claude-sonnet-4-6", inputTokens: 1, outputTokens: 1, costUSD: 0.1)],
+            costConfidence: .billingGrade
+        )
+        let older = UsageSnapshot(
+            accountId: accountId,
+            timestamp: Date().addingTimeInterval(-600),
+            inputTokens: 1,
+            outputTokens: 1,
+            cacheCreationTokens: 0,
+            cacheReadTokens: 0,
+            totalCostUSD: 0.2,
+            modelBreakdown: [ModelUsage(modelId: "claude-opus-4", inputTokens: 1, outputTokens: 1, costUSD: 0.2)],
+            costConfidence: .billingGrade
+        )
+
+        cm.save([newer, older])
+        let loaded = cm.load().filter { $0.accountId == accountId }
+        XCTAssertEqual(loaded.count, 2)
+        XCTAssertLessThanOrEqual(loaded[0].timestamp, loaded[1].timestamp)
+    }
+
     func testLegacyUsageArrayMigratesToVersionedPayloadOnRead() throws {
         let legacy = [snap(3.14)]
         let enc = JSONEncoder(); enc.dateEncodingStrategy = .iso8601
