@@ -70,4 +70,94 @@ final class ConfigManagerTests: XCTestCase {
         let loaded = cm.load()
         XCTAssertEqual(loaded.pollIntervalSeconds, 77, "original must be intact after failed atomic write")
     }
+
+    func testMalformedJSONFallsBackToDefault() throws {
+        try "{ invalid-json ".write(to: configFile, atomically: true, encoding: .utf8)
+        let loaded = cm.load()
+        XCTAssertEqual(loaded.pollIntervalSeconds, Config.default.pollIntervalSeconds)
+        XCTAssertNotNil(cm.lastLoadError)
+    }
+
+    func testMalformedTOMLFallsBackToDefault() throws {
+        try "pollIntervalSeconds = ".write(to: configFile, atomically: true, encoding: .utf8)
+        let loaded = cm.load()
+        XCTAssertEqual(loaded.pollIntervalSeconds, Config.default.pollIntervalSeconds)
+        XCTAssertNotNil(cm.lastLoadError)
+    }
+
+    func testTomlFallbackLoadsWhenJSONDecodeFails() throws {
+        let accountID = UUID().uuidString
+        let toml = """
+        schemaVersion = 2
+        pollIntervalSeconds = 321
+
+        accounts = [
+          { id = "\(accountID)", name = "Local", type = "claudeCode", isActive = true, order = 3, createdAt = "2026-01-01T00:00:00Z" }
+        ]
+        automations = []
+
+        [tui]
+        layout = ["input_tokens"]
+        colorScheme = "default"
+        showLogo = true
+        separatorChar = "-"
+        labelWidth = 18
+
+        [display]
+        menubarStyle = "icon"
+        showBadge = true
+        compactMode = false
+        dualIcon = false
+
+        [sparkline]
+        enabled = true
+        windowHours = 168
+        style = "cost"
+        resolution = 24
+
+        [forecast]
+        enabled = true
+        showInPopover = true
+        showInTUI = false
+
+        [webhook]
+        enabled = false
+        url = ""
+        events = []
+
+        [analytics]
+        enabled = true
+        showMonthlyView = true
+        showHeatmap = false
+
+        [modelOptimizer]
+        enabled = true
+        cheapThresholdTokens = 1000
+        showInPopover = true
+
+        [iCloudSync]
+        enabled = false
+        localOnly = true
+        containerIdentifier = "iCloud.dev.claudeusage"
+
+        [hotkey]
+        enabled = true
+        modifiers = ["option", "command"]
+        key = "c"
+
+        [claudeAI]
+        sessionCookie = ""
+
+        [hotkeyConfig]
+        primaryKeyCode = 32
+        primaryModifiers = ["command", "shift"]
+        chordEnabled = false
+        chordSecondaryKeyCode = 0
+        """
+        try toml.write(to: configFile, atomically: true, encoding: .utf8)
+        let loaded = cm.load()
+        XCTAssertEqual(loaded.pollIntervalSeconds, 321)
+        XCTAssertEqual(loaded.accounts.first?.order, 3)
+        XCTAssertNil(cm.lastLoadError)
+    }
 }
