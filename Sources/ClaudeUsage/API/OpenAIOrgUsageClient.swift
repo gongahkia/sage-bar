@@ -129,6 +129,12 @@ class OpenAIOrgUsageClient {
 
         for bucket in costBuckets {
             for result in bucket.results ?? [] {
+                let currency = (result.amount?.currency ?? "usd").lowercased()
+                guard currency == "usd" else {
+                    let lineItem = result.line_item ?? "unknown"
+                    ErrorLogger.shared.log("OpenAI costs API returned unsupported currency '\(currency)' for line_item '\(lineItem)'", level: "WARN")
+                    throw APIError.unsupported
+                }
                 let cost = max(0, result.amount?.value ?? 0)
                 totalsCost += cost
                 let lineItem = canonicalModelID(from: result.line_item, fallback: "openai-org")
