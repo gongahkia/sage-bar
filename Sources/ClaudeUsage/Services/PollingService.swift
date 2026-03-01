@@ -37,6 +37,8 @@ class PollingService: ObservableObject {
     @MainActor @Published var pollDurationP50Ms: Int = 0
     @MainActor @Published var pollDurationP90Ms: Int = 0
     @MainActor @Published private(set) var pollSkipCountsByReason: [String: Int] = [:]
+    @MainActor @Published private(set) var burnRateUSDPerHourByAccount: [UUID: Double] = [:]
+    @MainActor @Published private(set) var burnRateThresholdUSDPerHourByAccount: [UUID: Double] = [:]
 
     private var timer: Timer?
     private var currentTask: Task<Void, Never>?
@@ -252,6 +254,7 @@ class PollingService: ObservableObject {
         // threshold notifications
         guard !Task.isCancelled else { return }
         await checkThresholds(config: config, accounts: activeAccounts)
+        await checkBurnRateAlerts(config: config, accounts: activeAccounts)
 
         // automation evaluation
         let matchedAutomations = await evaluateAutomations(config: config, accounts: activeAccounts)
@@ -616,6 +619,35 @@ class PollingService: ObservableObject {
         }
     }
 
+    private func checkBurnRateAlerts(config: Config, accounts: [Account]) async {
+        guard config.burnRate.enabled else { return }
+        let now = Date()
+        var burnRates: [UUID: Double] = [:]
+        var thresholds: [UUID: Double] = [:]
+        for account in accounts {
+            let threshold = config.burnRate.perAccountUSDPerHourThreshold[account.id.uuidString]
+                ?? config.burnRate.defaultUSDPerHourThreshold
+            thresholds[account.id] = threshold
+            guard threshold > 0 else { continue }
+            let history = await CacheManager.shared.historyAsync(forAccount: account.id, days: 1)
+            guard let burnRate = burnRateFromRecentNormalizedSnapshots(history, now: now) else { continue }
+            burnRates[account.id] = burnRate
+            guard burnRate > threshold else { continue }
+            let burnText = String(format: "%.2f", burnRate)
+            let thresholdText = String(format: "%.2f", threshold)
+            ErrorLogger.shared.log(
+                "Burn-rate alert for account \(account.id.uuidString): \(burnText) USD/h exceeds threshold \(thresholdText) USD/h",
+                level: "WARN"
+            )
+        }
+        let burnRatesSnapshot = burnRates
+        let thresholdsSnapshot = thresholds
+        await MainActor.run {
+            self.burnRateUSDPerHourByAccount = burnRatesSnapshot
+            self.burnRateThresholdUSDPerHourByAccount = thresholdsSnapshot
+        }
+    }
+
     private func evaluateAutomations(config: Config, accounts: [Account]) async -> [(AutomationRule, UsageSnapshot)] {
         var matched: [(AutomationRule, UsageSnapshot)] = []
         for account in accounts {
@@ -730,6 +762,58 @@ class PollingService: ObservableObject {
     private func modelHintsPayloadHash(_ data: Data) -> String {
         let digest = SHA256.hash(data: data)
         return digest.map { String(format: "%02x", $0) }.joined()
+    }
+
+    private func burnRateFromRecentNormalizedSnapshots(_ snapshots: [UsageSnapshot], now: Date = Date()) -> Double? {
+        let normalized = normalizedBurnRateSnapshots(from: snapshots)
+        let cutoff = now.addingTimeInterval(-6 * 3600)
+        let recent = normalized.filter { $0.timestamp >= cutoff }.sorted { $0.timestamp < $1.timestamp }
+        guard recent.count >= 2 else { return nil }
+        guard let first = recent.first, let last = recent.last else { return nil }
+        let elapsedHours = last.timestamp.timeIntervalSince(first.timestamp) / 3600.0
+        guard elapsedHours > 0 else { return nil }
+        let totalCost = recent.reduce(0) { $0 + max(0, $1.totalCostUSD) }
+        return totalCost / elapsedHours
+    }
+
+    private func normalizedBurnRateSnapshots(from snapshots: [UsageSnapshot]) -> [UsageSnapshot] {
+        let sorted = snapshots.sorted { $0.timestamp < $1.timestamp }
+        var normalized: [UsageSnapshot] = []
+        var previousCumulativeCost: Double?
+        for snapshot in sorted {
+            if isCumulativeSnapshot(snapshot) {
+                let currentCost = max(0, snapshot.totalCostUSD)
+                let deltaCost: Double
+                if let previous = previousCumulativeCost {
+                    deltaCost = currentCost >= previous ? (currentCost - previous) : currentCost
+                } else {
+                    deltaCost = currentCost
+                }
+                previousCumulativeCost = currentCost
+                guard deltaCost > 0 else { continue }
+                var deltaSnapshot = snapshot
+                deltaSnapshot.totalCostUSD = deltaCost
+                normalized.append(deltaSnapshot)
+            } else {
+                guard snapshot.totalCostUSD > 0 else { continue }
+                normalized.append(snapshot)
+            }
+        }
+        return normalized
+    }
+
+    private func isCumulativeSnapshot(_ snapshot: UsageSnapshot) -> Bool {
+        let model = snapshot.modelBreakdown.first?.modelId ?? ""
+        let cumulativeModels: Set<String> = [
+            "claude-code-local",
+            "claude-ai-web",
+            "codex-local",
+            "gemini-local",
+            "openai-org",
+            "windsurf-enterprise",
+            "copilot-metrics",
+        ]
+        return cumulativeModels.contains(model)
     }
 
     private func fetchAnthropicUsageWithRetry(
