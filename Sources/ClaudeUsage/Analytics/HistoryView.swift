@@ -102,8 +102,41 @@ struct HistoryView: View {
     private func grouped(_ snaps: [UsageSnapshot]) -> [(Date, Double)] {
         let cal = Calendar.current
         return Dictionary(grouping: snaps) { cal.startOfDay(for: $0.timestamp) }
-            .map { ($0.key, $0.value.reduce(0) { $0 + $1.totalCostUSD }) }
+            .map { day, daySnapshots in
+                let normalized = normalizeDailySnapshots(daySnapshots)
+                return (day, normalized.reduce(0) { $0 + $1.totalCostUSD })
+            }
             .sorted { $0.0 < $1.0 }
+    }
+
+    private func normalizeDailySnapshots(_ snapshots: [UsageSnapshot]) -> [UsageSnapshot] {
+        var eventSnapshots: [UsageSnapshot] = []
+        var cumulativeSnapshots: [UsageSnapshot] = []
+        for snapshot in snapshots {
+            if isCumulativeSnapshot(snapshot) {
+                cumulativeSnapshots.append(snapshot)
+            } else {
+                eventSnapshots.append(snapshot)
+            }
+        }
+        if let latestCumulative = cumulativeSnapshots.max(by: { $0.timestamp < $1.timestamp }) {
+            eventSnapshots.append(latestCumulative)
+        }
+        return eventSnapshots
+    }
+
+    private func isCumulativeSnapshot(_ snapshot: UsageSnapshot) -> Bool {
+        let model = snapshot.modelBreakdown.first?.modelId ?? ""
+        let cumulativeModels: Set<String> = [
+            "claude-code-local",
+            "claude-ai-web",
+            "codex-local",
+            "gemini-local",
+            "openai-org",
+            "windsurf-enterprise",
+            "copilot-metrics",
+        ]
+        return cumulativeModels.contains(model)
     }
 
     private var sevenDaySnapshots: [UsageSnapshot] {
