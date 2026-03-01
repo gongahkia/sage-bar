@@ -28,6 +28,7 @@ struct AccountsTab: View {
     @State private var deleteTarget: Account?
     @State private var connectionStatus: [UUID: String] = [:] // task 88
     @State private var connectionTesting: Set<UUID> = []
+    @State private var connectionTasks: [UUID: Task<Void, Never>] = [:]
     @ObservedObject private var polling = PollingService.shared
 
     var body: some View {
@@ -103,16 +104,28 @@ struct AccountsTab: View {
                 }
                 Spacer()
                 if connectionTesting.contains(account.id) {
-                    ProgressView().scaleEffect(0.6)
+                    Button("Cancel") {
+                        connectionTasks[account.id]?.cancel()
+                        connectionTasks.removeValue(forKey: account.id)
+                        connectionTesting.remove(account.id)
+                        connectionStatus[account.id] = "✗ Cancelled"
+                    }
+                    .font(.caption)
+                    .buttonStyle(.bordered)
                 } else {
                     Button("Test") {
                         connectionTesting.insert(account.id)
                         connectionStatus.removeValue(forKey: account.id)
-                        Task {
-                            let result = await testConnection(account: account)
+                        let task = Task {
+                            let result = await withTimeout(seconds: 10) {
+                                await testConnection(account: account)
+                            } ?? "✗ Timed out after 10s"
+                            guard !Task.isCancelled else { return }
                             connectionStatus[account.id] = result
                             connectionTesting.remove(account.id)
+                            connectionTasks.removeValue(forKey: account.id)
                         }
+                        connectionTasks[account.id] = task
                     }.font(.caption).buttonStyle(.bordered)
                 }
                 Toggle("", isOn: Binding(
@@ -202,6 +215,19 @@ struct AccountsTab: View {
             let client = ClaudeAIClient(sessionToken: token)
             let result = await client.fetchUsage()
             return result != nil ? "✓ OK" : "✗ Fetch failed (check session token)"
+        }
+    }
+
+    private func withTimeout<T>(seconds: Double, operation: @escaping () async -> T) async -> T? {
+        await withTaskGroup(of: T?.self) { group in
+            group.addTask { await operation() }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                return nil
+            }
+            let result = await group.next() ?? nil
+            group.cancelAll()
+            return result
         }
     }
 }
