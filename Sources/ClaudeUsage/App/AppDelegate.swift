@@ -53,5 +53,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         updateTimer?.invalidate()
         HotkeyManager.shared.unregisterAll()
         PollingService.shared.stop()
+        iCloudSyncManager.shared.stopMetadataQuery()
     }
 }

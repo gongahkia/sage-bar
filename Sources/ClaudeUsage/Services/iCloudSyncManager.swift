@@ -30,6 +30,7 @@ class iCloudSyncManager: ObservableObject {
     @Published var lastSyncDate: Date? = UserDefaults.standard.object(forKey: "lastCloudSyncDate") as? Date
 
     private var metadataQuery: NSMetadataQuery?
+    private var metadataObserver: NSObjectProtocol?
     private let coordinator = NSFileCoordinator()
     private let coordTimeout: TimeInterval = 5
     private let lastSyncPayloadHashKey = "lastCloudSyncPayloadHash"
@@ -132,6 +133,7 @@ class iCloudSyncManager: ObservableObject {
     }
 
     func startMetadataQuery(config: iCloudSyncConfig) {
+        stopMetadataQuery()
         guard config.enabled, !config.localOnly else { return }
         guard isICloudAvailable() else {
             ErrorLogger.shared.log("iCloud not available — sync disabled", level: "WARN")
@@ -140,11 +142,20 @@ class iCloudSyncManager: ObservableObject {
         let q = NSMetadataQuery()
         q.predicate = NSPredicate(format: "%K LIKE '*usage_cache.json'", NSMetadataItemFSNameKey)
         q.searchScopes = [NSMetadataQueryUbiquitousDocumentsScope]
-        NotificationCenter.default.addObserver(forName: .NSMetadataQueryDidUpdate, object: q, queue: .main) { [weak self] _ in
+        metadataObserver = NotificationCenter.default.addObserver(forName: .NSMetadataQueryDidUpdate, object: q, queue: .main) { [weak self] _ in
             Task { await self?.syncNow() }
         }
         q.start()
         metadataQuery = q
+    }
+
+    func stopMetadataQuery() {
+        if let observer = metadataObserver {
+            NotificationCenter.default.removeObserver(observer)
+            metadataObserver = nil
+        }
+        metadataQuery?.stop()
+        metadataQuery = nil
     }
 
     // MARK: – Coordinator helpers with 5s timeout
