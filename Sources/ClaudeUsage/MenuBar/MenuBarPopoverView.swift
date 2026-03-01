@@ -24,6 +24,28 @@ struct MenuBarPopoverView: View {
 
     @MainActor
     private final class ViewModel: ObservableObject {
+        private actor ModelHintsMemoStore {
+            private var cachedHints: [ModelHint]?
+
+            func hint(for accountId: UUID) -> ModelHint? {
+                if cachedHints == nil {
+                    let url = AppConstants.sharedContainerURL.appendingPathComponent("model_hints.json")
+                    if let data = try? Data(contentsOf: url),
+                       let hints = try? JSONDecoder().decode([ModelHint].self, from: data) {
+                        cachedHints = hints
+                    } else {
+                        cachedHints = []
+                    }
+                }
+                return cachedHints?.first(where: { $0.accountId == accountId && $0.cheaperAlternativeExists })
+            }
+
+            func invalidate() {
+                cachedHints = nil
+            }
+        }
+
+        private nonisolated static let modelHintsMemo = ModelHintsMemoStore()
         @Published private(set) var metricsByAccount: [UUID: AccountMetrics] = [:]
         private var inflightLoads: [UUID: Task<Void, Never>] = [:]
 
@@ -40,6 +62,10 @@ struct MenuBarPopoverView: View {
             }
         }
 
+        func invalidateModelHintsCache() {
+            Task { await Self.modelHintsMemo.invalidate() }
+        }
+
         private static func fetchMetricsOffMain(account: Account) async -> AccountMetrics {
             await Task.detached(priority: .utility) {
                 async let latestSnapshot = CacheManager.shared.latestAsync(forAccount: account.id)
@@ -47,7 +73,7 @@ struct MenuBarPopoverView: View {
                 async let latestForecast = CacheManager.shared.latestForecastAsync(forAccount: account.id)
                 async let weekSnapshots = CacheManager.shared.historyAsync(forAccount: account.id, days: 7)
                 async let daySnapshots = CacheManager.shared.historyAsync(forAccount: account.id, days: 1)
-                let modelHint = loadModelHint(accountId: account.id)
+                let modelHint = await Self.modelHintsMemo.hint(for: account.id)
                 return await AccountMetrics(
                     latestSnapshot: latestSnapshot,
                     todayAggregate: todayAggregate,
@@ -57,13 +83,6 @@ struct MenuBarPopoverView: View {
                     modelHint: modelHint
                 )
             }.value
-        }
-
-        private nonisolated static func loadModelHint(accountId: UUID) -> ModelHint? {
-            let url = AppConstants.sharedContainerURL.appendingPathComponent("model_hints.json")
-            guard let data = try? Data(contentsOf: url),
-                  let hints = try? JSONDecoder().decode([ModelHint].self, from: data) else { return nil }
-            return hints.first(where: { $0.accountId == accountId && $0.cheaperAlternativeExists })
         }
     }
 
@@ -137,6 +156,7 @@ struct MenuBarPopoverView: View {
             refreshCurrentAccountMetrics()
         }
         .onReceive(NotificationCenter.default.publisher(for: .usageDidUpdate)) { _ in
+            viewModel.invalidateModelHintsCache()
             refreshCurrentAccountMetrics()
         }
     }
