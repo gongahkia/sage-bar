@@ -84,27 +84,32 @@ private actor CacheStore {
         }
         if let decoded = try? decoder().decode(UsageCachePayload.self, from: data) {
             let deduped = deduplicateSnapshots(decoded.snapshots)
+            let dailyCompacted = compactDailyCumulativeSnapshots(deduped)
             let needsSchemaMigration = decoded.schemaVersion < CacheSchema.currentVersion
             if deduped.count != decoded.snapshots.count {
                 log.info("Deduplicated usage cache: \(decoded.snapshots.count) -> \(deduped.count)")
             }
+            if dailyCompacted.count != deduped.count {
+                log.info("Daily-compacted cumulative snapshots: \(deduped.count) -> \(dailyCompacted.count)")
+            }
             if needsSchemaMigration {
                 log.info("Migrating usage cache schema \(decoded.schemaVersion) -> \(CacheSchema.currentVersion)")
             }
-            if deduped.count != decoded.snapshots.count || needsSchemaMigration {
+            if deduped.count != decoded.snapshots.count || dailyCompacted.count != deduped.count || needsSchemaMigration {
                 // Persist canonical snapshots so legacy payloads include required defaulted fields.
-                saveSnapshots(deduped)
+                saveSnapshots(dailyCompacted)
             }
-            log.debug("Cache loaded: \(deduped.count) snapshots (schema \(decoded.schemaVersion))")
-            snapshotMemoryCache = deduped
-            return deduped
+            log.debug("Cache loaded: \(dailyCompacted.count) snapshots (schema \(decoded.schemaVersion))")
+            snapshotMemoryCache = dailyCompacted
+            return dailyCompacted
         }
         if let legacy = try? decoder().decode([UsageSnapshot].self, from: data) {
             log.info("Migrating legacy usage cache payload")
             let deduped = deduplicateSnapshots(legacy)
-            saveSnapshots(deduped)
-            snapshotMemoryCache = deduped
-            return deduped
+            let dailyCompacted = compactDailyCumulativeSnapshots(deduped)
+            saveSnapshots(dailyCompacted)
+            snapshotMemoryCache = dailyCompacted
+            return dailyCompacted
         }
         let fallback = snapshotMemoryCache ?? []
         ErrorLogger.shared.log(
@@ -421,11 +426,47 @@ private actor CacheStore {
             return snapshots
         }
         writesSinceCompaction = 0
-        let compacted = deduplicateSnapshots(snapshots)
+        let deduped = deduplicateSnapshots(snapshots)
+        let compacted = compactDailyCumulativeSnapshots(deduped)
         if compacted.count != snapshots.count {
             log.info("Compacted usage cache snapshots: \(snapshots.count) -> \(compacted.count)")
         }
         return compacted
+    }
+
+    private func compactDailyCumulativeSnapshots(_ snapshots: [UsageSnapshot]) -> [UsageSnapshot] {
+        guard !snapshots.isEmpty else { return snapshots }
+        let cal = Calendar.current
+        var grouped: [String: [UsageSnapshot]] = [:]
+        for snapshot in snapshots {
+            let day = cal.dateComponents([.year, .month, .day], from: snapshot.timestamp)
+            let key = "\(snapshot.accountId.uuidString)|\(day.year ?? 0)-\(day.month ?? 0)-\(day.day ?? 0)"
+            grouped[key, default: []].append(snapshot)
+        }
+
+        var compacted: [UsageSnapshot] = []
+        compacted.reserveCapacity(snapshots.count)
+
+        for daySnapshots in grouped.values {
+            let ordered = daySnapshots.sorted { $0.timestamp < $1.timestamp }
+            let eventSnapshots = ordered.filter { !isCumulativeSnapshot($0) }
+            let cumulativeSnapshots = ordered.filter { isCumulativeSnapshot($0) }
+
+            compacted.append(contentsOf: eventSnapshots)
+            guard let baseline = cumulativeSnapshots.first else { continue }
+
+            compacted.append(baseline)
+            var lastKept = baseline
+            for snapshot in cumulativeSnapshots.dropFirst() {
+                if cumulativeTotalsEqual(lastKept, snapshot) {
+                    continue
+                }
+                compacted.append(snapshot)
+                lastKept = snapshot
+            }
+        }
+
+        return compacted.sorted { $0.timestamp < $1.timestamp }
     }
 
     private func snapshotScore(_ snapshot: UsageSnapshot, tokenTotal: Int) -> (Int, Int, Int, Double, TimeInterval) {

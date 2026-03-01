@@ -277,6 +277,35 @@ final class CacheManagerTests: XCTestCase {
         XCTAssertEqual(loaded.first?.outputTokens, 55)
     }
 
+    func testLoadCompactsDailyCumulativeSnapshotsToBaselineAndMeaningfulDeltas() {
+        let now = Date()
+        let baseline = cumulativeSnap(input: 100, output: 20, cost: 1.0, at: now.addingTimeInterval(-300))
+        let duplicate = cumulativeSnap(input: 100, output: 20, cost: 1.0, at: now.addingTimeInterval(-240))
+        let delta = cumulativeSnap(input: 140, output: 30, cost: 1.8, at: now.addingTimeInterval(-120))
+        let duplicateDelta = cumulativeSnap(input: 140, output: 30, cost: 1.8, at: now)
+        let event = UsageSnapshot(
+            accountId: accountId,
+            timestamp: now.addingTimeInterval(-60),
+            inputTokens: 8,
+            outputTokens: 2,
+            cacheCreationTokens: 0,
+            cacheReadTokens: 0,
+            totalCostUSD: 0.12,
+            modelBreakdown: [ModelUsage(modelId: "claude-sonnet-4-6", inputTokens: 8, outputTokens: 2, costUSD: 0.12)],
+            costConfidence: .billingGrade
+        )
+
+        cm.save([baseline, duplicate, delta, duplicateDelta, event])
+        let loaded = cm.load().filter { $0.accountId == accountId }
+        let cumulative = loaded.filter { ($0.modelBreakdown.first?.modelId ?? "") == "codex-local" }
+        let events = loaded.filter { ($0.modelBreakdown.first?.modelId ?? "") == "claude-sonnet-4-6" }
+
+        XCTAssertEqual(cumulative.count, 2)
+        XCTAssertEqual(cumulative.first?.inputTokens, 100)
+        XCTAssertEqual(cumulative.last?.inputTokens, 140)
+        XCTAssertEqual(events.count, 1)
+    }
+
     func testLoadDeduplicatesDeterministicEventKeyAndPrefersBillingGrade() {
         let ts = Date()
         let estimated = UsageSnapshot(
