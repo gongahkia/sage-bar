@@ -41,9 +41,9 @@ jobs:
       - name: Validate prices.json
         run: python3 -c "import json,sys; json.load(open('Sources/ClaudeUsage/Resources/prices.json'))"
       - name: Build app target (release)
-        run: swift build --target ClaudeUsage -c release
+        run: swift build --target ClaudeUsage -c release -Xswiftc -warnings-as-errors
       - name: Build CLI target (release)
-        run: swift build --target ClaudeUsageCLI -c release
+        run: swift build --target ClaudeUsageCLI -c release -Xswiftc -warnings-as-errors
       - name: Build
         run: swift build
       - name: Test
