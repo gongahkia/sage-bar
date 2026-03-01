@@ -5,6 +5,7 @@ private let log = Logger(subsystem: "dev.claudeusage", category: "CacheManager")
 
 private actor CacheStore {
     private static let retentionDays = 30
+    private static let maxSnapshotCacheBytes = 25 * 1024 * 1024
     private static let fractionalISO8601Formatter: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -62,6 +63,13 @@ private actor CacheStore {
             snapshotMemoryCache = []
             return []
         }
+        if data.count > Self.maxSnapshotCacheBytes {
+            ErrorLogger.shared.log(
+                "usage_cache.json is oversized (\(data.count) bytes); using in-memory fallback",
+                level: "WARN"
+            )
+            return snapshotMemoryCache ?? []
+        }
         if let decoded = try? decoder().decode(UsageCachePayload.self, from: data) {
             let deduped = deduplicateSnapshots(decoded.snapshots)
             if deduped.count != decoded.snapshots.count {
@@ -79,9 +87,12 @@ private actor CacheStore {
             snapshotMemoryCache = deduped
             return deduped
         }
-        ErrorLogger.shared.log("JSON decode failed for usage_cache.json")
-        snapshotMemoryCache = []
-        return []
+        let fallback = snapshotMemoryCache ?? []
+        ErrorLogger.shared.log(
+            "JSON decode failed for usage_cache.json; using in-memory fallback (\(fallback.count) snapshots)",
+            level: "WARN"
+        )
+        return fallback
     }
 
     func saveSnapshots(_ snapshots: [UsageSnapshot]) {
