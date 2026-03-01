@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import OSLog
 import UserNotifications
+import Darwin
 
 private let log = Logger(subsystem: "dev.claudeusage", category: "Automations")
 
@@ -39,6 +40,8 @@ enum AutomationAction {
 }
 
 struct AutomationEngine {
+    private static let processTimeoutSeconds: TimeInterval = 15
+
     static func evaluate(rules: [AutomationRule], snapshot: UsageSnapshot) -> [AutomationRule] {
         rules.filter { rule in
             guard rule.enabled else { return false }
@@ -108,7 +111,20 @@ struct AutomationEngine {
         let outPipe = Pipe(); let errPipe = Pipe()
         process.standardOutput = outPipe; process.standardError = errPipe
         do {
-            try process.run(); process.waitUntilExit()
+            try process.run()
+            let deadline = Date().addingTimeInterval(processTimeoutSeconds)
+            while process.isRunning && Date() < deadline {
+                Thread.sleep(forTimeInterval: 0.05)
+            }
+            if process.isRunning {
+                process.terminate()
+                Thread.sleep(forTimeInterval: 0.1)
+                if process.isRunning {
+                    _ = kill(process.processIdentifier, SIGKILL)
+                }
+                ErrorLogger.shared.log("Rule '\(ruleName)' timed out after \(Int(processTimeoutSeconds))s and was terminated")
+                return false
+            }
             let out = String(data: outPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
             log.info("Rule '\(ruleName, privacy: .public)' exit \(process.terminationStatus): \(out, privacy: .public)")
             return process.terminationStatus == 0
