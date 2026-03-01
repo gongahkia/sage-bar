@@ -538,7 +538,9 @@ class PollingService: ObservableObject {
             }
         }
         if didMutateConfig {
-            ConfigManager.shared.save(config)
+            if case .failure(let error) = ConfigManager.shared.save(config) {
+                ErrorLogger.shared.log("Failed to persist automation fire state: \(error)")
+            }
         }
     }
 
@@ -725,7 +727,10 @@ class PollingService: ObservableObject {
         var config = ConfigManager.shared.load()
         guard let index = config.accounts.firstIndex(where: { $0.id == accountId && $0.isActive }) else { return }
         config.accounts[index].isActive = false
-        ConfigManager.shared.save(config)
+        if case .failure(let error) = ConfigManager.shared.save(config) {
+            ErrorLogger.shared.log("Failed to persist auto-disabled account state: \(error)")
+            return
+        }
         let message = "Auto-disabled account \(accountId.uuidString) after \(failureDisableThreshold) consecutive fetch failures; re-enable manually in Settings."
         ErrorLogger.shared.log(message, level: "WARN")
         await MainActor.run {

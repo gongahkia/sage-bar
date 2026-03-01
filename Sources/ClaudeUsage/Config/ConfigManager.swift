@@ -17,6 +17,24 @@ enum ConfigLoadError: Error, CustomStringConvertible {
     }
 }
 
+enum ConfigSaveError: Error, CustomStringConvertible {
+    case directoryCreateFailed(String)
+    case encodeFailed(String)
+    case serializeFailed(String)
+    case writeFailed(String)
+    case replaceFailed(String)
+
+    var description: String {
+        switch self {
+        case .directoryCreateFailed(let detail): return "directoryCreateFailed: \(detail)"
+        case .encodeFailed(let detail): return "encodeFailed: \(detail)"
+        case .serializeFailed(let detail): return "serializeFailed: \(detail)"
+        case .writeFailed(let detail): return "writeFailed: \(detail)"
+        case .replaceFailed(let detail): return "replaceFailed: \(detail)"
+        }
+    }
+}
+
 class ConfigManager {
     static let shared = ConfigManager()
     private let configDir: URL
@@ -75,17 +93,61 @@ class ConfigManager {
         }
     }
 
-    func save(_ config: Config) {
+    @discardableResult
+    func save(_ config: Config) -> Result<Void, ConfigSaveError> {
         do {
             try FileManager.default.createDirectory(at: configDir, withIntermediateDirectories: true)
-            let data = try JSONEncoder().encode(config)
-            let obj = try JSONSerialization.jsonObject(with: data)
+        } catch {
+            let saveError = ConfigSaveError.directoryCreateFailed(error.localizedDescription)
+            ErrorLogger.shared.log("Config save error: \(saveError)")
+            return .failure(saveError)
+        }
+
+        let data: Data
+        do {
+            data = try JSONEncoder().encode(config)
+        } catch {
+            let saveError = ConfigSaveError.encodeFailed(error.localizedDescription)
+            ErrorLogger.shared.log("Config save error: \(saveError)")
+            return .failure(saveError)
+        }
+
+        let obj: Any
+        do {
+            obj = try JSONSerialization.jsonObject(with: data)
+        } catch {
+            let saveError = ConfigSaveError.serializeFailed(error.localizedDescription)
+            ErrorLogger.shared.log("Config save error: \(saveError)")
+            return .failure(saveError)
+        }
+
+        let jsonData: Data
+        do {
             // write as JSON-backed config (TOML serialisation deferred; JSON is a TOML superset)
-            let jsonData = try JSONSerialization.data(withJSONObject: obj, options: .prettyPrinted)
-            let tmp = configFile.appendingPathExtension("tmp")
+            jsonData = try JSONSerialization.data(withJSONObject: obj, options: .prettyPrinted)
+        } catch {
+            let saveError = ConfigSaveError.serializeFailed(error.localizedDescription)
+            ErrorLogger.shared.log("Config save error: \(saveError)")
+            return .failure(saveError)
+        }
+
+        let tmp = configFile.appendingPathExtension("tmp")
+        do {
             try jsonData.write(to: tmp, options: .atomic)
+        } catch {
+            let saveError = ConfigSaveError.writeFailed(error.localizedDescription)
+            ErrorLogger.shared.log("Config save error: \(saveError)")
+            return .failure(saveError)
+        }
+
+        do {
             _ = try FileManager.default.replaceItemAt(configFile, withItemAt: tmp)
-        } catch {}
+            return .success(())
+        } catch {
+            let saveError = ConfigSaveError.replaceFailed(error.localizedDescription)
+            ErrorLogger.shared.log("Config save error: \(saveError)")
+            return .failure(saveError)
+        }
     }
 
     private func normalize(_ config: Config) -> Config {
