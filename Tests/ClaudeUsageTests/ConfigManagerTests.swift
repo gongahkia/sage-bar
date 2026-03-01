@@ -45,6 +45,12 @@ final class ConfigManagerTests: XCTestCase {
         XCTAssertEqual(reloaded.accounts.first?.name, "TestAccount")
     }
 
+    func testSaveDoesNotPersistDeprecatedClaudeAISessionCookieField() throws {
+        cm.save(.default)
+        let raw = try String(contentsOf: configFile, encoding: .utf8)
+        XCTAssertFalse(raw.contains("sessionCookie"))
+    }
+
     // MARK: - Task 65: partial config missing optional sections → defaults
 
     func testMissingOptionalSectionsLoadWithDefaults() {

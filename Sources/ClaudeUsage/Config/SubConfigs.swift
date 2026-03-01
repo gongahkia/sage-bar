@@ -219,8 +219,29 @@ struct HotkeyConfig: Codable, Equatable {
 }
 
 struct ClaudeAIConfig: Codable, Equatable {
-    var sessionCookie: String? // sessionKey value from claude.ai DevTools
-    static var `default`: ClaudeAIConfig { ClaudeAIConfig(sessionCookie: nil) }
+    private enum LegacyCodingKeys: String, CodingKey {
+        case sessionCookie
+    }
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: LegacyCodingKeys.self)
+        if let cookie = try c.decodeIfPresent(String.self, forKey: .sessionCookie),
+           !cookie.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            ErrorLogger.shared.log(
+                "Ignoring deprecated claudeAI.sessionCookie in config; use keychain-backed session tokens instead",
+                level: "WARN"
+            )
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        // deprecated and intentionally omitted to avoid persisting sensitive cookie fields
+        _ = encoder.container(keyedBy: LegacyCodingKeys.self)
+    }
+
+    static var `default`: ClaudeAIConfig { ClaudeAIConfig() }
 }
 
 struct AutomationRule: Codable, Identifiable, Equatable {
