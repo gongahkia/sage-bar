@@ -54,4 +54,18 @@ final class ModelOptimizerAnalyzerTests: XCTestCase {
         XCTAssertEqual(hint?.recommendedModel, "gemini-2.0-flash")
         XCTAssertGreaterThan(hint?.estimatedSavingsUSD ?? 0, 0)
     }
+
+    func testOpenAIModelIDUsesCodexTaxonomyRule() {
+        let mu = [usage(model: "gpt-4.1", input: 1_000_000, output: 500, cost: 0)]
+        let hint = ModelOptimizerAnalyzer.analyze(breakdown: mu, accountId: accountId, config: enabledConfig)
+        XCTAssertNotNil(hint)
+        XCTAssertEqual(hint?.recommendedModel, "gpt-4o-mini")
+    }
+
+    func testGeminiProModelIDUsesGeminiTaxonomyRule() {
+        let mu = [usage(model: "gemini-2.5-pro-preview", input: 1_000_000, output: 500, cost: 0)]
+        let hint = ModelOptimizerAnalyzer.analyze(breakdown: mu, accountId: accountId, config: enabledConfig)
+        XCTAssertNotNil(hint)
+        XCTAssertEqual(hint?.recommendedModel, "gemini-2.0-flash")
+    }
 }

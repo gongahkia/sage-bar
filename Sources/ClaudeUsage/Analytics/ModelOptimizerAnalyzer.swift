@@ -12,6 +12,30 @@ struct ModelOptimizerAnalyzer {
         let outputPer1M: Double
     }
 
+    private struct TaxonomyRule {
+        let exactModelIDs: Set<String>
+        let prefixMatchers: [String]
+        let containsMatchers: [String]
+    }
+
+    private static let providerTaxonomy: [ProviderFamily: TaxonomyRule] = [
+        .claude: TaxonomyRule(
+            exactModelIDs: ["claude-code-local"],
+            prefixMatchers: ["claude-opus", "claude-sonnet"],
+            containsMatchers: ["opus", "sonnet"]
+        ),
+        .codex: TaxonomyRule(
+            exactModelIDs: ["codex-local", "openai-org"],
+            prefixMatchers: ["gpt-4", "o1", "o3", "o4"],
+            containsMatchers: ["codex", "gpt-4.1", "gpt-5", "o1-", "o3-"]
+        ),
+        .gemini: TaxonomyRule(
+            exactModelIDs: ["gemini-local"],
+            prefixMatchers: ["gemini-2.5-pro", "gemini-1.5-pro", "gemini-pro"],
+            containsMatchers: ["gemini-2.5-pro", "gemini-1.5-pro", "gemini-pro"]
+        ),
+    ]
+
     private static let fallbackCurrentPricingByFamily: [ProviderFamily: Pricing] = [
         .claude: Pricing(inputPer1M: 3.00, outputPer1M: 15.00),
         .codex: Pricing(inputPer1M: 2.00, outputPer1M: 8.00),
@@ -88,26 +112,16 @@ struct ModelOptimizerAnalyzer {
     private static func classifyFamily(for modelId: String) -> ProviderFamily? {
         let normalized = modelId.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !normalized.isEmpty else { return nil }
-
-        if normalized == "claude-code-local"
-            || normalized.contains("claude-opus")
-            || normalized.contains("claude-sonnet")
-            || normalized.contains("opus")
-            || normalized.contains("sonnet") {
-            return .claude
-        }
-        if normalized == "codex-local"
-            || normalized.hasPrefix("gpt-4")
-            || normalized.hasPrefix("o1")
-            || normalized.hasPrefix("o3")
-            || normalized.contains("codex") {
-            return .codex
-        }
-        if normalized == "gemini-local"
-            || normalized.contains("gemini-2.5-pro")
-            || normalized.contains("gemini-1.5-pro")
-            || normalized.contains("gemini-pro") {
-            return .gemini
+        for (family, rule) in providerTaxonomy {
+            if rule.exactModelIDs.contains(normalized) {
+                return family
+            }
+            if rule.prefixMatchers.contains(where: { normalized.hasPrefix($0) }) {
+                return family
+            }
+            if rule.containsMatchers.contains(where: { normalized.contains($0) }) {
+                return family
+            }
         }
         return nil
     }
