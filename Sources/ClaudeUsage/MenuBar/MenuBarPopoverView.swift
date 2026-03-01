@@ -92,7 +92,7 @@ struct MenuBarPopoverView: View {
             statRow("Output Tokens", value: "\(agg.totalOutputTokens.formatted())")
             statRow("Cache Tokens", value: "\((CacheManager.shared.todayAggregate(forAccount: account.id).snapshots.reduce(0) { $0 + $1.cacheReadTokens + $1.cacheCreationTokens }).formatted())")
             statRow("Cost Today", value: String(format: "$%.4f", agg.totalCostUSD))
-            statRow("Cost Confidence", value: confidence)
+            confidenceRow(confidence)
         }.padding(12)
     }
 
@@ -184,7 +184,7 @@ struct MenuBarPopoverView: View {
             } else {
                 Text("No data yet").font(.caption).foregroundColor(.secondary)
             }
-            statRow("Cost Confidence", value: currentCostConfidence(account: account))
+            confidenceRow(currentCostConfidence(account: account))
         }.padding(12)
     }
 
@@ -295,6 +295,24 @@ struct MenuBarPopoverView: View {
             Spacer()
             Text(value).monospacedDigit()
         }.font(.system(size: 12))
+    }
+
+    private func confidenceRow(_ confidence: String) -> some View {
+        HStack {
+            Text("Cost Confidence").foregroundColor(.secondary)
+            Spacer()
+            Text(confidence)
+                .font(.system(size: 11, weight: .semibold))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 2)
+                .background(confidenceColor(confidence).opacity(0.18))
+                .foregroundColor(confidenceColor(confidence))
+                .clipShape(Capsule())
+        }
+    }
+
+    private func confidenceColor(_ confidence: String) -> Color {
+        confidence == "Billing-grade" ? .green : .orange
     }
 
     private func copyActiveAccountDailyTotals() {
