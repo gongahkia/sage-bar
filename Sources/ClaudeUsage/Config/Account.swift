@@ -20,12 +20,28 @@ enum ProviderCredentialMode {
     case claudeAISessionToken
 }
 
+enum ProviderStrategy: String, Codable {
+    case core
+    case experimental
+}
+
 struct ProviderCapabilities {
     let credentialMode: ProviderCredentialMode
     let supportsConnectionTest: Bool
 }
 
 extension AccountType {
+    var providerStrategy: ProviderStrategy {
+        switch self {
+        case .claudeCode, .codex, .gemini:
+            return .core
+        case .anthropicAPI, .openAIOrg, .windsurfEnterprise, .githubCopilot, .claudeAI:
+            return .experimental
+        }
+    }
+
+    var isCoreProvider: Bool { providerStrategy == .core }
+
     var capabilities: ProviderCapabilities {
         switch self {
         case .claudeCode, .codex, .gemini:
