@@ -80,6 +80,8 @@ class ClaudeCodeLogParser {
     private let accumulatorFile: URL
     private var lineCheckpoints: [URL: Int]
     private var dailyAccumulator: DailyAccumulator?
+    private var lineCheckpointsDirty = false
+    private var dailyAccumulatorDirty = false
     private var decodeFailuresByFile: [URL: Int] = [:]
     private let quarantineFailureThreshold = 20
     private let isoTimestamp: ISO8601DateFormatter = {
@@ -137,7 +139,7 @@ class ClaudeCodeLogParser {
         return enumerator.compactMap { $0 as? URL }.filter { $0.pathExtension == "jsonl" }
     }
 
-    func parseFile(_ url: URL, incremental: Bool = false) -> [ClaudeCodeEntry] {
+    func parseFile(_ url: URL, incremental: Bool = false, deferPersistence: Bool = false) -> [ClaudeCodeEntry] {
         if let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
            let size = attrs[.size] as? Int, size > 50 * 1024 * 1024 {
             ErrorLogger.shared.log("Skipping oversized log file \(url.lastPathComponent) (\(size / 1024 / 1024)MB)", level: "WARN")
@@ -186,6 +188,7 @@ class ClaudeCodeLogParser {
 
         if incremental {
             lineCheckpoints[url] = max(0, startIndex)
+            lineCheckpointsDirty = true
         }
 
         parseLoop: while true {
@@ -246,11 +249,20 @@ class ClaudeCodeLogParser {
                     level: "WARN"
                 )
                 lineCheckpoints[url] = totalRecords
+                lineCheckpointsDirty = true
                 results = allResults
             } else {
                 lineCheckpoints[url] = totalRecords
+                lineCheckpointsDirty = true
             }
-            persistLineCheckpoints()
+            if deferPersistence {
+                // persisted once per aggregate cycle
+            } else {
+                if lineCheckpointsDirty {
+                    persistLineCheckpoints()
+                    lineCheckpointsDirty = false
+                }
+            }
         }
         ParserMetricsStore.shared.record(
             parser: "claude_code",
@@ -331,7 +343,7 @@ class ClaudeCodeLogParser {
         let todayComps = cal.dateComponents([.year,.month,.day], from: Date())
         if dailyAccumulator?.day != todayComps {
             dailyAccumulator = DailyAccumulator(day: todayComps, input: 0, output: 0, cacheCreate: 0, cacheRead: 0)
-            persistDailyAccumulator()
+            dailyAccumulatorDirty = true
         }
         for url in discoverSessionFiles() {
             let attrs = try? FileManager.default.attributesOfItem(atPath: url.path)
@@ -341,7 +353,7 @@ class ClaudeCodeLogParser {
             guard let mod else { continue }
             if let prev = fileChecksums[url], prev.0 == mod, prev.1 == size, prev.2 == inode { continue }
             fileChecksums[url] = (mod, size, inode)
-            for entry in parseFile(url, incremental: true) {
+            for entry in parseFile(url, incremental: true, deferPersistence: true) {
                 guard let entryDate = entryTimestamp(entry, fallback: mod),
                       cal.dateComponents([.year,.month,.day], from: entryDate) == todayComps else { continue }
                 let u = entry.usage ?? entry.message?.usage
@@ -349,9 +361,10 @@ class ClaudeCodeLogParser {
                 dailyAccumulator?.output += u?.output_tokens ?? 0
                 dailyAccumulator?.cacheCreate += u?.cache_creation_input_tokens ?? 0
                 dailyAccumulator?.cacheRead += u?.cache_read_input_tokens ?? 0
+                dailyAccumulatorDirty = true
             }
         }
-        persistDailyAccumulator()
+        flushPersistedState()
         let acc = dailyAccumulator ?? DailyAccumulator(day: todayComps, input: 0, output: 0, cacheCreate: 0, cacheRead: 0)
         return UsageSnapshot(
             accountId: UUID(), // overridden by caller with real account id
@@ -506,6 +519,17 @@ class ClaudeCodeLogParser {
             try data.write(to: accumulatorFile, options: .atomic)
         } catch {
             ErrorLogger.shared.log("Failed to persist Claude Code daily accumulator: \(error.localizedDescription)", level: "WARN")
+        }
+    }
+
+    private func flushPersistedState() {
+        if lineCheckpointsDirty {
+            persistLineCheckpoints()
+            lineCheckpointsDirty = false
+        }
+        if dailyAccumulatorDirty {
+            persistDailyAccumulator()
+            dailyAccumulatorDirty = false
         }
     }
 }

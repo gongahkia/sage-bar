@@ -116,6 +116,9 @@ class CodexLogParser {
     private var lineCheckpoints: [URL: Int]
     private var dailyAccumulator: DailyAccumulator?
     private var fileTotalsByURL: [URL: TokenTotals]
+    private var lineCheckpointsDirty = false
+    private var dailyAccumulatorDirty = false
+    private var fileTotalsDirty = false
     private var decodeFailuresByFile: [URL: Int] = [:]
     private let quarantineFailureThreshold = 20
 
@@ -181,7 +184,7 @@ class CodexLogParser {
         return enumerator.compactMap { $0 as? URL }.filter { $0.pathExtension == "jsonl" }
     }
 
-    func parseFile(_ url: URL, incremental: Bool = false) -> [CodexSessionEntry] {
+    func parseFile(_ url: URL, incremental: Bool = false, deferPersistence: Bool = false) -> [CodexSessionEntry] {
         if let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
            let size = attrs[.size] as? Int, size > 100 * 1024 * 1024 {
             ErrorLogger.shared.log("Skipping oversized Codex log file \(url.lastPathComponent) (\(size / 1024 / 1024)MB)", level: "WARN")
@@ -227,6 +230,7 @@ class CodexLogParser {
 
         if incremental {
             lineCheckpoints[url] = max(0, startIndex)
+            lineCheckpointsDirty = true
         }
 
         parseLoop: while true {
@@ -265,13 +269,25 @@ class CodexLogParser {
                 )
                 lineCheckpoints[url] = totalLines
                 fileTotalsByURL[url] = .zero
-                persistLineCheckpoints()
-                persistFileTotals()
+                lineCheckpointsDirty = true
+                fileTotalsDirty = true
                 results = allResults
             } else {
                 lineCheckpoints[url] = totalLines
+                lineCheckpointsDirty = true
             }
-            persistLineCheckpoints()
+            if deferPersistence {
+                // persisted once per aggregate cycle
+            } else {
+                if lineCheckpointsDirty {
+                    persistLineCheckpoints()
+                    lineCheckpointsDirty = false
+                }
+                if fileTotalsDirty {
+                    persistFileTotals()
+                    fileTotalsDirty = false
+                }
+            }
         }
         ParserMetricsStore.shared.record(
             parser: "codex",
@@ -311,7 +327,7 @@ class CodexLogParser {
         let todayComps = cal.dateComponents([.year, .month, .day], from: Date())
         if dailyAccumulator?.day != todayComps {
             dailyAccumulator = DailyAccumulator(day: todayComps, input: 0, output: 0, cacheRead: 0)
-            persistDailyAccumulator()
+            dailyAccumulatorDirty = true
         }
         for url in discoverSessionFiles() {
             let attrs = try? FileManager.default.attributesOfItem(atPath: url.path)
@@ -321,10 +337,9 @@ class CodexLogParser {
             guard let mod else { continue }
             if let prev = fileChecksums[url], prev.0 == mod, prev.1 == size, prev.2 == inode { continue }
             fileChecksums[url] = (mod, size, inode)
-            ingest(entries: parseFile(url, incremental: true), file: url, fallbackDate: mod, todayComps: todayComps)
+            ingest(entries: parseFile(url, incremental: true, deferPersistence: true), file: url, fallbackDate: mod, todayComps: todayComps)
         }
-        persistDailyAccumulator()
-        persistFileTotals()
+        flushPersistedState()
         let acc = dailyAccumulator ?? DailyAccumulator(day: todayComps, input: 0, output: 0, cacheRead: 0)
         return UsageSnapshot(
             accountId: UUID(), // overridden by caller with real account id
@@ -459,9 +474,11 @@ class CodexLogParser {
                 dailyAccumulator?.input += delta.input
                 dailyAccumulator?.output += delta.output + delta.reasoningOutput
                 dailyAccumulator?.cacheRead += delta.cachedInput
+                dailyAccumulatorDirty = true
             }
         }
         fileTotalsByURL[file] = running
+        fileTotalsDirty = true
     }
 
     private func tokenTotals(from entry: CodexSessionEntry) -> TokenTotals? {
@@ -529,6 +546,21 @@ class CodexLogParser {
             try data.write(to: fileTotalsFile, options: .atomic)
         } catch {
             ErrorLogger.shared.log("Failed to persist Codex file totals: \(error.localizedDescription)", level: "WARN")
+        }
+    }
+
+    private func flushPersistedState() {
+        if lineCheckpointsDirty {
+            persistLineCheckpoints()
+            lineCheckpointsDirty = false
+        }
+        if dailyAccumulatorDirty {
+            persistDailyAccumulator()
+            dailyAccumulatorDirty = false
+        }
+        if fileTotalsDirty {
+            persistFileTotals()
+            fileTotalsDirty = false
         }
     }
 }
