@@ -18,6 +18,7 @@ enum ConfigLoadError: Error, CustomStringConvertible {
 }
 
 enum ConfigSaveError: Error, CustomStringConvertible {
+    case validationFailed(String)
     case directoryCreateFailed(String)
     case encodeFailed(String)
     case serializeFailed(String)
@@ -26,6 +27,7 @@ enum ConfigSaveError: Error, CustomStringConvertible {
 
     var description: String {
         switch self {
+        case .validationFailed(let detail): return "validationFailed: \(detail)"
         case .directoryCreateFailed(let detail): return "directoryCreateFailed: \(detail)"
         case .encodeFailed(let detail): return "encodeFailed: \(detail)"
         case .serializeFailed(let detail): return "serializeFailed: \(detail)"
@@ -95,6 +97,11 @@ class ConfigManager {
 
     @discardableResult
     func save(_ config: Config) -> Result<Void, ConfigSaveError> {
+        if let validationError = validate(config).first {
+            let saveError = ConfigSaveError.validationFailed(validationError)
+            ErrorLogger.shared.log("Config save error: \(saveError)")
+            return .failure(saveError)
+        }
         do {
             try FileManager.default.createDirectory(at: configDir, withIntermediateDirectories: true)
         } catch {
@@ -159,6 +166,26 @@ class ConfigManager {
             return $0.order < $1.order
         }
         return normalized
+    }
+
+    func validate(_ config: Config) -> [String] {
+        var issues: [String] = []
+        if !(5...86_400).contains(config.pollIntervalSeconds) {
+            issues.append("pollIntervalSeconds must be between 5 and 86400")
+        }
+        let validMenubarStyles: Set<String> = ["icon", "tokens", "cost"]
+        if !validMenubarStyles.contains(config.display.menubarStyle) {
+            issues.append("display.menubarStyle must be one of: icon, tokens, cost")
+        }
+        let validSparklineStyles: Set<String> = ["cost", "tokens"]
+        if !validSparklineStyles.contains(config.sparkline.style) {
+            issues.append("sparkline.style must be one of: cost, tokens")
+        }
+        let validWebhookEvents: Set<String> = ["threshold", "daily_digest", "weekly_summary"]
+        if config.webhook.events.contains(where: { !validWebhookEvents.contains($0) }) {
+            issues.append("webhook.events contains invalid event value")
+        }
+        return issues
     }
 
     private func emitLoadError(_ error: ConfigLoadError) {
