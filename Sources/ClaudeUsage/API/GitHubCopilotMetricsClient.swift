@@ -8,6 +8,27 @@ private struct GitHubCopilotMetricsDay: Decodable {
     var copilot_ide_chat: GitHubCopilotIDEChat?
     var copilot_dotcom_chat: GitHubCopilotDotcomChat?
     var copilot_dotcom_pull_requests: GitHubCopilotDotcomPullRequests?
+
+    private enum CodingKeys: String, CodingKey {
+        case date
+        case total_active_users
+        case total_engaged_users
+        case copilot_ide_code_completions
+        case copilot_ide_chat
+        case copilot_dotcom_chat
+        case copilot_dotcom_pull_requests
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        date = try c.decodeIfPresent(String.self, forKey: .date)
+        total_active_users = c.decodeIntFlexible(forKey: .total_active_users)
+        total_engaged_users = c.decodeIntFlexible(forKey: .total_engaged_users)
+        copilot_ide_code_completions = try c.decodeIfPresent(GitHubCopilotIDECodeCompletions.self, forKey: .copilot_ide_code_completions)
+        copilot_ide_chat = try c.decodeIfPresent(GitHubCopilotIDEChat.self, forKey: .copilot_ide_chat)
+        copilot_dotcom_chat = try c.decodeIfPresent(GitHubCopilotDotcomChat.self, forKey: .copilot_dotcom_chat)
+        copilot_dotcom_pull_requests = try c.decodeIfPresent(GitHubCopilotDotcomPullRequests.self, forKey: .copilot_dotcom_pull_requests)
+    }
 }
 
 private struct GitHubCopilotIDECodeCompletions: Decodable {
@@ -26,6 +47,17 @@ private struct GitHubCopilotIDECompletionsModel: Decodable {
 private struct GitHubCopilotIDECompletionsLanguage: Decodable {
     var total_code_suggestions: Int?
     var total_code_acceptances: Int?
+
+    private enum CodingKeys: String, CodingKey {
+        case total_code_suggestions
+        case total_code_acceptances
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        total_code_suggestions = c.decodeIntFlexible(forKey: .total_code_suggestions)
+        total_code_acceptances = c.decodeIntFlexible(forKey: .total_code_acceptances)
+    }
 }
 
 private struct GitHubCopilotIDEChat: Decodable {
@@ -41,6 +73,19 @@ private struct GitHubCopilotIDEChatModel: Decodable {
     var total_chats: Int?
     var total_chat_insertion_events: Int?
     var total_chat_copy_events: Int?
+
+    private enum CodingKeys: String, CodingKey {
+        case total_chats
+        case total_chat_insertion_events
+        case total_chat_copy_events
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        total_chats = c.decodeIntFlexible(forKey: .total_chats)
+        total_chat_insertion_events = c.decodeIntFlexible(forKey: .total_chat_insertion_events)
+        total_chat_copy_events = c.decodeIntFlexible(forKey: .total_chat_copy_events)
+    }
 }
 
 private struct GitHubCopilotDotcomChat: Decodable {
@@ -50,6 +95,15 @@ private struct GitHubCopilotDotcomChat: Decodable {
 
 private struct GitHubCopilotDotcomChatModel: Decodable {
     var total_chats: Int?
+
+    private enum CodingKeys: String, CodingKey {
+        case total_chats
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        total_chats = c.decodeIntFlexible(forKey: .total_chats)
+    }
 }
 
 private struct GitHubCopilotDotcomPullRequests: Decodable {
@@ -63,6 +117,15 @@ private struct GitHubCopilotDotcomPullRequestsRepository: Decodable {
 
 private struct GitHubCopilotDotcomPullRequestsModel: Decodable {
     var total_pr_summaries_created: Int?
+
+    private enum CodingKeys: String, CodingKey {
+        case total_pr_summaries_created
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        total_pr_summaries_created = c.decodeIntFlexible(forKey: .total_pr_summaries_created)
+    }
 }
 
 class GitHubCopilotMetricsClient {
@@ -265,5 +328,20 @@ class GitHubCopilotMetricsClient {
         default:
             throw APIError.serverError(code)
         }
+    }
+}
+
+private extension KeyedDecodingContainer {
+    func decodeIntFlexible(forKey key: K) -> Int? {
+        if let intValue = try? decodeIfPresent(Int.self, forKey: key) {
+            return intValue
+        }
+        if let doubleValue = try? decodeIfPresent(Double.self, forKey: key) {
+            return Int(doubleValue)
+        }
+        if let stringValue = try? decodeIfPresent(String.self, forKey: key), let parsed = Int(stringValue) {
+            return parsed
+        }
+        return nil
     }
 }

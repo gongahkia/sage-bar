@@ -209,6 +209,10 @@ private extension KeyedDecodingContainer {
             if let value = try? decodeIfPresent(String.self, forKey: key), let parsed = Int(value) {
                 return parsed
             }
+            if let value = try? decodeIfPresent(String.self, forKey: key),
+               let parsedDouble = Double(value) {
+                return Int(parsedDouble)
+            }
         }
         return nil
     }
