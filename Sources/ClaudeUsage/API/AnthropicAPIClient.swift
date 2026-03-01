@@ -107,11 +107,9 @@ class AnthropicAPIClient {
     }
 
     func fetchUsage(startDate: Date, endDate: Date) async throws -> AnthropicUsageResponse {
-        let fmt = ISO8601DateFormatter()
-        fmt.formatOptions = [.withFullDate]
         let items = [
-            URLQueryItem(name: "start_date", value: fmt.string(from: startDate)),
-            URLQueryItem(name: "end_date", value: fmt.string(from: endDate)),
+            URLQueryItem(name: "start_date", value: SharedDateFormatters.iso8601FullDate.string(from: startDate)),
+            URLQueryItem(name: "end_date", value: SharedDateFormatters.iso8601FullDate.string(from: endDate)),
         ]
         let req = request(path: "/v1/usage", queryItems: items)
         do {
@@ -129,14 +127,15 @@ class AnthropicAPIClient {
     }
 
     func convertToSnapshots(_ response: AnthropicUsageResponse, accountId: UUID) -> [UsageSnapshot] {
-        let fmt = ISO8601DateFormatter()
         return response.data.map { period in
             let price = cost(for: period.model) ?? (inputPer1M: 0, outputPer1M: 0)
             let costIn = Double(period.input_tokens) / 1_000_000 * price.inputPer1M
             let costOut = Double(period.output_tokens) / 1_000_000 * price.outputPer1M
             let costCacheCreate = Double(period.cache_creation_input_tokens) / 1_000_000 * price.inputPer1M * 1.25
             let costCacheRead = Double(period.cache_read_input_tokens) / 1_000_000 * price.inputPer1M * 0.1
-            let date = fmt.date(from: period.start_time) ?? Date()
+            let date = SharedDateFormatters.iso8601InternetDateTime.date(from: period.start_time)
+                ?? SharedDateFormatters.iso8601InternetDateTimeFractional.date(from: period.start_time)
+                ?? Date()
             return UsageSnapshot(
                 accountId: accountId,
                 timestamp: date,

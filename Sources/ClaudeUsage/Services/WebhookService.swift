@@ -81,20 +81,19 @@ class WebhookService {
     }
 
     func buildPayload(event: WebhookEvent, snapshot: UsageSnapshot, template: String?) -> Data {
-        let iso = ISO8601DateFormatter()
         if let tpl = template, !tpl.isEmpty {
             var s = tpl
             s = s.replacingOccurrences(of: "{{event}}", with: event.name)
             s = s.replacingOccurrences(of: "{{account}}", with: snapshot.accountId.uuidString)
             s = s.replacingOccurrences(of: "{{cost}}", with: String(format: "%.4f", snapshot.totalCostUSD))
             s = s.replacingOccurrences(of: "{{tokens}}", with: "\(snapshot.inputTokens + snapshot.outputTokens)")
-            s = s.replacingOccurrences(of: "{{date}}", with: iso.string(from: snapshot.timestamp))
+            s = s.replacingOccurrences(of: "{{date}}", with: SharedDateFormatters.iso8601InternetDateTime.string(from: snapshot.timestamp))
             return s.data(using: .utf8) ?? Data()
         }
         let obj: [String: Any] = [
             "event": event.name,
             "account": snapshot.accountId.uuidString,
-            "timestamp": iso.string(from: snapshot.timestamp),
+            "timestamp": SharedDateFormatters.iso8601InternetDateTime.string(from: snapshot.timestamp),
             "cost_usd": snapshot.totalCostUSD,
             "input_tokens": snapshot.inputTokens,
             "output_tokens": snapshot.outputTokens,
@@ -109,7 +108,11 @@ class WebhookService {
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let obj: [String: Any] = ["event":"test","account":"test","timestamp":ISO8601DateFormatter().string(from:Date())]
+        let obj: [String: Any] = [
+            "event": "test",
+            "account": "test",
+            "timestamp": SharedDateFormatters.iso8601InternetDateTime.string(from: Date()),
+        ]
         req.httpBody = try? JSONSerialization.data(withJSONObject: obj)
         do {
             let (_, resp) = try await session.data(for: req)

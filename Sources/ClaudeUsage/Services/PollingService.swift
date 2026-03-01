@@ -571,7 +571,8 @@ class PollingService: ObservableObject {
     static func anthropicStartDate(cursor: AnthropicIngestionCursor?, now: Date = Date()) -> Date {
         let fallback = Calendar.current.date(byAdding: .day, value: -1, to: now) ?? now
         guard let raw = cursor?.lastStartTime else { return fallback }
-        guard let ts = ISO8601DateFormatter().date(from: raw) else { return fallback }
+        guard let ts = SharedDateFormatters.iso8601InternetDateTime.date(from: raw)
+            ?? SharedDateFormatters.iso8601InternetDateTimeFractional.date(from: raw) else { return fallback }
         return Calendar.current.startOfDay(for: ts)
     }
 

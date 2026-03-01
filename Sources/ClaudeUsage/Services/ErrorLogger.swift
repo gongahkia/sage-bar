@@ -79,8 +79,6 @@ final class ErrorLogger: ObservableObject {
     }
 
     private func isoTimestamp() -> String {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime]
-        return f.string(from: Date())
+        SharedDateFormatters.iso8601InternetDateTime.string(from: Date())
     }
 }

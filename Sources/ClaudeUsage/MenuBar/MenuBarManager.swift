@@ -81,7 +81,7 @@ class MenuBarManager {
         if !config.webhook.url.isEmpty { config.webhook.url = "***" }
         let enc = JSONEncoder(); enc.outputFormatting = [.prettyPrinted, .sortedKeys]; enc.dateEncodingStrategy = .iso8601
         let configJSON = (try? String(data: enc.encode(config), encoding: .utf8)) ?? "{}"
-        let isoDate = ISO8601DateFormatter().string(from: Date()).prefix(10)
+        let isoDate = SharedDateFormatters.iso8601FullDate.string(from: Date()).prefix(10)
         let content = "# claude-usage diagnostics \(isoDate)\n\n## Errors (last 100)\n\(errors)\n\n## Config\n\(configJSON)\n"
         let dest = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Desktop")
