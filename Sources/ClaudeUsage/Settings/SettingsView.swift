@@ -22,6 +22,7 @@ struct SettingsView: View {
 // MARK: – Accounts Tab
 
 struct AccountsTab: View {
+    private let virtualizationThreshold = 40
     @State private var config = ConfigManager.shared.load()
     @State private var showAddSheet = false
     @State private var deleteTarget: Account?
@@ -31,75 +32,35 @@ struct AccountsTab: View {
 
     var body: some View {
         VStack(alignment: .leading) {
-            List {
-                ForEach(config.accounts) { account in
-                    VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(account.name).fontWeight(.medium)
-                            Text(account.type.rawValue).font(.caption).foregroundColor(.secondary)
+            if config.accounts.count > virtualizationThreshold {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 8) {
+                        ForEach(config.accounts) { account in
+                            accountRowContent(account)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                            Divider()
                         }
-                        Spacer()
-                        // task 88: Test Connection button
-                        if connectionTesting.contains(account.id) {
-                            ProgressView().scaleEffect(0.6)
-                        } else {
-                            Button("Test") {
-                                connectionTesting.insert(account.id)
-                                connectionStatus.removeValue(forKey: account.id)
-                                Task {
-                                    let result = await testConnection(account: account)
-                                    connectionStatus[account.id] = result
-                                    connectionTesting.remove(account.id)
-                                }
-                            }.font(.caption).buttonStyle(.bordered)
-                        }
-                        Toggle("", isOn: Binding(
-                            get: { account.isActive },
-                            set: { newVal in
-                                if let i = config.accounts.firstIndex(where: { $0.id == account.id }) {
-                                    config.accounts[i].isActive = newVal
-                                    ConfigManager.shared.save(config)
-                                }
+                    }
+                }
+            } else {
+                List {
+                    ForEach(config.accounts) { account in
+                        accountRowContent(account)
+                    }.onDelete { idx in
+                        for i in idx {
+                            let a = config.accounts[i]
+                            try? KeychainManager.delete(service: AppConstants.keychainService, account: a.id.uuidString)
+                            if a.type == .claudeAI {
+                                try? KeychainManager.delete(
+                                    service: AppConstants.keychainSessionTokenService,
+                                    account: a.id.uuidString
+                                )
                             }
-                        )).labelsHidden()
-                    } // HStack
-                    if let status = connectionStatus[account.id] { // task 88: inline result
-                        Text(status)
-                            .font(.caption2)
-                            .foregroundColor(status.hasPrefix("✓") ? .green : .red)
-                            .padding(.leading, 4)
-                    }
-                    if let health = polling.providerHealthScore(for: account.id) {
-                        Text("Provider health: \(Int((health * 100).rounded()))%")
-                            .font(.caption2)
-                            .foregroundColor(health >= 0.8 ? .green : (health >= 0.5 ? .orange : .red))
-                            .padding(.leading, 4)
-                    }
-                    if let i = config.accounts.firstIndex(where: { $0.id == account.id }) {
-                        Stepper("Order: \(config.accounts[i].order)", value: Binding(
-                            get: { config.accounts[i].order },
-                            set: { newVal in
-                                config.accounts[i].order = newVal
-                                ConfigManager.shared.save(config)
-                            }
-                        ), in: -100...100)
-                        .font(.caption)
-                    }
-                    } // outer VStack
-                }.onDelete { idx in
-                    for i in idx {
-                        let a = config.accounts[i]
-                        try? KeychainManager.delete(service: AppConstants.keychainService, account: a.id.uuidString)
-                        if a.type == .claudeAI {
-                            try? KeychainManager.delete(
-                                service: AppConstants.keychainSessionTokenService,
-                                account: a.id.uuidString
-                            )
                         }
+                        config.accounts.remove(atOffsets: idx)
+                        ConfigManager.shared.save(config)
                     }
-                    config.accounts.remove(atOffsets: idx)
-                    ConfigManager.shared.save(config)
                 }
             }
             HStack {
@@ -114,6 +75,63 @@ struct AccountsTab: View {
                     try? KeychainManager.store(key: key, service: AppConstants.keychainService, account: newAccount.id.uuidString)
                 }
                 ConfigManager.shared.save(config)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func accountRowContent(_ account: Account) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(account.name).fontWeight(.medium)
+                    Text(account.type.rawValue).font(.caption).foregroundColor(.secondary)
+                }
+                Spacer()
+                if connectionTesting.contains(account.id) {
+                    ProgressView().scaleEffect(0.6)
+                } else {
+                    Button("Test") {
+                        connectionTesting.insert(account.id)
+                        connectionStatus.removeValue(forKey: account.id)
+                        Task {
+                            let result = await testConnection(account: account)
+                            connectionStatus[account.id] = result
+                            connectionTesting.remove(account.id)
+                        }
+                    }.font(.caption).buttonStyle(.bordered)
+                }
+                Toggle("", isOn: Binding(
+                    get: { account.isActive },
+                    set: { newVal in
+                        if let i = config.accounts.firstIndex(where: { $0.id == account.id }) {
+                            config.accounts[i].isActive = newVal
+                            ConfigManager.shared.save(config)
+                        }
+                    }
+                )).labelsHidden()
+            }
+            if let status = connectionStatus[account.id] {
+                Text(status)
+                    .font(.caption2)
+                    .foregroundColor(status.hasPrefix("✓") ? .green : .red)
+                    .padding(.leading, 4)
+            }
+            if let health = polling.providerHealthScore(for: account.id) {
+                Text("Provider health: \(Int((health * 100).rounded()))%")
+                    .font(.caption2)
+                    .foregroundColor(health >= 0.8 ? .green : (health >= 0.5 ? .orange : .red))
+                    .padding(.leading, 4)
+            }
+            if let i = config.accounts.firstIndex(where: { $0.id == account.id }) {
+                Stepper("Order: \(config.accounts[i].order)", value: Binding(
+                    get: { config.accounts[i].order },
+                    set: { newVal in
+                        config.accounts[i].order = newVal
+                        ConfigManager.shared.save(config)
+                    }
+                ), in: -100...100)
+                .font(.caption)
             }
         }
     }
