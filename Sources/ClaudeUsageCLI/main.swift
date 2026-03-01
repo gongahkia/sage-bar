@@ -1,6 +1,7 @@
 import Foundation
 import ClaudeUsageCore
 import TOMLKit
+import Darwin
 
 // MARK: – Shared container path (mirrors AppConstants)
 let appGroup = "group.dev.claudeusage"
@@ -13,6 +14,7 @@ let sharedContainer: URL = {
 let cacheFile = sharedContainer.appendingPathComponent("usage_cache.json")
 let lastGoodCacheFile = sharedContainer.appendingPathComponent("usage_cache.last_good.json")
 let forecastFile = sharedContainer.appendingPathComponent("forecast_cache.json")
+let watchLockFile = sharedContainer.appendingPathComponent("cli_watch.lock")
 let configDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".config/claude-usage")
 let configFile = configDir.appendingPathComponent("config.toml")
 
@@ -30,6 +32,19 @@ private func pad(_ value: String, width: Int) -> String {
     let clipped = value.count > width ? String(value.prefix(width)) : value
     if clipped.count >= width { return clipped }
     return clipped + String(repeating: " ", count: width - clipped.count)
+}
+
+private func acquireWatchLock(_ url: URL) -> Int32? {
+    let fd = open(url.path, O_CREAT | O_EXCL | O_WRONLY, 0o600)
+    guard fd >= 0 else { return nil }
+    let pidLine = "\(getpid())\n"
+    _ = pidLine.withCString { write(fd, $0, strlen($0)) }
+    return fd
+}
+
+private func releaseWatchLock(_ fd: Int32, url: URL) {
+    close(fd)
+    try? FileManager.default.removeItem(at: url)
 }
 
 private func loadConfigJSONObject(from file: URL) -> [String: Any]? {
@@ -331,6 +346,8 @@ if let interval = watchInterval {
     let selfURL = URL(fileURLWithPath: CommandLine.arguments[0])
     let watchlessArgs = CLIArgumentUtils.removingWatchFlag(arguments: Array(CommandLine.arguments.dropFirst()))
     Timer.scheduledTimer(withTimeInterval: TimeInterval(interval), repeats: true) { _ in
+        guard let lockFD = acquireWatchLock(watchLockFile) else { return }
+        defer { releaseWatchLock(lockFD, url: watchLockFile) }
         let proc = Process(); proc.executableURL = selfURL; proc.arguments = watchlessArgs
         try? proc.run(); proc.waitUntilExit()
     }
