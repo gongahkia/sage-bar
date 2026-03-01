@@ -11,6 +11,7 @@ let sharedContainer: URL = {
     return FileManager.default.temporaryDirectory.appendingPathComponent("claude-usage")
 }()
 let cacheFile = sharedContainer.appendingPathComponent("usage_cache.json")
+let lastGoodCacheFile = sharedContainer.appendingPathComponent("usage_cache.last_good.json")
 let forecastFile = sharedContainer.appendingPathComponent("forecast_cache.json")
 let configDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".config/claude-usage")
 let configFile = configDir.appendingPathComponent("config.toml")
@@ -132,15 +133,29 @@ let decoder: JSONDecoder = {
     return d
 }()
 
+func decodeSnapshots(from data: Data, using decoder: JSONDecoder) -> [UsageSnapshot]? {
+    let snapshotsFromVersioned = try? decoder.decode(UsageCachePayload.self, from: data).snapshots
+    let snapshotsFromLegacy = try? decoder.decode([UsageSnapshot].self, from: data)
+    return snapshotsFromVersioned ?? snapshotsFromLegacy
+}
+
 guard FileManager.default.fileExists(atPath: cacheFile.path),
       let data = try? Data(contentsOf: cacheFile) else {
     fputs("Run ClaudeUsage.app first to populate data\n", stderr)
     exit(1)
 }
 
-let snapshotsFromVersioned = try? decoder.decode(UsageCachePayload.self, from: data).snapshots
-let snapshotsFromLegacy = try? decoder.decode([UsageSnapshot].self, from: data)
-guard var snapshots = snapshotsFromVersioned ?? snapshotsFromLegacy else {
+var snapshots: [UsageSnapshot]? = decodeSnapshots(from: data, using: decoder)
+if snapshots != nil {
+    try? data.write(to: lastGoodCacheFile, options: .atomic)
+}
+if snapshots == nil,
+   let backupData = try? Data(contentsOf: lastGoodCacheFile),
+   let backupSnapshots = decodeSnapshots(from: backupData, using: decoder) {
+    snapshots = backupSnapshots
+    fputs("Parse error: primary cache malformed, using last-known-good cache backup\n", stderr)
+}
+guard var snapshots else {
     fputs("Parse error: cache file malformed\n", stderr)
     exit(2)
 }
