@@ -22,8 +22,47 @@ struct DisplayConfig: Codable, Equatable {
     var showBadge: Bool
     var compactMode: Bool
     var dualIcon: Bool
+    var showExperimentalProviders: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case menubarStyle
+        case showBadge
+        case compactMode
+        case dualIcon
+        case showExperimentalProviders
+    }
+
+    init(
+        menubarStyle: String,
+        showBadge: Bool,
+        compactMode: Bool,
+        dualIcon: Bool,
+        showExperimentalProviders: Bool
+    ) {
+        self.menubarStyle = menubarStyle
+        self.showBadge = showBadge
+        self.compactMode = compactMode
+        self.dualIcon = dualIcon
+        self.showExperimentalProviders = showExperimentalProviders
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        menubarStyle = try c.decode(String.self, forKey: .menubarStyle)
+        showBadge = try c.decode(Bool.self, forKey: .showBadge)
+        compactMode = try c.decode(Bool.self, forKey: .compactMode)
+        dualIcon = try c.decode(Bool.self, forKey: .dualIcon)
+        showExperimentalProviders = try c.decodeIfPresent(Bool.self, forKey: .showExperimentalProviders) ?? false
+    }
+
     static var `default`: DisplayConfig {
-        DisplayConfig(menubarStyle: "icon", showBadge: true, compactMode: false, dualIcon: false)
+        DisplayConfig(
+            menubarStyle: "icon",
+            showBadge: true,
+            compactMode: false,
+            dualIcon: false,
+            showExperimentalProviders: false
+        )
     }
 }
 
