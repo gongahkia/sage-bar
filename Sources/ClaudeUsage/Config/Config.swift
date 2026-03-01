@@ -8,6 +8,7 @@ struct Config: Codable {
     var display: DisplayConfig
     var sparkline: SparklineConfig
     var forecast: ForecastConfig
+    var burnRate: BurnRateConfig
     var webhook: WebhookConfig
     var analytics: AnalyticsConfig
     var modelOptimizer: ModelOptimizerConfig
@@ -25,6 +26,7 @@ struct Config: Codable {
         case display
         case sparkline
         case forecast
+        case burnRate
         case webhook
         case analytics
         case modelOptimizer
@@ -44,6 +46,7 @@ struct Config: Codable {
             display: .default,
             sparkline: .default,
             forecast: .default,
+            burnRate: .default,
             webhook: .default,
             analytics: .default,
             modelOptimizer: .default,
@@ -63,6 +66,7 @@ struct Config: Codable {
         display: DisplayConfig,
         sparkline: SparklineConfig,
         forecast: ForecastConfig,
+        burnRate: BurnRateConfig,
         webhook: WebhookConfig,
         analytics: AnalyticsConfig,
         modelOptimizer: ModelOptimizerConfig,
@@ -79,6 +83,7 @@ struct Config: Codable {
         self.display = display
         self.sparkline = sparkline
         self.forecast = forecast
+        self.burnRate = burnRate
         self.webhook = webhook
         self.analytics = analytics
         self.modelOptimizer = modelOptimizer
@@ -98,6 +103,7 @@ struct Config: Codable {
         display = try c.decode(DisplayConfig.self, forKey: .display)
         sparkline = try c.decode(SparklineConfig.self, forKey: .sparkline)
         forecast = try c.decode(ForecastConfig.self, forKey: .forecast)
+        burnRate = try c.decodeIfPresent(BurnRateConfig.self, forKey: .burnRate) ?? .default
         webhook = try c.decode(WebhookConfig.self, forKey: .webhook)
         analytics = try c.decode(AnalyticsConfig.self, forKey: .analytics)
         modelOptimizer = try c.decode(ModelOptimizerConfig.self, forKey: .modelOptimizer)

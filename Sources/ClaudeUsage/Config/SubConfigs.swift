@@ -85,6 +85,49 @@ struct ForecastConfig: Codable, Equatable {
     }
 }
 
+struct BurnRateConfig: Codable, Equatable {
+    var enabled: Bool
+    var defaultUSDPerHourThreshold: Double
+    var perAccountUSDPerHourThreshold: [String: Double]
+    var alertCooldownSeconds: Int
+
+    enum CodingKeys: String, CodingKey {
+        case enabled
+        case defaultUSDPerHourThreshold
+        case perAccountUSDPerHourThreshold
+        case alertCooldownSeconds
+    }
+
+    init(
+        enabled: Bool,
+        defaultUSDPerHourThreshold: Double,
+        perAccountUSDPerHourThreshold: [String: Double],
+        alertCooldownSeconds: Int
+    ) {
+        self.enabled = enabled
+        self.defaultUSDPerHourThreshold = defaultUSDPerHourThreshold
+        self.perAccountUSDPerHourThreshold = perAccountUSDPerHourThreshold
+        self.alertCooldownSeconds = alertCooldownSeconds
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        enabled = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? false
+        defaultUSDPerHourThreshold = try c.decodeIfPresent(Double.self, forKey: .defaultUSDPerHourThreshold) ?? 10.0
+        perAccountUSDPerHourThreshold = try c.decodeIfPresent([String: Double].self, forKey: .perAccountUSDPerHourThreshold) ?? [:]
+        alertCooldownSeconds = try c.decodeIfPresent(Int.self, forKey: .alertCooldownSeconds) ?? 3600
+    }
+
+    static var `default`: BurnRateConfig {
+        BurnRateConfig(
+            enabled: false,
+            defaultUSDPerHourThreshold: 10.0,
+            perAccountUSDPerHourThreshold: [:],
+            alertCooldownSeconds: 3600
+        )
+    }
+}
+
 struct WebhookConfig: Codable, Equatable {
     var enabled: Bool
     var url: String
