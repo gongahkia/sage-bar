@@ -162,10 +162,21 @@ struct MenuBarPopoverView: View {
 
     // MARK: – Poll health
     private var pollHealthRow: some View {
-        let stale = currentAccount.flatMap { CacheManager.shared.latest(forAccount: $0.id) }?.isStale ?? false
+        let staleMultiplier = 2.0
         return VStack(alignment: .leading, spacing: 2) {
+            if let account = currentAccount,
+               let latest = CacheManager.shared.latest(forAccount: account.id) {
+                let ageSeconds = max(0, Date().timeIntervalSince(latest.timestamp))
+                let thresholdSeconds = Double(config.pollIntervalSeconds) * staleMultiplier
+                let staleByAge = ageSeconds > thresholdSeconds
+                let isStale = latest.isStale || staleByAge
+                let ageMinutes = Int((ageSeconds / 60.0).rounded())
+                let thresholdMinutes = max(1, Int((thresholdSeconds / 60.0).rounded()))
+                statRow("Data age", value: "\(ageMinutes)m" + (isStale ? " (stale)" : ""))
+                statRow("Stale after", value: "\(thresholdMinutes)m (\(Int(staleMultiplier))x poll)")
+            }
             if let last = polling.lastPollDate {
-                statRow("Last synced", value: last.formatted(.relative(presentation: .named)) + (stale ? " (stale)" : ""))
+                statRow("Last synced", value: last.formatted(.relative(presentation: .named)))
                 let next = last.addingTimeInterval(TimeInterval(config.pollIntervalSeconds))
                 statRow("Next poll", value: next.formatted(.relative(presentation: .named)))
             } else {
