@@ -2,6 +2,7 @@ import SwiftUI
 import Charts
 
 struct MenuBarPopoverView: View {
+    private let selectedAccountDefaultsKey = "menubarSelectedAccountID"
     @State private var config = ConfigManager.shared.load()
     @State private var selectedAccountIndex = 0
     @State private var showHistory = false
@@ -58,6 +59,16 @@ struct MenuBarPopoverView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .claudeAISessionExpired)) { _ in
             needsReAuth = true
+        }
+        .onAppear {
+            restoreSelectedAccountIndex()
+        }
+        .onChange(of: selectedAccountIndex) { _, newValue in
+            guard activeAccounts.indices.contains(newValue) else { return }
+            UserDefaults.standard.set(activeAccounts[newValue].id.uuidString, forKey: selectedAccountDefaultsKey)
+        }
+        .onChange(of: activeAccounts.map(\.id)) { _, _ in
+            restoreSelectedAccountIndex()
         }
     }
 
@@ -337,5 +348,20 @@ struct MenuBarPopoverView: View {
         """
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
+    }
+
+    private func restoreSelectedAccountIndex() {
+        guard !activeAccounts.isEmpty else {
+            selectedAccountIndex = 0
+            return
+        }
+        if let savedID = UserDefaults.standard.string(forKey: selectedAccountDefaultsKey),
+           let index = activeAccounts.firstIndex(where: { $0.id.uuidString == savedID }) {
+            selectedAccountIndex = index
+            return
+        }
+        if !activeAccounts.indices.contains(selectedAccountIndex) {
+            selectedAccountIndex = 0
+        }
     }
 }
