@@ -285,9 +285,7 @@ if showForecast {
 if let interval = watchInterval {
     signal(SIGINT) { _ in exit(0) }
     let selfURL = URL(fileURLWithPath: CommandLine.arguments[0])
-    let watchlessArgs = Array(CommandLine.arguments.dropFirst()).filter { a in
-        a != "--watch" && a != String(interval)
-    }
+    let watchlessArgs = CLIArgumentUtils.removingWatchFlag(arguments: Array(CommandLine.arguments.dropFirst()))
     Timer.scheduledTimer(withTimeInterval: TimeInterval(interval), repeats: true) { _ in
         let proc = Process(); proc.executableURL = selfURL; proc.arguments = watchlessArgs
         try? proc.run(); proc.waitUntilExit()

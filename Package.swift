@@ -37,6 +37,7 @@ let package = Package(
             name: "ClaudeUsageTests",
             dependencies: [
                 "ClaudeUsage",
+                "ClaudeUsageCore",
                 "TOMLKit",
             ],
             path: "Tests/ClaudeUsageTests"
