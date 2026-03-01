@@ -690,6 +690,7 @@ class PollingService: ObservableObject {
     }
 
     private func clearFetchError(for accountId: UUID) async {
+        CacheManager.shared.saveLastSuccess(Date(), forAccount: accountId)
         await MainActor.run {
             self.fetchErrorsByAccount.removeValue(forKey: accountId)
             self.fetchErrorUpdatedAtByAccount.removeValue(forKey: accountId)

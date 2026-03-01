@@ -20,12 +20,14 @@ private actor CacheStore {
     private let forecastFile: URL
     private let anthropicCursorFile: URL
     private let anthropicRetryAfterFile: URL
+    private let lastSuccessFile: URL
 
     init(baseURL: URL) {
         self.cacheFile = baseURL.appendingPathComponent("usage_cache.json")
         self.forecastFile = baseURL.appendingPathComponent("forecast_cache.json")
         self.anthropicCursorFile = baseURL.appendingPathComponent("anthropic_cursors.json")
         self.anthropicRetryAfterFile = baseURL.appendingPathComponent("anthropic_retry_after.json")
+        self.lastSuccessFile = baseURL.appendingPathComponent("last_success_by_account.json")
     }
 
     private func encoder() -> JSONEncoder {
@@ -197,6 +199,27 @@ private actor CacheStore {
             try data.write(to: anthropicRetryAfterFile, options: .atomic)
         } catch {
             ErrorLogger.shared.log("Anthropic retryAfter clear failed: \(error.localizedDescription)")
+        }
+    }
+
+    func loadLastSuccess(forAccount id: UUID) -> Date? {
+        guard let data = try? Data(contentsOf: lastSuccessFile),
+              let all = try? decoder().decode([String: Date].self, from: data) else { return nil }
+        return all[id.uuidString]
+    }
+
+    func saveLastSuccess(_ date: Date, forAccount id: UUID) {
+        var all: [String: Date] = [:]
+        if let data = try? Data(contentsOf: lastSuccessFile),
+           let decoded = try? decoder().decode([String: Date].self, from: data) {
+            all = decoded
+        }
+        all[id.uuidString] = date
+        do {
+            let data = try encoder().encode(all)
+            try data.write(to: lastSuccessFile, options: .atomic)
+        } catch {
+            ErrorLogger.shared.log("Last-success write failed: \(error.localizedDescription)")
         }
     }
 
@@ -407,6 +430,16 @@ class CacheManager {
     func clearAnthropicRetryAfter(forAccount id: UUID) {
         blocking {
             await self.store.clearRetryAfter(forAccount: id)
+        }
+    }
+
+    func loadLastSuccess(forAccount id: UUID) -> Date? {
+        blocking { await self.store.loadLastSuccess(forAccount: id) }
+    }
+
+    func saveLastSuccess(_ date: Date, forAccount id: UUID) {
+        blocking {
+            await self.store.saveLastSuccess(date, forAccount: id)
         }
     }
 }
