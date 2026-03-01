@@ -28,7 +28,11 @@ enum AutomationAction {
         case "say": return rest.isEmpty ? nil : .say(text: rest)
         case "afplay": return rest.isEmpty ? nil : .afplay(path: rest)
         case "terminal-notifier": return .notification(title: "Claude Usage", body: rest)
-        case "curl": return rest.isEmpty ? nil : .httpGet(url: rest)
+        case "curl":
+            let args = rest.split(separator: " ").map(String.init)
+            guard args.count == 1, let target = args.first else { return nil }
+            guard !target.hasPrefix("-"), target.hasPrefix("http://") || target.hasPrefix("https://") else { return nil }
+            return .httpGet(url: target)
         default: return nil
         }
     }
