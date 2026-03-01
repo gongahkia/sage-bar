@@ -588,6 +588,7 @@ class PollingService: ObservableObject {
             guard fired else { continue }
             if let idx = config.automations.firstIndex(where: { $0.id == rule.id }) {
                 config.automations[idx].lastFiredAt = Date()
+                AutomationCooldownStore.shared.setLastFiredAt(Date(), ruleID: rule.id)
                 didMutateConfig = true
             }
         }
@@ -599,7 +600,8 @@ class PollingService: ObservableObject {
     }
 
     static func isAutomationOffCooldown(_ rule: AutomationRule, pollIntervalSeconds: Int, now: Date = Date()) -> Bool {
-        guard let lastFiredAt = rule.lastFiredAt else { return true }
+        let persistedLastFiredAt = AutomationCooldownStore.shared.lastFiredAt(ruleID: rule.id)
+        guard let lastFiredAt = rule.lastFiredAt ?? persistedLastFiredAt else { return true }
         let cooldown = max(1, pollIntervalSeconds)
         return now.timeIntervalSince(lastFiredAt) >= TimeInterval(cooldown)
     }
