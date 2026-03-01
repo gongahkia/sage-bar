@@ -11,6 +11,19 @@ final class AnalyticsEngineTests: XCTestCase {
             totalCostUSD: cost, modelBreakdown: [])
     }
 
+    private func cumulativeSnap(_ cost: Double, at date: Date, account: UUID? = nil, modelId: String = "codex-local") -> UsageSnapshot {
+        UsageSnapshot(
+            accountId: account ?? accountId,
+            timestamp: date,
+            inputTokens: 100,
+            outputTokens: 50,
+            cacheCreationTokens: 0,
+            cacheReadTokens: 0,
+            totalCostUSD: cost,
+            modelBreakdown: [ModelUsage(modelId: modelId, inputTokens: 100, outputTokens: 50, costUSD: cost)]
+        )
+    }
+
     // MARK: - monthToDate
 
     func testMTDAggregationOnlyCurrentMonth() {
@@ -34,6 +47,21 @@ final class AnalyticsEngineTests: XCTestCase {
         XCTAssertEqual(agg.totalCostUSD, 0.0)
     }
 
+    func testMTDNormalizesCumulativeSnapshotsToLatestDailyValue() {
+        let cal = Calendar.current
+        let now = Date()
+        let earlier = cal.date(byAdding: .hour, value: -2, to: now)!
+        let latest = cal.date(byAdding: .hour, value: -1, to: now)!
+        let event = cal.date(byAdding: .hour, value: -3, to: now)!
+        let snaps = [
+            cumulativeSnap(1.0, at: earlier),
+            cumulativeSnap(3.0, at: latest),
+            snap(0.5, at: event),
+        ]
+        let agg = AnalyticsEngine.monthToDate(snapshots: snaps, account: accountId)
+        XCTAssertEqual(agg.totalCostUSD, 3.5, accuracy: 0.001)
+    }
+
     // MARK: - rollingAverage
 
     func testRollingAverageCorrect() {
@@ -47,6 +75,19 @@ final class AnalyticsEngineTests: XCTestCase {
 
     func testRollingAverageEmptyReturnsZero() {
         XCTAssertEqual(AnalyticsEngine.rollingAverage(snapshots: [], days: 7, account: accountId), 0)
+    }
+
+    func testRollingAverageNormalizesDailyCumulativeSnapshots() {
+        let now = Date()
+        let yesterday = now.addingTimeInterval(-86400)
+        let snaps = [
+            cumulativeSnap(2.0, at: yesterday.addingTimeInterval(-3600)),
+            cumulativeSnap(5.0, at: yesterday),
+            cumulativeSnap(1.0, at: now.addingTimeInterval(-3600)),
+            cumulativeSnap(3.0, at: now),
+        ]
+        let avg = AnalyticsEngine.rollingAverage(snapshots: snaps, days: 7, account: accountId)
+        XCTAssertEqual(avg, 4.0, accuracy: 0.001, "daily totals should use latest cumulative snapshot per day")
     }
 
     // MARK: - heatmap
