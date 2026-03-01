@@ -106,7 +106,7 @@ struct MenuBarPopoverView: View {
     private var accountPicker: some View {
         Picker("", selection: $selectedAccountIndex) {
             ForEach(activeAccounts.indices, id: \.self) { i in
-                Text(activeAccounts[i].name).tag(i)
+                Text(displayName(for: activeAccounts[i])).tag(i)
             }
         }.pickerStyle(.segmented).padding(.horizontal, 12).padding(.vertical, 4)
     }
@@ -362,13 +362,27 @@ struct MenuBarPopoverView: View {
         guard let account = currentAccount else { return }
         let agg = CacheManager.shared.todayAggregate(forAccount: account.id)
         let text = """
-        Account: \(account.name)
+        Account: \(displayName(for: account))
         Input Tokens: \(agg.totalInputTokens)
         Output Tokens: \(agg.totalOutputTokens)
         Cost Today (USD): \(String(format: "%.4f", agg.totalCostUSD))
         """
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
+    }
+
+    private func displayName(for account: Account) -> String {
+        let normalized = account.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalized.isEmpty else {
+            return "\(account.type.rawValue)-\(account.id.uuidString.prefix(6))"
+        }
+        let duplicateCount = config.accounts.filter {
+            $0.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == normalized
+        }.count
+        if duplicateCount > 1 {
+            return "\(account.type.rawValue)-\(account.id.uuidString.prefix(6))"
+        }
+        return account.name
     }
 
     private func copyActiveAccountDebugInfo() {
