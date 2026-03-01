@@ -158,6 +158,7 @@ class PollingService: ObservableObject {
             return
         }
         var config = ConfigManager.shared.load()
+        var updatedIds: [UUID] = []
         log.info("[poll_cycle=\(cycleID)] Poll started: \(config.accounts.filter { $0.isActive }.count) active accounts")
         await MainActor.run { self.isPolling = true }
         defer {
@@ -180,7 +181,6 @@ class PollingService: ObservableObject {
         }
         let concurrencyLimit = min(max(1, activeAccounts.count), maxConcurrencyUpperCap)
         let chunkSize = max(1, concurrencyLimit * 2)
-        var updatedIds: [UUID] = []
 
         var chunkStart = 0
         while chunkStart < activeAccounts.count {
