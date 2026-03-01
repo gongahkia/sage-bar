@@ -175,8 +175,9 @@ class PollingService: ObservableObject {
     internal func fetchAndStore(account: Account, config: Config) async {
         guard !Task.isCancelled else { return }
         let accountID = account.id.uuidString
-        func withAccountID(_ message: String) -> String {
-            "[account_id=\(accountID)] \(message)"
+        let providerType = account.type.rawValue
+        func withProviderContext(_ message: String) -> String {
+            "[account_id=\(accountID)] [provider_type=\(providerType)] \(message)"
         }
         switch account.type {
         case .claudeCode:
@@ -230,13 +231,13 @@ class PollingService: ObservableObject {
                 rawCredential = try KeychainManager.retrieve(service: AppConstants.keychainService, account: account.id.uuidString)
             } catch {
                 let msg = "No OpenAI admin key for account \(account.id.uuidString): \(error.localizedDescription)"
-                ErrorLogger.shared.log(withAccountID(msg))
+                ErrorLogger.shared.log(withProviderContext(msg))
                 await setFetchError(msg, for: account.id)
                 return
             }
             guard let adminKey = ProviderCredentialCodec.openAIAdminKey(from: rawCredential) else {
                 let msg = "Invalid OpenAI credential payload for account \(account.id.uuidString)"
-                ErrorLogger.shared.log(withAccountID(msg))
+                ErrorLogger.shared.log(withProviderContext(msg))
                 await setFetchError(msg, for: account.id)
                 return
             }
@@ -247,20 +248,20 @@ class PollingService: ObservableObject {
                 await clearFetchError(for: account.id)
             } catch APIError.invalidKey {
                 let msg = "Invalid OpenAI admin key for account \(account.id.uuidString)"
-                ErrorLogger.shared.log(withAccountID(msg), file: #file, line: #line)
+                ErrorLogger.shared.log(withProviderContext(msg), file: #file, line: #line)
                 await setFetchError(msg, for: account.id)
             } catch APIError.rateLimited(let retryAfter) {
                 let wait = max(1, retryAfter ?? 60)
                 let msg = "OpenAI usage API rate-limited for account \(account.id.uuidString); retry after \(wait)s"
-                ErrorLogger.shared.log(withAccountID(msg), file: #file, line: #line)
+                ErrorLogger.shared.log(withProviderContext(msg), file: #file, line: #line)
                 await setFetchError(msg, for: account.id)
             } catch APIError.networkError(let underlying) {
                 let msg = "OpenAI usage API network error for account \(account.id.uuidString): \(underlying.localizedDescription)"
-                ErrorLogger.shared.log(withAccountID(msg), file: #file, line: #line)
+                ErrorLogger.shared.log(withProviderContext(msg), file: #file, line: #line)
                 await setFetchError(msg, for: account.id)
             } catch {
                 let msg = "OpenAI usage API unexpected error for account \(account.id.uuidString): \(error.localizedDescription)"
-                ErrorLogger.shared.log(withAccountID(msg), file: #file, line: #line)
+                ErrorLogger.shared.log(withProviderContext(msg), file: #file, line: #line)
                 await setFetchError(msg, for: account.id)
             }
         case .windsurfEnterprise:
@@ -269,13 +270,13 @@ class PollingService: ObservableObject {
                 rawCredential = try KeychainManager.retrieve(service: AppConstants.keychainService, account: account.id.uuidString)
             } catch {
                 let msg = "No Windsurf service key for account \(account.id.uuidString): \(error.localizedDescription)"
-                ErrorLogger.shared.log(withAccountID(msg))
+                ErrorLogger.shared.log(withProviderContext(msg))
                 await setFetchError(msg, for: account.id)
                 return
             }
             guard let payload = ProviderCredentialCodec.windsurf(from: rawCredential) else {
                 let msg = "Invalid Windsurf credential payload for account \(account.id.uuidString)"
-                ErrorLogger.shared.log(withAccountID(msg))
+                ErrorLogger.shared.log(withProviderContext(msg))
                 await setFetchError(msg, for: account.id)
                 return
             }
@@ -286,20 +287,20 @@ class PollingService: ObservableObject {
                 await clearFetchError(for: account.id)
             } catch APIError.invalidKey {
                 let msg = "Invalid Windsurf service key for account \(account.id.uuidString)"
-                ErrorLogger.shared.log(withAccountID(msg), file: #file, line: #line)
+                ErrorLogger.shared.log(withProviderContext(msg), file: #file, line: #line)
                 await setFetchError(msg, for: account.id)
             } catch APIError.rateLimited(let retryAfter) {
                 let wait = max(1, retryAfter ?? 60)
                 let msg = "Windsurf API rate-limited for account \(account.id.uuidString); retry after \(wait)s"
-                ErrorLogger.shared.log(withAccountID(msg), file: #file, line: #line)
+                ErrorLogger.shared.log(withProviderContext(msg), file: #file, line: #line)
                 await setFetchError(msg, for: account.id)
             } catch APIError.networkError(let underlying) {
                 let msg = "Windsurf API network error for account \(account.id.uuidString): \(underlying.localizedDescription)"
-                ErrorLogger.shared.log(withAccountID(msg), file: #file, line: #line)
+                ErrorLogger.shared.log(withProviderContext(msg), file: #file, line: #line)
                 await setFetchError(msg, for: account.id)
             } catch {
                 let msg = "Windsurf API unexpected error for account \(account.id.uuidString): \(error.localizedDescription)"
-                ErrorLogger.shared.log(withAccountID(msg), file: #file, line: #line)
+                ErrorLogger.shared.log(withProviderContext(msg), file: #file, line: #line)
                 await setFetchError(msg, for: account.id)
             }
         case .githubCopilot:
@@ -308,13 +309,13 @@ class PollingService: ObservableObject {
                 rawCredential = try KeychainManager.retrieve(service: AppConstants.keychainService, account: account.id.uuidString)
             } catch {
                 let msg = "No GitHub token for Copilot account \(account.id.uuidString): \(error.localizedDescription)"
-                ErrorLogger.shared.log(withAccountID(msg))
+                ErrorLogger.shared.log(withProviderContext(msg))
                 await setFetchError(msg, for: account.id)
                 return
             }
             guard let payload = ProviderCredentialCodec.copilot(from: rawCredential) else {
                 let msg = "Invalid GitHub Copilot credential payload for account \(account.id.uuidString)"
-                ErrorLogger.shared.log(withAccountID(msg))
+                ErrorLogger.shared.log(withProviderContext(msg))
                 await setFetchError(msg, for: account.id)
                 return
             }
@@ -325,20 +326,20 @@ class PollingService: ObservableObject {
                 await clearFetchError(for: account.id)
             } catch APIError.invalidKey {
                 let msg = "Invalid GitHub token/permissions for Copilot account \(account.id.uuidString)"
-                ErrorLogger.shared.log(withAccountID(msg), file: #file, line: #line)
+                ErrorLogger.shared.log(withProviderContext(msg), file: #file, line: #line)
                 await setFetchError(msg, for: account.id)
             } catch APIError.rateLimited(let retryAfter) {
                 let wait = max(1, retryAfter ?? 60)
                 let msg = "GitHub Copilot metrics API rate-limited for account \(account.id.uuidString); retry after \(wait)s"
-                ErrorLogger.shared.log(withAccountID(msg), file: #file, line: #line)
+                ErrorLogger.shared.log(withProviderContext(msg), file: #file, line: #line)
                 await setFetchError(msg, for: account.id)
             } catch APIError.networkError(let underlying) {
                 let msg = "GitHub Copilot metrics API network error for account \(account.id.uuidString): \(underlying.localizedDescription)"
-                ErrorLogger.shared.log(withAccountID(msg), file: #file, line: #line)
+                ErrorLogger.shared.log(withProviderContext(msg), file: #file, line: #line)
                 await setFetchError(msg, for: account.id)
             } catch {
                 let msg = "GitHub Copilot metrics API unexpected error for account \(account.id.uuidString): \(error.localizedDescription)"
-                ErrorLogger.shared.log(withAccountID(msg), file: #file, line: #line)
+                ErrorLogger.shared.log(withProviderContext(msg), file: #file, line: #line)
                 await setFetchError(msg, for: account.id)
             }
         case .anthropicAPI:
@@ -347,7 +348,7 @@ class PollingService: ObservableObject {
                 key = try KeychainManager.retrieve(service: AppConstants.keychainService, account: account.id.uuidString)
             } catch {
                 let msg = "Keychain failure for account \(account.id.uuidString): \(error.localizedDescription)"
-                ErrorLogger.shared.log(withAccountID(msg))
+                ErrorLogger.shared.log(withProviderContext(msg))
                 await setFetchError(msg, for: account.id)
                 return
             }
@@ -370,22 +371,22 @@ class PollingService: ObservableObject {
                 await clearFetchError(for: account.id)
             } catch APIError.invalidKey {
                 let msg = "Invalid API key for account \(account.id.uuidString)"
-                ErrorLogger.shared.log(withAccountID(msg), file: #file, line: #line)
+                ErrorLogger.shared.log(withProviderContext(msg), file: #file, line: #line)
                 await setFetchError(msg, for: account.id)
             } catch APIError.rateLimited(let retryAfter) {
                 let retryDate = Self.retryAfterDate(fromSeconds: retryAfter)
                 let retrySeconds = Int(retryDate.timeIntervalSinceNow.rounded(.up))
                 CacheManager.shared.saveAnthropicRetryAfter(retryDate, forAccount: account.id)
                 let msg = "Rate limited for account \(account.id.uuidString); retry after \(max(1, retrySeconds))s"
-                ErrorLogger.shared.log(withAccountID(msg), file: #file, line: #line)
+                ErrorLogger.shared.log(withProviderContext(msg), file: #file, line: #line)
                 await setFetchError(msg, for: account.id)
             } catch APIError.networkError(let underlying) {
                 let msg = "Network error for account \(account.id.uuidString): \(underlying.localizedDescription)"
-                ErrorLogger.shared.log(withAccountID(msg), file: #file, line: #line)
+                ErrorLogger.shared.log(withProviderContext(msg), file: #file, line: #line)
                 await setFetchError(msg, for: account.id)
             } catch {
                 let msg = "Unexpected error for account \(account.id.uuidString): \(error.localizedDescription)"
-                ErrorLogger.shared.log(withAccountID(msg), file: #file, line: #line)
+                ErrorLogger.shared.log(withProviderContext(msg), file: #file, line: #line)
                 await setFetchError(msg, for: account.id)
             }
         case .claudeAI:
@@ -394,7 +395,7 @@ class PollingService: ObservableObject {
                 token = try KeychainManager.retrieve(service: AppConstants.keychainSessionTokenService, account: account.id.uuidString)
             } catch {
                 let msg = "No session token for claudeAI account \(account.id.uuidString): \(error.localizedDescription)"
-                ErrorLogger.shared.log(withAccountID(msg))
+                ErrorLogger.shared.log(withProviderContext(msg))
                 await setFetchError(msg, for: account.id)
                 return
             }
@@ -415,7 +416,7 @@ class PollingService: ObservableObject {
                 await clearFetchError(for: account.id)
             } else {
                 let msg = "claudeAI fetchUsage returned nil for account \(account.id.uuidString) — using cached snapshot"
-                ErrorLogger.shared.log(withAccountID(msg), level: "WARN")
+                ErrorLogger.shared.log(withProviderContext(msg), level: "WARN")
                 await setFetchError(msg, for: account.id)
                 if var cached = CacheManager.shared.latest(forAccount: account.id) {
                     cached.isStale = true
