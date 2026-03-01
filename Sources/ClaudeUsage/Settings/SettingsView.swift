@@ -552,7 +552,7 @@ struct IntegrationsTab: View {
                     }
                 }
             Text("Events").font(.caption).foregroundColor(.secondary)
-            ForEach(["threshold","daily_digest","weekly_summary"], id: \.self) { ev in
+            ForEach(["threshold","burn_rate","daily_digest","weekly_summary"], id: \.self) { ev in
                 Toggle(ev, isOn: Binding(
                     get: { config.webhook.events.contains(ev) },
                     set: { v in

@@ -197,7 +197,7 @@ class ConfigManager {
         if !validSparklineStyles.contains(config.sparkline.style) {
             issues.append("sparkline.style must be one of: cost, tokens")
         }
-        let validWebhookEvents: Set<String> = ["threshold", "daily_digest", "weekly_summary"]
+        let validWebhookEvents: Set<String> = ["threshold", "burn_rate", "daily_digest", "weekly_summary"]
         if config.webhook.events.contains(where: { !validWebhookEvents.contains($0) }) {
             issues.append("webhook.events contains invalid event value")
         }

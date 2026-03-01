@@ -2,11 +2,13 @@ import Foundation
 
 enum WebhookEvent {
     case thresholdBreached(limitUSD: Double)
+    case burnRateBreached(thresholdUSDPerHour: Double, burnRateUSDPerHour: Double)
     case dailyDigest
     case weeklyDigest
     var name: String {
         switch self {
         case .thresholdBreached: return "threshold"
+        case .burnRateBreached: return "burn_rate"
         case .dailyDigest: return "daily_digest"
         case .weeklyDigest: return "weekly_summary"
         }
@@ -94,14 +96,26 @@ class WebhookService {
     func buildPayload(event: WebhookEvent, snapshot: UsageSnapshot, template: String?) -> Data {
         if let tpl = template, !tpl.isEmpty {
             var s = tpl
+            let burnRate: Double
+            let burnRateThreshold: Double
+            switch event {
+            case .burnRateBreached(let thresholdUSDPerHour, let burnRateUSDPerHour):
+                burnRate = burnRateUSDPerHour
+                burnRateThreshold = thresholdUSDPerHour
+            default:
+                burnRate = 0
+                burnRateThreshold = 0
+            }
             s = s.replacingOccurrences(of: "{{event}}", with: event.name)
             s = s.replacingOccurrences(of: "{{account}}", with: snapshot.accountId.uuidString)
             s = s.replacingOccurrences(of: "{{cost}}", with: String(format: "%.4f", snapshot.totalCostUSD))
             s = s.replacingOccurrences(of: "{{tokens}}", with: "\(snapshot.inputTokens + snapshot.outputTokens)")
             s = s.replacingOccurrences(of: "{{date}}", with: SharedDateFormatters.iso8601InternetDateTime.string(from: snapshot.timestamp))
+            s = s.replacingOccurrences(of: "{{burn_rate_usd_per_hour}}", with: String(format: "%.4f", burnRate))
+            s = s.replacingOccurrences(of: "{{threshold_usd_per_hour}}", with: String(format: "%.4f", burnRateThreshold))
             return s.data(using: .utf8) ?? Data()
         }
-        let obj: [String: Any] = [
+        var obj: [String: Any] = [
             "event": event.name,
             "account": snapshot.accountId.uuidString,
             "timestamp": SharedDateFormatters.iso8601InternetDateTime.string(from: snapshot.timestamp),
@@ -109,6 +123,13 @@ class WebhookService {
             "input_tokens": snapshot.inputTokens,
             "output_tokens": snapshot.outputTokens,
         ]
+        switch event {
+        case .burnRateBreached(let thresholdUSDPerHour, let burnRateUSDPerHour):
+            obj["threshold_usd_per_hour"] = thresholdUSDPerHour
+            obj["burn_rate_usd_per_hour"] = burnRateUSDPerHour
+        default:
+            break
+        }
         return (try? JSONSerialization.data(withJSONObject: obj)) ?? Data()
     }
 

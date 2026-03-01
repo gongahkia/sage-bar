@@ -131,7 +131,7 @@ struct BurnRateConfig: Codable, Equatable {
 struct WebhookConfig: Codable, Equatable {
     var enabled: Bool
     var url: String
-    var events: [String] // "threshold" | "daily_digest" | "weekly_summary"
+    var events: [String] // "threshold" | "burn_rate" | "daily_digest" | "weekly_summary"
     var payloadTemplate: String?
     var allowedHosts: [String]
 

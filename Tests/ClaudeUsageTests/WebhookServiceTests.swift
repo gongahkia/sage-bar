@@ -39,6 +39,18 @@ final class WebhookServiceTests: XCTestCase {
         XCTAssertEqual(obj?["event"] as? String, "weekly_summary")
     }
 
+    func testBurnRateEventAddsBurnRateFieldsToPayload() {
+        let data = service.buildPayload(
+            event: .burnRateBreached(thresholdUSDPerHour: 10, burnRateUSDPerHour: 12.5),
+            snapshot: snap(cost: 12.5),
+            template: nil
+        )
+        let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        XCTAssertEqual(obj?["event"] as? String, "burn_rate")
+        XCTAssertEqual(obj?["threshold_usd_per_hour"] as? Double ?? 0, 10, accuracy: 0.001)
+        XCTAssertEqual(obj?["burn_rate_usd_per_hour"] as? Double ?? 0, 12.5, accuracy: 0.001)
+    }
+
     func testSendDisabledConfigIsNoOp() async {
         let config = WebhookConfig(enabled: false, url: "https://example.com", events: [], payloadTemplate: nil)
         do {

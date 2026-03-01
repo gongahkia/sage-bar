@@ -639,6 +639,14 @@ class PollingService: ObservableObject {
                 "Burn-rate alert for account \(account.id.uuidString): \(burnText) USD/h exceeds threshold \(thresholdText) USD/h",
                 level: "WARN"
             )
+            NotificationManager.shared.checkBurnRate(
+                account: account,
+                burnRateUSDPerHour: burnRate,
+                thresholdUSDPerHour: threshold,
+                cooldownSeconds: config.burnRate.alertCooldownSeconds,
+                webhookConfig: config.webhook,
+                now: now
+            )
         }
         let burnRatesSnapshot = burnRates
         let thresholdsSnapshot = thresholds
