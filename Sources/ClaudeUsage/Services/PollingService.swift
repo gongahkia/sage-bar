@@ -106,7 +106,9 @@ class PollingService: ObservableObject {
         defer {
             Task { @MainActor in
                 self.isPolling = false
-                self.lastPollDate = Date()
+                if !updatedIds.isEmpty {
+                    self.lastPollDate = Date()
+                }
                 log.info("Poll completed")
             }
         }
@@ -121,7 +123,10 @@ class PollingService: ObservableObject {
                 group.addTask { [account] in
                     guard !Task.isCancelled else { return nil }
                     await self.fetchAndStore(account: account, config: config)
-                    return account.id
+                    let hasError = await MainActor.run {
+                        self.fetchErrorsByAccount[account.id] != nil
+                    }
+                    return hasError ? nil : account.id
                 }
                 launched += 1
             }
