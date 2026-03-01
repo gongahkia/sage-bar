@@ -92,4 +92,64 @@ final class iCloudSyncManagerTests: XCTestCase {
         XCTAssertEqual(mgr.contentHash(for: a), mgr.contentHash(for: b))
         XCTAssertNotEqual(mgr.contentHash(for: a), mgr.contentHash(for: c))
     }
+
+    func testMergeKeyCollisionPrefersBillingGradeConfidence() {
+        let t = Date()
+        let estimated = UsageSnapshot(
+            accountId: accountId,
+            timestamp: t,
+            inputTokens: 400,
+            outputTokens: 0,
+            cacheCreationTokens: 0,
+            cacheReadTokens: 0,
+            totalCostUSD: 1.0,
+            modelBreakdown: [ModelUsage(modelId: "claude-3-sonnet", inputTokens: 400, outputTokens: 0, costUSD: 1.0)],
+            costConfidence: .estimated
+        )
+        let billing = UsageSnapshot(
+            accountId: accountId,
+            timestamp: t,
+            inputTokens: 100,
+            outputTokens: 0,
+            cacheCreationTokens: 0,
+            cacheReadTokens: 0,
+            totalCostUSD: 0.5,
+            modelBreakdown: [ModelUsage(modelId: "claude-3-sonnet", inputTokens: 100, outputTokens: 0, costUSD: 0.5)],
+            costConfidence: .billingGrade
+        )
+        let merged = mgr.merge(local: [estimated], remote: [billing])
+        XCTAssertEqual(merged.count, 1)
+        XCTAssertEqual(merged.first?.costConfidence, .billingGrade)
+    }
+
+    func testMergeKeyCollisionPrefersFreshSnapshotWhenConfidenceMatches() {
+        let t = Date()
+        let stale = UsageSnapshot(
+            accountId: accountId,
+            timestamp: t,
+            inputTokens: 300,
+            outputTokens: 0,
+            cacheCreationTokens: 0,
+            cacheReadTokens: 0,
+            totalCostUSD: 1.0,
+            modelBreakdown: [ModelUsage(modelId: "claude-3-sonnet", inputTokens: 300, outputTokens: 0, costUSD: 1.0)],
+            isStale: true,
+            costConfidence: .billingGrade
+        )
+        let fresh = UsageSnapshot(
+            accountId: accountId,
+            timestamp: t,
+            inputTokens: 200,
+            outputTokens: 0,
+            cacheCreationTokens: 0,
+            cacheReadTokens: 0,
+            totalCostUSD: 1.0,
+            modelBreakdown: [ModelUsage(modelId: "claude-3-sonnet", inputTokens: 200, outputTokens: 0, costUSD: 1.0)],
+            isStale: false,
+            costConfidence: .billingGrade
+        )
+        let merged = mgr.merge(local: [stale], remote: [fresh])
+        XCTAssertEqual(merged.count, 1)
+        XCTAssertEqual(merged.first?.isStale, false)
+    }
 }
