@@ -27,7 +27,9 @@ class PollingService: ObservableObject {
     @MainActor private var fetchErrorsByAccount: [UUID: String] = [:]
     @MainActor private var fetchErrorUpdatedAtByAccount: [UUID: Date] = [:]
     @MainActor private var consecutiveFetchFailuresByAccount: [UUID: Int] = [:]
+    @MainActor private var recentFetchOutcomesByAccount: [UUID: [Bool]] = [:]
     private let failureDisableThreshold = 5
+    private let healthWindowSize = 20
 
     private init() {
         pathMonitor.pathUpdateHandler = { [weak self] path in
@@ -676,6 +678,7 @@ class PollingService: ObservableObject {
     }
 
     private func setFetchError(_ message: String, for accountId: UUID) async {
+        await recordFetchOutcome(success: false, for: accountId)
         let shouldDisable = await MainActor.run {
             let newFailureCount = (self.consecutiveFetchFailuresByAccount[accountId] ?? 0) + 1
             self.consecutiveFetchFailuresByAccount[accountId] = newFailureCount
@@ -690,6 +693,7 @@ class PollingService: ObservableObject {
     }
 
     private func clearFetchError(for accountId: UUID) async {
+        await recordFetchOutcome(success: true, for: accountId)
         CacheManager.shared.saveLastSuccess(Date(), forAccount: accountId)
         await MainActor.run {
             self.fetchErrorsByAccount.removeValue(forKey: accountId)
@@ -697,6 +701,24 @@ class PollingService: ObservableObject {
             self.consecutiveFetchFailuresByAccount.removeValue(forKey: accountId)
             self.refreshLastFetchErrorSummary()
         }
+    }
+
+    private func recordFetchOutcome(success: Bool, for accountId: UUID) async {
+        await MainActor.run {
+            var outcomes = self.recentFetchOutcomesByAccount[accountId] ?? []
+            outcomes.append(success)
+            if outcomes.count > self.healthWindowSize {
+                outcomes.removeFirst(outcomes.count - self.healthWindowSize)
+            }
+            self.recentFetchOutcomesByAccount[accountId] = outcomes
+        }
+    }
+
+    @MainActor
+    func providerHealthScore(for accountId: UUID) -> Double? {
+        guard let outcomes = recentFetchOutcomesByAccount[accountId], !outcomes.isEmpty else { return nil }
+        let successCount = outcomes.filter { $0 }.count
+        return Double(successCount) / Double(outcomes.count)
     }
 
     private func disableAccountAfterRepeatedFailures(accountId: UUID) async {

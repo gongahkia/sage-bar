@@ -27,6 +27,7 @@ struct AccountsTab: View {
     @State private var deleteTarget: Account?
     @State private var connectionStatus: [UUID: String] = [:] // task 88
     @State private var connectionTesting: Set<UUID> = []
+    @ObservedObject private var polling = PollingService.shared
 
     var body: some View {
         VStack(alignment: .leading) {
@@ -67,6 +68,12 @@ struct AccountsTab: View {
                         Text(status)
                             .font(.caption2)
                             .foregroundColor(status.hasPrefix("✓") ? .green : .red)
+                            .padding(.leading, 4)
+                    }
+                    if let health = polling.providerHealthScore(for: account.id) {
+                        Text("Provider health: \(Int((health * 100).rounded()))%")
+                            .font(.caption2)
+                            .foregroundColor(health >= 0.8 ? .green : (health >= 0.5 ? .orange : .red))
                             .padding(.leading, 4)
                     }
                     if let i = config.accounts.firstIndex(where: { $0.id == account.id }) {
