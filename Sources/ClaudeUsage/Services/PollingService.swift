@@ -169,7 +169,6 @@ class PollingService: ObservableObject {
             return
         }
         var config = ConfigManager.shared.load()
-        var updatedIds: [UUID] = []
         log.info("[poll_cycle=\(cycleID)] Poll started: \(config.accounts.filter { $0.isActive }.count) active accounts")
         await MainActor.run { self.isPolling = true }
         defer {
@@ -191,38 +190,22 @@ class PollingService: ObservableObject {
             activeAccounts,
             pollIntervalSeconds: config.pollIntervalSeconds
         )
-        let concurrencyLimit = min(max(1, accountsToPoll.count), maxConcurrencyUpperCap)
-        let chunkSize = max(1, concurrencyLimit * 2)
-
-        var chunkStart = 0
-        while chunkStart < accountsToPoll.count {
-            guard !Task.isCancelled else { return }
-            let chunkEnd = min(chunkStart + chunkSize, accountsToPoll.count)
-            let chunk = Array(accountsToPoll[chunkStart..<chunkEnd])
-            await withTaskGroup(of: UUID?.self) { group in
-                var launched = 0
-                for account in chunk {
-                    if launched >= concurrencyLimit { _ = await group.next() }
-                    group.addTask { [account] in
-                        guard !Task.isCancelled else { return nil }
-                        let jitter = self.accountPollJitterNanos(accountId: account.id, activeAccountCount: accountsToPoll.count)
-                        if jitter > 0 {
-                            try? await Task.sleep(nanoseconds: jitter)
-                        }
-                        await self.fetchAndStore(account: account, config: config)
-                        let hasError = await MainActor.run {
-                            self.fetchErrorsByAccount[account.id] != nil
-                        }
-                        return hasError ? nil : account.id
-                    }
-                    launched += 1
+        let fetchConfig = config
+        let updatedIds = await PollingOrchestrator.pollAccounts(
+            accountsToPoll,
+            maxConcurrencyUpperCap: maxConcurrencyUpperCap,
+            fetchAccount: { [self] account in
+                guard !Task.isCancelled else { return nil }
+                await self.fetchAndStore(account: account, config: fetchConfig)
+                let hasError = await MainActor.run {
+                    self.fetchErrorsByAccount[account.id] != nil
                 }
-                for await id in group {
-                    if let id { updatedIds.append(id) }
-                }
+                return hasError ? nil : account.id
+            },
+            jitterNanos: { [self] account, activeAccountCount in
+                self.accountPollJitterNanos(accountId: account.id, activeAccountCount: activeAccountCount)
             }
-            chunkStart = chunkEnd
-        }
+        )
         let successCount = updatedIds.count
         let failures = max(0, accountsToPoll.count - successCount)
         let hasSuccessfulUpdates = successCount > 0
@@ -292,50 +275,10 @@ class PollingService: ObservableObject {
             return
         }
         switch account.type {
-        case .claudeCode:
-            var snap = ClaudeCodeLogParser.shared.aggregateToday()
-            snap = UsageSnapshot(
-                accountId: account.id,
-                timestamp: snap.timestamp,
-                inputTokens: snap.inputTokens,
-                outputTokens: snap.outputTokens,
-                cacheCreationTokens: snap.cacheCreationTokens,
-                cacheReadTokens: snap.cacheReadTokens,
-                totalCostUSD: snap.totalCostUSD,
-                modelBreakdown: snap.modelBreakdown,
-                costConfidence: .estimated
-            )
-            await appendSnapshotIfChanged(snap, accountType: account.type)
-            await clearFetchError(for: account.id)
-        case .codex:
-            var snap = CodexLogParser.shared.aggregateToday()
-            snap = UsageSnapshot(
-                accountId: account.id,
-                timestamp: snap.timestamp,
-                inputTokens: snap.inputTokens,
-                outputTokens: snap.outputTokens,
-                cacheCreationTokens: snap.cacheCreationTokens,
-                cacheReadTokens: snap.cacheReadTokens,
-                totalCostUSD: snap.totalCostUSD,
-                modelBreakdown: snap.modelBreakdown,
-                costConfidence: .estimated
-            )
-            await appendSnapshotIfChanged(snap, accountType: account.type)
-            await clearFetchError(for: account.id)
-        case .gemini:
-            var snap = GeminiLogParser.shared.aggregateToday()
-            snap = UsageSnapshot(
-                accountId: account.id,
-                timestamp: snap.timestamp,
-                inputTokens: snap.inputTokens,
-                outputTokens: snap.outputTokens,
-                cacheCreationTokens: snap.cacheCreationTokens,
-                cacheReadTokens: snap.cacheReadTokens,
-                totalCostUSD: snap.totalCostUSD,
-                modelBreakdown: snap.modelBreakdown,
-                costConfidence: .estimated
-            )
-            await appendSnapshotIfChanged(snap, accountType: account.type)
+        case .claudeCode, .codex, .gemini:
+            if let snap = ProviderFetchers.localSnapshot(for: account) {
+                await appendSnapshotIfChanged(snap, accountType: account.type)
+            }
             await clearFetchError(for: account.id)
         case .openAIOrg:
             let rawCredential: String
