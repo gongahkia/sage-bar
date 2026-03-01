@@ -133,15 +133,13 @@ class WebhookService {
     }
 
     private func retryDelayNanos(attempt: Int, retryAfterSeconds: Int?) -> UInt64 {
-        if let retryAfterSeconds, retryAfterSeconds > 0 {
-            let base = Double(retryAfterSeconds) * 1_000_000_000
-            let jitter = Double.random(in: 0...(base * 0.25))
-            return UInt64(base + jitter)
-        }
-        let clampedAttempt = min(attempt, 6)
-        let exponential = Double(baseRetryDelayNanos) * pow(2.0, Double(clampedAttempt))
-        let jitter = Double.random(in: 0...(exponential * 0.30))
-        return UInt64(exponential + jitter)
+        RetryPolicy.delayNanos(
+            attempt: attempt,
+            retryAfterSeconds: retryAfterSeconds,
+            baseDelayNanos: baseRetryDelayNanos,
+            maxExponent: 6,
+            jitterFraction: 0.30
+        )
     }
 
     private func isTransientURLError(_ error: URLError?) -> Bool {

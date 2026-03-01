@@ -676,15 +676,13 @@ class PollingService: ObservableObject {
     }
 
     private static func jitteredBackoffDelayNanos(attempt: Int, retryAfterSeconds: Int?) -> UInt64 {
-        if let retryAfterSeconds, retryAfterSeconds > 0 {
-            let base = Double(retryAfterSeconds)
-            let jitter = Double.random(in: 0...(base * 0.25))
-            return UInt64((base + jitter) * 1_000_000_000)
-        }
-        let exponent = min(attempt, 5)
-        let base = pow(2.0, Double(exponent))
-        let jitter = Double.random(in: 0...(base * 0.35))
-        return UInt64((base + jitter) * 1_000_000_000)
+        RetryPolicy.delayNanos(
+            attempt: attempt,
+            retryAfterSeconds: retryAfterSeconds,
+            baseDelayNanos: 1_000_000_000,
+            maxExponent: 5,
+            jitterFraction: 0.35
+        )
     }
 
     private static func retryAfterDate(fromSeconds retryAfterSeconds: Int?) -> Date {
