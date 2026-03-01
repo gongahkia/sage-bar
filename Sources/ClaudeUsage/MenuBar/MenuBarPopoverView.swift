@@ -12,7 +12,14 @@ struct MenuBarPopoverView: View {
     @ObservedObject private var polling = PollingService.shared
     @ObservedObject private var errorLogger = ErrorLogger.shared
 
-    private var activeAccounts: [Account] { config.accounts.filter { $0.isActive } }
+    private var activeAccounts: [Account] {
+        config.accounts
+            .filter { $0.isActive }
+            .sorted {
+                if $0.order == $1.order { return $0.createdAt < $1.createdAt }
+                return $0.order < $1.order
+            }
+    }
     private var currentAccount: Account? { activeAccounts.indices.contains(selectedAccountIndex) ? activeAccounts[selectedAccountIndex] : activeAccounts.first }
 
     var body: some View {

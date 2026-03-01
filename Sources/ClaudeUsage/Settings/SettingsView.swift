@@ -69,6 +69,16 @@ struct AccountsTab: View {
                             .foregroundColor(status.hasPrefix("✓") ? .green : .red)
                             .padding(.leading, 4)
                     }
+                    if let i = config.accounts.firstIndex(where: { $0.id == account.id }) {
+                        Stepper("Order: \(config.accounts[i].order)", value: Binding(
+                            get: { config.accounts[i].order },
+                            set: { newVal in
+                                config.accounts[i].order = newVal
+                                ConfigManager.shared.save(config)
+                            }
+                        ), in: -100...100)
+                        .font(.caption)
+                    }
                     } // outer VStack
                 }.onDelete { idx in
                     for i in idx {
