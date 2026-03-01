@@ -205,6 +205,7 @@ struct MenuBarPopoverView: View {
             statRow("Output Tokens", value: "\(agg.totalOutputTokens.formatted())")
             statRow("Cache Tokens", value: "\((agg.snapshots.reduce(0) { $0 + $1.cacheReadTokens + $1.cacheCreationTokens }).formatted())")
             statRow("Cost Today", value: String(format: "$%.4f", agg.totalCostUSD))
+            burnRateStatusRows(account: account, metrics: metrics)
             confidenceRow(confidence)
         }.padding(12)
     }
@@ -433,6 +434,50 @@ struct MenuBarPopoverView: View {
 
     private func confidenceColor(_ confidence: String) -> Color {
         confidence == "Billing-grade" ? .green : .orange
+    }
+
+    @ViewBuilder
+    private func burnRateStatusRows(account: Account, metrics: AccountMetrics?) -> some View {
+        if config.burnRate.enabled {
+            let currentBurnRate = polling.burnRateUSDPerHourByAccount[account.id]
+            let threshold = polling.burnRateThresholdUSDPerHourByAccount[account.id]
+            statRow(
+                "Burn Rate",
+                value: burnRateValueText(currentUSDPerHour: currentBurnRate, thresholdUSDPerHour: threshold)
+            )
+            statRow(
+                "Threshold Crossing",
+                value: burnRateCrossingText(
+                    currentUSDPerHour: currentBurnRate,
+                    thresholdUSDPerHour: threshold,
+                    forecastUSDPerHour: metrics?.latestForecast?.burnRatePerHour
+                )
+            )
+        }
+    }
+
+    private func burnRateValueText(currentUSDPerHour: Double?, thresholdUSDPerHour: Double?) -> String {
+        guard let currentUSDPerHour else { return "Insufficient data" }
+        let currentText = String(format: "$%.2f/h", currentUSDPerHour)
+        guard let thresholdUSDPerHour, thresholdUSDPerHour > 0 else { return "\(currentText) (limit disabled)" }
+        return "\(currentText) (limit \(String(format: "$%.2f/h", thresholdUSDPerHour)))"
+    }
+
+    private func burnRateCrossingText(
+        currentUSDPerHour: Double?,
+        thresholdUSDPerHour: Double?,
+        forecastUSDPerHour: Double?
+    ) -> String {
+        guard let thresholdUSDPerHour, thresholdUSDPerHour > 0 else { return "Threshold disabled" }
+        guard let currentUSDPerHour else { return "Insufficient data" }
+        if currentUSDPerHour >= thresholdUSDPerHour {
+            return "Breaching now"
+        }
+        guard let forecastUSDPerHour else { return "Not projected" }
+        if forecastUSDPerHour >= thresholdUSDPerHour {
+            return "Projected (\(String(format: "$%.2f/h", forecastUSDPerHour)))"
+        }
+        return "Not projected"
     }
 
     private func copyActiveAccountDailyTotals() {
