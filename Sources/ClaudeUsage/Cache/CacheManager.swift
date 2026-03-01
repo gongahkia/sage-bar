@@ -490,6 +490,12 @@ class CacheManager {
     }
 
     private func blocking<T>(_ operation: @escaping () async -> T) -> T {
+        if Thread.isMainThread {
+            ErrorLogger.shared.log(
+                "CacheManager sync API called on main thread; prefer async CacheManager APIs to avoid UI blocking",
+                level: "WARN"
+            )
+        }
         let semaphore = DispatchSemaphore(value: 0)
         var output: T! = nil
         Task.detached {
@@ -506,6 +512,10 @@ class CacheManager {
 
     func loadAsync() async -> [UsageSnapshot] {
         await self.store.loadSnapshots()
+    }
+
+    func saveAsync(_ snapshots: [UsageSnapshot]) async {
+        await self.store.saveSnapshots(snapshots)
     }
 
     func save(_ snapshots: [UsageSnapshot]) {
@@ -560,6 +570,10 @@ class CacheManager {
 
     func latestForecast(forAccount id: UUID) -> ForecastSnapshot? {
         blocking { await self.store.latestForecast(forAccount: id) }
+    }
+
+    func latestForecastAsync(forAccount id: UUID) async -> ForecastSnapshot? {
+        await self.store.latestForecast(forAccount: id)
     }
 
     func saveForecast(_ forecast: ForecastSnapshot) {
@@ -620,6 +634,10 @@ class CacheManager {
 
     func loadLastSuccess(forAccount id: UUID) -> Date? {
         blocking { await self.store.loadLastSuccess(forAccount: id) }
+    }
+
+    func loadLastSuccessAsync(forAccount id: UUID) async -> Date? {
+        await self.store.loadLastSuccess(forAccount: id)
     }
 
     func saveLastSuccess(_ date: Date, forAccount id: UUID) {

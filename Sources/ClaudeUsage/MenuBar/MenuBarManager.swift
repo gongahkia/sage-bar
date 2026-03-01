@@ -3,6 +3,7 @@ import SwiftUI
 import Combine
 import Sparkle
 
+@MainActor
 class MenuBarManager {
     static let shared = MenuBarManager()
     private var statusItem: NSStatusItem!
@@ -37,7 +38,9 @@ class MenuBarManager {
         NotificationCenter.default.addObserver(
             forName: .usageDidUpdate, object: nil, queue: .main
         ) { [weak self] notif in
-            self?.onUsageUpdate(notif)
+            Task { [weak self] in
+                await self?.onUsageUpdate(notif)
+            }
         }
         NotificationCenter.default.addObserver(
             forName: .claudeCodeLogsChanged, object: nil, queue: .main
@@ -119,16 +122,18 @@ class MenuBarManager {
         }
     }
 
-    private func onUsageUpdate(_ notif: Notification) {
+    private func onUsageUpdate(_ notif: Notification) async {
         let config = ConfigManager.shared.load()
         // update button title
-        updateTitle(config: config)
+        await updateTitle(config: config)
         // stale data check
-        checkStaleness(config: config)
+        await checkStaleness(config: config)
         // sparkline (throttled 5s)
         if config.sparkline.enabled {
             throttleWorkItem?.cancel()
-            let wi = DispatchWorkItem { [weak self] in self?.redrawSparkline(config: config) }
+            let wi = DispatchWorkItem { [weak self] in
+                Task { await self?.redrawSparkline(config: config) }
+            }
             throttleWorkItem = wi
             DispatchQueue.main.asyncAfter(deadline: .now() + 5, execute: wi)
         }
@@ -137,19 +142,19 @@ class MenuBarManager {
             popover.contentViewController = NSHostingController(rootView: MenuBarPopoverView())
         }
         // dual icon
-        updateDualIcon(config: config)
+        await updateDualIcon(config: config)
     }
 
-    private func updateTitle(config: Config) {
+    private func updateTitle(config: Config) async {
         guard let btn = statusItem.button else { return }
         switch config.display.menubarStyle {
         case "cost":
-            if let snap = firstActiveSnapshot(config: config) {
+            if let snap = await firstActiveSnapshot(config: config) {
                 btn.title = String(format: "$%.2f", snap.totalCostUSD)
                 btn.image = nil
             }
         case "tokens":
-            if let snap = firstActiveSnapshot(config: config) {
+            if let snap = await firstActiveSnapshot(config: config) {
                 let total = snap.inputTokens + snap.outputTokens
                 btn.title = total >= 1000 ? "\(total / 1000)k" : "\(total)"
                 btn.image = nil
@@ -161,13 +166,13 @@ class MenuBarManager {
         }
     }
 
-    private func firstActiveSnapshot(config: Config) -> UsageSnapshot? {
-        config.accounts.first(where: { $0.isActive })
-            .flatMap { CacheManager.shared.latest(forAccount: $0.id) }
+    private func firstActiveSnapshot(config: Config) async -> UsageSnapshot? {
+        guard let account = config.accounts.first(where: { $0.isActive }) else { return nil }
+        return await CacheManager.shared.latestAsync(forAccount: account.id)
     }
 
-    private func checkStaleness(config: Config) {
-        guard let snap = firstActiveSnapshot(config: config),
+    private func checkStaleness(config: Config) async {
+        guard let snap = await firstActiveSnapshot(config: config),
               let btn = statusItem.button else { return }
         let age = Date().timeIntervalSince(snap.timestamp)
         let threshold = TimeInterval(config.pollIntervalSeconds * 2)
@@ -193,15 +198,18 @@ class MenuBarManager {
         statusItem.button?.image = img
     }
 
-    private func redrawSparkline(config: Config) {
+    private func redrawSparkline(config: Config) async {
         guard let account = config.accounts.first(where: { $0.isActive }) else { return }
-        let snaps = CacheManager.shared.history(forAccount: account.id, days: config.sparkline.windowHours / 24 + 1)
+        let snaps = await CacheManager.shared.historyAsync(
+            forAccount: account.id,
+            days: config.sparkline.windowHours / 24 + 1
+        )
         updateSparklineIcon(snapshots: snaps, config: config.sparkline)
     }
 
     // MARK: – Dual icon
 
-    private func updateDualIcon(config: Config) {
+    private func updateDualIcon(config: Config) async {
         let active = config.accounts.filter { $0.isActive }
         if config.display.dualIcon, active.count > 2 {
             secondStatusItem.map { NSStatusBar.system.removeStatusItem($0) }
@@ -223,7 +231,7 @@ class MenuBarManager {
             secondStatusItem?.button?.target = self
         }
         let account2 = active[1]
-        if let snap = CacheManager.shared.latest(forAccount: account2.id) {
+        if let snap = await CacheManager.shared.latestAsync(forAccount: account2.id) {
             switch config.display.menubarStyle {
             case "cost": secondStatusItem?.button?.title = String(format: "$%.2f", snap.totalCostUSD)
             case "tokens":

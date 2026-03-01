@@ -28,16 +28,18 @@ struct GetTodayUsageIntent: AppIntent {
 
     func perform() async throws -> some ReturnsValue<[UsageRecord]> {
         let config = ConfigManager.shared.load()
-        let records = config.accounts.filter { $0.isActive }.compactMap { account -> UsageRecord? in
-            let agg = CacheManager.shared.todayAggregate(forAccount: account.id)
-            return UsageRecord(
+        var records: [UsageRecord] = []
+        records.reserveCapacity(config.accounts.count)
+        for account in config.accounts where account.isActive {
+            let agg = await CacheManager.shared.todayAggregateAsync(forAccount: account.id)
+            records.append(UsageRecord(
                 id: account.id,
                 accountName: account.name,
                 inputTokens: agg.totalInputTokens,
                 outputTokens: agg.totalOutputTokens,
                 costUSD: agg.totalCostUSD,
                 lastUpdated: agg.snapshots.last?.timestamp ?? Date()
-            )
+            ))
         }
         return .result(value: records)
     }
@@ -73,7 +75,7 @@ struct GetCurrentUsage: AppIntent {
         guard let account = config.accounts.first(where: { $0.isActive }) else {
             throw APIError.unsupported
         }
-        let agg = CacheManager.shared.todayAggregate(forAccount: account.id)
+        let agg = await CacheManager.shared.todayAggregateAsync(forAccount: account.id)
         return .result(value: CurrentUsageResult(
             id: account.id,
             accountName: account.name,
@@ -106,7 +108,7 @@ struct GetForecastIntent: AppIntent {
     func perform() async throws -> some ReturnsValue<String> {
         let config = ConfigManager.shared.load()
         guard let account = config.accounts.first(where: { $0.isActive }),
-              let f = CacheManager.shared.latestForecast(forAccount: account.id) else {
+              let f = await CacheManager.shared.latestForecastAsync(forAccount: account.id) else {
             return .result(value: "No forecast data available.")
         }
         return .result(value: String(format: "EOD: $%.2f  EOW: $%.2f  EOM: $%.2f",

@@ -69,7 +69,7 @@ class iCloudSyncManager: ObservableObject {
         guard let remoteURL = containerURL(config: config) else {
             syncState = .error("iCloud container unavailable"); return
         }
-        let localSnaps = CacheManager.shared.load()
+        let localSnaps = await CacheManager.shared.loadAsync()
         let localEncoder = JSONEncoder()
         localEncoder.dateEncodingStrategy = .iso8601
         if let localData = try? localEncoder.encode(UsageCachePayload(snapshots: localSnaps)) {
@@ -95,7 +95,7 @@ class iCloudSyncManager: ObservableObject {
             }
         }
         let merged = merge(local: localSnaps, remote: remoteSnaps)
-        CacheManager.shared.save(merged)
+        await CacheManager.shared.saveAsync(merged)
         let enc = JSONEncoder(); enc.dateEncodingStrategy = .iso8601
         let localEpoch = UserDefaults.standard.integer(forKey: syncConflictEpochKey)
         let nextConflictEpoch = max(localEpoch, remoteConflictEpoch) + 1

@@ -4,12 +4,8 @@ import Charts
 struct HistoryView: View {
     let account: Account?
     @State private var tab = 0
+    @State private var snapshots: [UsageSnapshot] = []
     private var config: AnalyticsConfig { ConfigManager.shared.load().analytics }
-
-    private var snapshots: [UsageSnapshot] {
-        guard let account else { return [] }
-        return CacheManager.shared.history(forAccount: account.id, days: 30)
-    }
 
     var body: some View {
         Group {
@@ -34,12 +30,14 @@ struct HistoryView: View {
             }
         }
         .frame(width: 500, height: 400)
+        .task(id: account?.id) {
+            await reloadSnapshots()
+        }
     }
 
     // MARK: – 7-day
     private var sevenDayChart: some View {
-        let snaps = account.map { CacheManager.shared.history(forAccount: $0.id, days: 7) } ?? []
-        let byDay = grouped(snaps)
+        let byDay = grouped(sevenDaySnapshots)
         return Chart(byDay, id: \.0) {
             BarMark(x: .value("Day", $0.0, unit: .day), y: .value("Cost", $0.1))
         }.frame(height: 200).padding()
@@ -106,6 +104,19 @@ struct HistoryView: View {
         return Dictionary(grouping: snaps) { cal.startOfDay(for: $0.timestamp) }
             .map { ($0.key, $0.value.reduce(0) { $0 + $1.totalCostUSD }) }
             .sorted { $0.0 < $1.0 }
+    }
+
+    private var sevenDaySnapshots: [UsageSnapshot] {
+        let cutoff = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date.distantPast
+        return snapshots.filter { $0.timestamp >= cutoff }
+    }
+
+    private func reloadSnapshots() async {
+        guard let account else {
+            snapshots = []
+            return
+        }
+        snapshots = await CacheManager.shared.historyAsync(forAccount: account.id, days: 30)
     }
 
     private func statRow(_ label: String, v: String) -> some View {
