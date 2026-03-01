@@ -34,6 +34,7 @@ class iCloudSyncManager: ObservableObject {
     private let coordTimeout: TimeInterval = 5
     private let lastSyncPayloadHashKey = "lastCloudSyncPayloadHash"
     private let syncConflictEpochKey = "iCloudSyncConflictEpoch"
+    private let lastLocalCacheHashKey = "lastLocalCacheHash"
 
     private init() {}
 
@@ -68,6 +69,16 @@ class iCloudSyncManager: ObservableObject {
             syncState = .error("iCloud container unavailable"); return
         }
         let localSnaps = CacheManager.shared.load()
+        let localEncoder = JSONEncoder()
+        localEncoder.dateEncodingStrategy = .iso8601
+        if let localData = try? localEncoder.encode(UsageCachePayload(snapshots: localSnaps)) {
+            let localHash = contentHash(for: localData)
+            if UserDefaults.standard.string(forKey: lastLocalCacheHashKey) == localHash {
+                log.debug("iCloud sync skipped: local cache hash unchanged")
+                return
+            }
+            UserDefaults.standard.set(localHash, forKey: lastLocalCacheHashKey)
+        }
         let remoteData = await coordinateRead(at: remoteURL)
         var remoteSnaps: [UsageSnapshot] = []
         var remoteConflictEpoch = 0
