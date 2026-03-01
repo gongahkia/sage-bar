@@ -187,49 +187,90 @@ class CodexLogParser {
             ErrorLogger.shared.log("Skipping oversized Codex log file \(url.lastPathComponent) (\(size / 1024 / 1024)MB)", level: "WARN")
             return []
         }
-        let text: String
+        let fileHandle: FileHandle
         do {
-            text = try String(contentsOf: url, encoding: .utf8)
+            fileHandle = try FileHandle(forReadingFrom: url)
         } catch {
             ErrorLogger.shared.log("Cannot read Codex log file at \(url.path): \(error.localizedDescription)")
             return []
         }
+        defer { try? fileHandle.close() }
         let dec = JSONDecoder()
-        var results: [CodexSessionEntry] = []
+        var allResults: [CodexSessionEntry] = []
+        var incrementalResults: [CodexSessionEntry] = []
         var rejectedCount = 0
-        let lines = text.split(separator: "\n", omittingEmptySubsequences: true)
-        var startIndex = 0
+        var totalLines = 0
+        var bytesRead = 0
+        let startIndex = incremental ? (lineCheckpoints[url] ?? 0) : 0
+        var lineBuffer: [UInt8] = []
+
+        func processLine(_ bytes: [UInt8]) -> Bool {
+            let raw = String(decoding: bytes, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !raw.isEmpty else { return true }
+            totalLines += 1
+            do {
+                let entry = try dec.decode(CodexSessionEntry.self, from: Data(raw.utf8))
+                allResults.append(entry)
+                if !incremental || totalLines > startIndex {
+                    incrementalResults.append(entry)
+                }
+            } catch {
+                rejectedCount += 1
+                let preview = String(raw.prefix(200))
+                ErrorLogger.shared.log("Malformed Codex JSONL line \(totalLines) in \(url.lastPathComponent): \(preview)", level: "WARN")
+                if recordDecodeFailureAndMaybeQuarantine(for: url) {
+                    return false
+                }
+            }
+            return true
+        }
+
         if incremental {
-            let prev = lineCheckpoints[url] ?? 0
-            if prev > lines.count {
+            lineCheckpoints[url] = max(0, startIndex)
+        }
+
+        parseLoop: while true {
+            let chunk: Data
+            do {
+                chunk = try fileHandle.read(upToCount: 64 * 1024) ?? Data()
+            } catch {
+                ErrorLogger.shared.log("Failed streaming read for \(url.lastPathComponent): \(error.localizedDescription)", level: "WARN")
+                break
+            }
+            if chunk.isEmpty { break }
+            bytesRead += chunk.count
+            for byte in chunk {
+                if byte == 0x0A { // "\n"
+                    if !processLine(lineBuffer) {
+                        break parseLoop
+                    }
+                    lineBuffer.removeAll(keepingCapacity: true)
+                    continue
+                }
+                lineBuffer.append(byte)
+            }
+        }
+
+        if !lineBuffer.isEmpty {
+            _ = processLine(lineBuffer)
+        }
+
+        var results = incremental ? incrementalResults : allResults
+        if incremental {
+            let prev = startIndex
+            if prev > totalLines {
                 ErrorLogger.shared.log(
                     "Codex checkpoint exceeds current line count for \(url.lastPathComponent); resetting checkpoint and token totals (file truncated or rotated)",
                     level: "WARN"
                 )
-                lineCheckpoints[url] = 0
+                lineCheckpoints[url] = totalLines
                 fileTotalsByURL[url] = .zero
                 persistLineCheckpoints()
                 persistFileTotals()
-                startIndex = 0
+                results = allResults
             } else {
-                startIndex = prev
+                lineCheckpoints[url] = totalLines
             }
-        }
-        for (offset, line) in lines.dropFirst(startIndex).enumerated() {
-            do {
-                results.append(try dec.decode(CodexSessionEntry.self, from: Data(line.utf8)))
-            } catch {
-                rejectedCount += 1
-                let preview = String(line.prefix(200))
-                let lineNumber = startIndex + offset + 1
-                ErrorLogger.shared.log("Malformed Codex JSONL line \(lineNumber) in \(url.lastPathComponent): \(preview)", level: "WARN")
-                if recordDecodeFailureAndMaybeQuarantine(for: url) {
-                    break
-                }
-            }
-        }
-        if incremental {
-            lineCheckpoints[url] = lines.count
             persistLineCheckpoints()
         }
         ParserMetricsStore.shared.record(
@@ -237,7 +278,7 @@ class CodexLogParser {
             filesScanned: 1,
             linesParsed: results.count,
             linesRejected: rejectedCount,
-            bytesRead: text.utf8.count
+            bytesRead: bytesRead
         )
         return results
     }
