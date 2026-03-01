@@ -36,7 +36,16 @@ class NotificationManager {
         // webhook
         if webhookConfig.enabled, webhookConfig.events.contains("threshold") {
             let ws = WebhookService()
-            Task { try? await ws.send(event: .thresholdBreached(limitUSD: limitUSD), snapshot: snapshot, config: webhookConfig) }
+            Task {
+                do {
+                    try await ws.send(event: .thresholdBreached(limitUSD: limitUSD), snapshot: snapshot, config: webhookConfig)
+                } catch {
+                    ErrorLogger.shared.log(
+                        "Threshold webhook failed for account \(account.id.uuidString): \(error.localizedDescription)",
+                        level: "WARN"
+                    )
+                }
+            }
         }
     }
 
@@ -84,14 +93,21 @@ class NotificationManager {
                 costConfidence: .estimated
             )
             Task {
-                try? await ws.send(
-                    event: .burnRateBreached(
-                        thresholdUSDPerHour: thresholdUSDPerHour,
-                        burnRateUSDPerHour: burnRateUSDPerHour
-                    ),
-                    snapshot: snapshot,
-                    config: webhookConfig
-                )
+                do {
+                    try await ws.send(
+                        event: .burnRateBreached(
+                            thresholdUSDPerHour: thresholdUSDPerHour,
+                            burnRateUSDPerHour: burnRateUSDPerHour
+                        ),
+                        snapshot: snapshot,
+                        config: webhookConfig
+                    )
+                } catch {
+                    ErrorLogger.shared.log(
+                        "Burn-rate webhook failed for account \(account.id.uuidString): \(error.localizedDescription)",
+                        level: "WARN"
+                    )
+                }
             }
         }
     }
