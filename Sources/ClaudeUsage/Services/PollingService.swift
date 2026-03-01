@@ -167,9 +167,6 @@ class PollingService: ObservableObject {
             }
             Task { @MainActor in
                 self.isPolling = false
-                if !updatedIds.isEmpty {
-                    self.lastPollDate = Date()
-                }
                 log.info("[poll_cycle=\(cycleID)] Poll completed")
             }
         }
@@ -211,10 +208,15 @@ class PollingService: ObservableObject {
             }
             chunkStart = chunkEnd
         }
-        let failures = max(0, activeAccounts.count - updatedIds.count)
+        let successCount = updatedIds.count
+        let failures = max(0, activeAccounts.count - successCount)
+        let hasSuccessfulUpdates = successCount > 0
         await MainActor.run {
-            self.lastPollSuccessCount = updatedIds.count
+            self.lastPollSuccessCount = successCount
             self.lastPollFailureCount = failures
+            if hasSuccessfulUpdates {
+                self.lastPollDate = Date()
+            }
         }
 
         // compute forecasts
