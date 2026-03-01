@@ -64,6 +64,20 @@ struct AccountsTab: View {
                 }
             }
             HStack {
+                Button("Enable All") {
+                    for i in config.accounts.indices {
+                        config.accounts[i].isActive = true
+                    }
+                    ConfigManager.shared.save(config)
+                }
+                .font(.caption)
+                Button("Disable All") {
+                    for i in config.accounts.indices {
+                        config.accounts[i].isActive = false
+                    }
+                    ConfigManager.shared.save(config)
+                }
+                .font(.caption)
                 Spacer()
                 Button("+") { showAddSheet = true }
             }.padding(.horizontal)
