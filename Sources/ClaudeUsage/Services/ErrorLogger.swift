@@ -15,6 +15,8 @@ final class ErrorLogger: ObservableObject {
     private let queue = DispatchQueue(label: "dev.claudeusage.errorlog", qos: .utility)
     private let maxBytes = 1_048_576 // 1MB
     private let retainLines = 500
+    private var recentLogKeys: [String: Date] = [:]
+    private let dedupWindowSeconds: TimeInterval = 30
 
     private init() {
         let dir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude-usage")
@@ -28,8 +30,10 @@ final class ErrorLogger: ObservableObject {
 
     func log(_ message: String, level: String = "ERROR", file: String = #file, line: Int = #line) {
         let entry = "[\(isoTimestamp())] [\(level)] \(URL(fileURLWithPath: file).lastPathComponent):\(line) — \(message)\n"
+        let dedupKey = "\(level)|\(URL(fileURLWithPath: file).lastPathComponent):\(line)|\(message)"
         queue.async { [weak self] in
             guard let self else { return }
+            if self.shouldSuppressLog(dedupKey) { return }
             self.append(entry)
             self.rotateIfNeeded()
         }
@@ -61,6 +65,8 @@ final class ErrorLogger: ObservableObject {
         }
         queue.async { [weak self] in
             guard let self else { return }
+            let dedupKey = "structured|\(payload["level"] ?? "ERROR")|\(payload["file"] ?? ""):\(payload["line"] ?? 0)|\(message)"
+            if self.shouldSuppressLog(dedupKey) { return }
             self.append(entry)
             self.rotateIfNeeded()
         }
@@ -111,5 +117,15 @@ final class ErrorLogger: ObservableObject {
 
     private func isoTimestamp() -> String {
         SharedDateFormatters.iso8601InternetDateTime.string(from: Date())
+    }
+
+    private func shouldSuppressLog(_ key: String) -> Bool {
+        let now = Date()
+        recentLogKeys = recentLogKeys.filter { now.timeIntervalSince($0.value) <= dedupWindowSeconds }
+        if let previous = recentLogKeys[key], now.timeIntervalSince(previous) <= dedupWindowSeconds {
+            return true
+        }
+        recentLogKeys[key] = now
+        return false
     }
 }
