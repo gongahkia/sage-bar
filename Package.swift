@@ -26,7 +26,10 @@ let package = Package(
             ],
             path: "Sources/ClaudeUsage",
             exclude: ["Resources/Info.plist"],
-            resources: [.process("Resources")]
+            resources: [
+                .process("Resources"),
+                .copy("Scriptable/ClaudeUsage.sdef"),
+            ]
         ),
         .executableTarget(
             name: "ClaudeUsageCLI",
