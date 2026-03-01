@@ -19,6 +19,24 @@ private struct GitHubCopilotMetricsDay: Decodable {
         case copilot_dotcom_pull_requests
     }
 
+    init(
+        date: String?,
+        total_active_users: Int?,
+        total_engaged_users: Int?,
+        copilot_ide_code_completions: GitHubCopilotIDECodeCompletions?,
+        copilot_ide_chat: GitHubCopilotIDEChat?,
+        copilot_dotcom_chat: GitHubCopilotDotcomChat?,
+        copilot_dotcom_pull_requests: GitHubCopilotDotcomPullRequests?
+    ) {
+        self.date = date
+        self.total_active_users = total_active_users
+        self.total_engaged_users = total_engaged_users
+        self.copilot_ide_code_completions = copilot_ide_code_completions
+        self.copilot_ide_chat = copilot_ide_chat
+        self.copilot_dotcom_chat = copilot_dotcom_chat
+        self.copilot_dotcom_pull_requests = copilot_dotcom_pull_requests
+    }
+
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         date = try c.decodeIfPresent(String.self, forKey: .date)
@@ -289,7 +307,10 @@ class GitHubCopilotMetricsClient {
 
         do {
             let (data, resp) = try await session.data(for: req)
-            let http = resp as! HTTPURLResponse
+            guard let http = resp as? HTTPURLResponse else {
+                ErrorLogger.shared.log("GitHub Copilot metrics fetch received non-HTTP response", level: "WARN")
+                throw APIError.networkError(URLError(.badServerResponse))
+            }
             try mapStatus(http.statusCode)
             let days: [GitHubCopilotMetricsDay]
             do {
