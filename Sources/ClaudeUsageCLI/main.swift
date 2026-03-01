@@ -58,6 +58,7 @@ var errorsCount = 20
 var showConfig = false
 var showModels = false
 var sinceDate: Date? = nil
+var sinceParseError: String? = nil
 var watchInterval: Int? = nil
 
 var args = CommandLine.arguments.dropFirst()
@@ -79,7 +80,11 @@ while let arg = iter.next() {
     case "--since":
         if let raw = iter.next() {
             let iso = ISO8601DateFormatter(); iso.formatOptions = [.withFullDate]
-            sinceDate = iso.date(from: raw) ?? ISO8601DateFormatter().date(from: raw)
+            if let parsed = iso.date(from: raw) ?? ISO8601DateFormatter().date(from: raw) {
+                sinceDate = parsed
+            } else {
+                sinceParseError = "Invalid --since date '\(raw)'. Use YYYY-MM-DD or ISO8601."
+            }
         }
     case "--watch":
         if let raw = iter.next(), let n = Int(raw) { watchInterval = n } else { watchInterval = 30 }
@@ -92,6 +97,11 @@ while let arg = iter.next() {
             showErrors = true; errorsCount = n
         }
     }
+}
+
+if let sinceParseError {
+    fputs("\(sinceParseError)\n", stderr)
+    exit(3)
 }
 
 // MARK: – --config

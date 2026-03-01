@@ -31,4 +31,12 @@ final class CLIFormattingRegressionTests: XCTestCase {
             "CLI account filtering should report ambiguous case-insensitive name matches"
         )
     }
+
+    func testInvalidSinceDateHasExplicitErrorGuard() throws {
+        let content = try cliMainSource()
+        XCTAssertTrue(
+            content.contains("Invalid --since date"),
+            "CLI should emit explicit parse errors for invalid --since inputs"
+        )
+    }
 }
