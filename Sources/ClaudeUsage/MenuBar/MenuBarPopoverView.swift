@@ -76,6 +76,16 @@ struct MenuBarPopoverView: View {
     private var header: some View {
         HStack {
             Text("Claude Usage").font(.headline)
+            if polling.lastPollFailureCount > 0 {
+                let partial = polling.lastPollSuccessCount > 0
+                Text(partial ? "Partial" : "Failed")
+                    .font(.caption2.weight(.semibold))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background((partial ? Color.orange : Color.red).opacity(0.18))
+                    .foregroundColor(partial ? .orange : .red)
+                    .clipShape(Capsule())
+            }
             Spacer()
             if polling.isPolling { ProgressView().scaleEffect(0.6) }
             if let date = polling.lastPollDate {

@@ -13,6 +13,8 @@ class PollingService: ObservableObject {
     @MainActor @Published var lastPollDate: Date?
     @MainActor @Published var isPolling: Bool = false
     @MainActor @Published var lastFetchError: String?
+    @MainActor @Published var lastPollSuccessCount: Int = 0
+    @MainActor @Published var lastPollFailureCount: Int = 0
 
     private var timer: Timer?
     private var currentTask: Task<Void, Never>?
@@ -133,6 +135,11 @@ class PollingService: ObservableObject {
             for await id in group {
                 if let id { updatedIds.append(id) }
             }
+        }
+        let failures = max(0, activeAccounts.count - updatedIds.count)
+        await MainActor.run {
+            self.lastPollSuccessCount = updatedIds.count
+            self.lastPollFailureCount = failures
         }
 
         // compute forecasts
