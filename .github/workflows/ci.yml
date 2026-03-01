@@ -26,6 +26,18 @@ jobs:
         run: |
           OUTPUT=$(swift-format lint --recursive Sources/ Tests/ 2>&1)
           [ -z "$OUTPUT" ] || { echo "$OUTPUT"; exit 1; }
+      - name: Fail on unchecked try? outside allowlist
+        run: |
+          MATCHES=$(rg "try\\?" Sources/ClaudeUsage -n || true)
+          if [ -z "$MATCHES" ]; then
+            exit 0
+          fi
+          FILTERED=$(echo "$MATCHES" | grep -Fv -f .ci/tryq_allowlist.txt || true)
+          if [ -n "$FILTERED" ]; then
+            echo "Unchecked try? usage outside allowlist:"
+            echo "$FILTERED"
+            exit 1
+          fi
       - name: Validate prices.json
         run: python3 -c "import json,sys; json.load(open('Sources/ClaudeUsage/Resources/prices.json'))"
       - name: Build app target (release)

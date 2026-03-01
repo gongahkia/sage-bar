@@ -1,0 +1,16 @@
+Sources/ClaudeUsage/API/ClaudeAIClient.swift
+Sources/ClaudeUsage/API/OpenAIOrgUsageClient.swift
+Sources/ClaudeUsage/API/WindsurfEnterpriseClient.swift
+Sources/ClaudeUsage/Cache/CacheManager.swift
+Sources/ClaudeUsage/Config/ProviderCredentials.swift
+Sources/ClaudeUsage/MenuBar/MenuBarManager.swift
+Sources/ClaudeUsage/MenuBar/MenuBarPopoverView.swift
+Sources/ClaudeUsage/Notifications/NotificationManager.swift
+Sources/ClaudeUsage/Parsers/ClaudeCodeLogParser.swift
+Sources/ClaudeUsage/Parsers/CodexLogParser.swift
+Sources/ClaudeUsage/Parsers/GeminiLogParser.swift
+Sources/ClaudeUsage/Services/ErrorLogger.swift
+Sources/ClaudeUsage/Services/PollingService.swift
+Sources/ClaudeUsage/Services/WebhookService.swift
+Sources/ClaudeUsage/Services/iCloudSyncManager.swift
+Sources/ClaudeUsage/Settings/SettingsView.swift
