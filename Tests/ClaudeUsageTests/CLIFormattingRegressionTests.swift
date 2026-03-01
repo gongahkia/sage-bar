@@ -39,4 +39,24 @@ final class CLIFormattingRegressionTests: XCTestCase {
             "CLI should emit explicit parse errors for invalid --since inputs"
         )
     }
+
+    func testHistoryPathNormalizesCumulativeSnapshotsByAccountDay() throws {
+        let content = try cliMainSource()
+        XCTAssertTrue(
+            content.contains("let normalized = normalizeByAccountWithinDay(snaps)"),
+            "CLI --history should normalize cumulative snapshots before daily aggregation"
+        )
+    }
+
+    func testHeatmapPathNormalizesCumulativeSnapshotsByAccountDay() throws {
+        let content = try cliMainSource()
+        XCTAssertTrue(
+            content.contains("let normalizedForHeatmap = Dictionary(grouping: snapshots)"),
+            "CLI --heatmap should derive a normalized snapshot set before populating the grid"
+        )
+        XCTAssertTrue(
+            content.contains(".flatMap { normalizeByAccountWithinDay($0) }"),
+            "CLI --heatmap should normalize cumulative snapshots within each account/day bucket"
+        )
+    }
 }
