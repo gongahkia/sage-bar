@@ -155,7 +155,17 @@ class ClaudeCodeLogParser {
         var startIndex = 0
         if incremental {
             let prev = lineCheckpoints[url] ?? 0
-            startIndex = prev <= lines.count ? prev : 0
+            if prev > lines.count {
+                ErrorLogger.shared.log(
+                    "Claude checkpoint exceeds current line count for \(url.lastPathComponent); resetting checkpoint (file truncated or rotated)",
+                    level: "WARN"
+                )
+                lineCheckpoints[url] = 0
+                persistLineCheckpoints()
+                startIndex = 0
+            } else {
+                startIndex = prev
+            }
         }
         for (offset, line) in lines.dropFirst(startIndex).enumerated() {
             do {

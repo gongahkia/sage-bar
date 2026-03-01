@@ -198,7 +198,19 @@ class CodexLogParser {
         var startIndex = 0
         if incremental {
             let prev = lineCheckpoints[url] ?? 0
-            startIndex = prev <= lines.count ? prev : 0
+            if prev > lines.count {
+                ErrorLogger.shared.log(
+                    "Codex checkpoint exceeds current line count for \(url.lastPathComponent); resetting checkpoint and token totals (file truncated or rotated)",
+                    level: "WARN"
+                )
+                lineCheckpoints[url] = 0
+                fileTotalsByURL[url] = .zero
+                persistLineCheckpoints()
+                persistFileTotals()
+                startIndex = 0
+            } else {
+                startIndex = prev
+            }
         }
         for (offset, line) in lines.dropFirst(startIndex).enumerated() {
             do {
