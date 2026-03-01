@@ -266,7 +266,10 @@ class OpenAIOrgUsageClient {
         let req = request(path: path, queryItems: queryItems)
         do {
             let (data, resp) = try await session.data(for: req)
-            let http = resp as! HTTPURLResponse
+            guard let http = resp as? HTTPURLResponse else {
+                ErrorLogger.shared.log("OpenAI bucket fetch received non-HTTP response for path \(path)", level: "WARN")
+                throw APIError.networkError(URLError(.badServerResponse))
+            }
             try mapStatus(http.statusCode, headers: http.allHeaderFields)
             do {
                 return try JSONDecoder().decode(OpenAIBucketPage<T>.self, from: data)
