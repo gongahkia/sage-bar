@@ -85,6 +85,22 @@ final class ConfigManagerTests: XCTestCase {
         XCTAssertNotNil(cm.lastLoadError)
     }
 
+    func testSchemaV3MigrationPreservesNonCoreAccountsAndEnablesExperimentalProviders() throws {
+        var legacy = Config.default
+        legacy.schemaVersion = 2
+        legacy.display.showExperimentalProviders = false
+        legacy.accounts = [Account(name: "Org API", type: .anthropicAPI, isActive: true)]
+
+        let data = try JSONEncoder().encode(legacy)
+        try data.write(to: configFile)
+
+        let loaded = cm.load()
+        XCTAssertEqual(loaded.schemaVersion, 3)
+        XCTAssertEqual(loaded.accounts.count, 1)
+        XCTAssertEqual(loaded.accounts.first?.type, .anthropicAPI)
+        XCTAssertTrue(loaded.display.showExperimentalProviders)
+    }
+
     func testTomlFallbackLoadsWhenJSONDecodeFails() throws {
         let accountID = UUID().uuidString
         let toml = """

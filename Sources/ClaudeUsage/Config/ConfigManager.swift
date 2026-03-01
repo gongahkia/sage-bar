@@ -41,7 +41,7 @@ class ConfigManager {
     static let shared = ConfigManager()
     private let configDir: URL
     private let configFile: URL
-    private let latestConfigSchemaVersion = 2
+    private let latestConfigSchemaVersion = 3
     private(set) var lastLoadError: ConfigLoadError?
 
     init(configDir: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".config/claude-usage")) {
@@ -157,9 +157,17 @@ class ConfigManager {
 
     private func migrate(_ config: Config) -> Config {
         var migrated = config
-        if migrated.schemaVersion < latestConfigSchemaVersion {
+        if migrated.schemaVersion < 2 {
             // schema v2 introduces explicit config schemaVersion persistence
-            migrated.schemaVersion = latestConfigSchemaVersion
+            migrated.schemaVersion = 2
+        }
+        if migrated.schemaVersion < 3 {
+            // schema v3 preserves existing non-core providers as experimental metadata
+            // by ensuring their controls remain visible in provider selection UI.
+            if migrated.accounts.contains(where: { !$0.type.isCoreProvider }) {
+                migrated.display.showExperimentalProviders = true
+            }
+            migrated.schemaVersion = 3
         }
         return migrated
     }
