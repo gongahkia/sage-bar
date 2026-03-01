@@ -26,6 +26,8 @@ class PollingService: ObservableObject {
     @MainActor private var logChangeDebounceTask: Task<Void, Never>?
     @MainActor private var fetchErrorsByAccount: [UUID: String] = [:]
     @MainActor private var fetchErrorUpdatedAtByAccount: [UUID: Date] = [:]
+    @MainActor private var consecutiveFetchFailuresByAccount: [UUID: Int] = [:]
+    private let failureDisableThreshold = 5
 
     private init() {
         pathMonitor.pathUpdateHandler = { [weak self] path in
@@ -663,10 +665,16 @@ class PollingService: ObservableObject {
     }
 
     private func setFetchError(_ message: String, for accountId: UUID) async {
-        await MainActor.run {
+        let shouldDisable = await MainActor.run {
+            let newFailureCount = (self.consecutiveFetchFailuresByAccount[accountId] ?? 0) + 1
+            self.consecutiveFetchFailuresByAccount[accountId] = newFailureCount
             self.fetchErrorsByAccount[accountId] = message
             self.fetchErrorUpdatedAtByAccount[accountId] = Date()
             self.refreshLastFetchErrorSummary()
+            return newFailureCount >= self.failureDisableThreshold
+        }
+        if shouldDisable {
+            await disableAccountAfterRepeatedFailures(accountId: accountId)
         }
     }
 
@@ -674,6 +682,21 @@ class PollingService: ObservableObject {
         await MainActor.run {
             self.fetchErrorsByAccount.removeValue(forKey: accountId)
             self.fetchErrorUpdatedAtByAccount.removeValue(forKey: accountId)
+            self.consecutiveFetchFailuresByAccount.removeValue(forKey: accountId)
+            self.refreshLastFetchErrorSummary()
+        }
+    }
+
+    private func disableAccountAfterRepeatedFailures(accountId: UUID) async {
+        var config = ConfigManager.shared.load()
+        guard let index = config.accounts.firstIndex(where: { $0.id == accountId && $0.isActive }) else { return }
+        config.accounts[index].isActive = false
+        ConfigManager.shared.save(config)
+        let message = "Auto-disabled account \(accountId.uuidString) after \(failureDisableThreshold) consecutive fetch failures; re-enable manually in Settings."
+        ErrorLogger.shared.log(message, level: "WARN")
+        await MainActor.run {
+            self.fetchErrorsByAccount[accountId] = message
+            self.fetchErrorUpdatedAtByAccount[accountId] = Date()
             self.refreshLastFetchErrorSummary()
         }
     }
