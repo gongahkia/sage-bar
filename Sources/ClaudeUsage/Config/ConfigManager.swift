@@ -140,20 +140,11 @@ class ConfigManager {
             return .failure(saveError)
         }
 
-        let tmp = configFile.appendingPathExtension("tmp")
         do {
-            try jsonData.write(to: tmp, options: .atomic)
-        } catch {
-            let saveError = ConfigSaveError.writeFailed(error.localizedDescription)
-            ErrorLogger.shared.log("Config save error: \(saveError)")
-            return .failure(saveError)
-        }
-
-        do {
-            _ = try FileManager.default.replaceItemAt(configFile, withItemAt: tmp)
+            try AtomicFileWriter.write(jsonData, to: configFile)
             return .success(())
         } catch {
-            let saveError = ConfigSaveError.replaceFailed(error.localizedDescription)
+            let saveError = ConfigSaveError.writeFailed(error.localizedDescription)
             ErrorLogger.shared.log("Config save error: \(saveError)")
             return .failure(saveError)
         }

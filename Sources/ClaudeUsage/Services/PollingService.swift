@@ -657,7 +657,7 @@ class PollingService: ObservableObject {
             let enc = JSONEncoder()
             enc.dateEncodingStrategy = .iso8601
             let data = try enc.encode(hints)
-            try data.write(to: url, options: .atomic)
+            try AtomicFileWriter.write(data, to: url)
         } catch {
             ErrorLogger.shared.log("Failed to persist model hints: \(error.localizedDescription)")
         }

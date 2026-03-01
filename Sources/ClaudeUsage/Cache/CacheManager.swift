@@ -102,7 +102,7 @@ private actor CacheStore {
         do {
             let payload = UsageCachePayload(snapshots: snapshots)
             let data = try encoder().encode(payload)
-            try data.write(to: cacheFile, options: .atomic)
+            try AtomicFileWriter.write(data, to: cacheFile)
             snapshotMemoryCache = snapshots
             log.debug("Cache saved: \(snapshots.count) snapshots")
         } catch {
@@ -191,7 +191,7 @@ private actor CacheStore {
         all[id.uuidString] = cursor
         do {
             let data = try encoder().encode(all)
-            try data.write(to: anthropicCursorFile, options: .atomic)
+            try AtomicFileWriter.write(data, to: anthropicCursorFile)
         } catch {
             ErrorLogger.shared.log("Anthropic cursor write failed: \(error.localizedDescription)")
         }
@@ -212,7 +212,7 @@ private actor CacheStore {
         all[id.uuidString] = retryAfter
         do {
             let data = try encoder().encode(all)
-            try data.write(to: anthropicRetryAfterFile, options: .atomic)
+            try AtomicFileWriter.write(data, to: anthropicRetryAfterFile)
         } catch {
             ErrorLogger.shared.log("Anthropic retryAfter write failed: \(error.localizedDescription)")
         }
@@ -227,7 +227,7 @@ private actor CacheStore {
         all.removeValue(forKey: id.uuidString)
         do {
             let data = try encoder().encode(all)
-            try data.write(to: anthropicRetryAfterFile, options: .atomic)
+            try AtomicFileWriter.write(data, to: anthropicRetryAfterFile)
         } catch {
             ErrorLogger.shared.log("Anthropic retryAfter clear failed: \(error.localizedDescription)")
         }
@@ -248,7 +248,7 @@ private actor CacheStore {
         all[id.uuidString] = date
         do {
             let data = try encoder().encode(all)
-            try data.write(to: lastSuccessFile, options: .atomic)
+            try AtomicFileWriter.write(data, to: lastSuccessFile)
         } catch {
             ErrorLogger.shared.log("Last-success write failed: \(error.localizedDescription)")
         }
@@ -277,7 +277,7 @@ private actor CacheStore {
         do {
             let payload = ForecastCachePayload(forecasts: forecasts)
             let data = try encoder().encode(payload)
-            try data.write(to: forecastFile, options: .atomic)
+            try AtomicFileWriter.write(data, to: forecastFile)
         } catch {
             ErrorLogger.shared.log("Forecast write failed: \(error.localizedDescription)")
         }
