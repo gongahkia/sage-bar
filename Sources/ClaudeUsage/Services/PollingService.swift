@@ -32,10 +32,12 @@ class PollingService: ObservableObject {
     @MainActor private var recentFetchOutcomesByAccount: [UUID: [Bool]] = [:]
     @MainActor private var circuitBreakerFailureCountByAccount: [UUID: Int] = [:]
     @MainActor private var circuitBreakerOpenUntilByAccount: [UUID: Date] = [:]
+    @MainActor private var lastClaudeAISessionExpiredNoticeAtByAccount: [UUID: Date] = [:]
     private let failureDisableThreshold = 5
     private let healthWindowSize = 20
     private let circuitBreakerThreshold = 3
     private let circuitBreakerDurationSeconds: TimeInterval = 300
+    private let claudeAISessionExpiredNoticeCooldownSeconds: TimeInterval = 900
     @MainActor private var nextPollCycleID: Int = 1
     @MainActor private var pollDurationSamplesSeconds: [Double] = []
     private let pollDurationSamplesKey = "pollDurationSamplesSeconds"
@@ -498,7 +500,9 @@ class PollingService: ObservableObject {
                 ErrorLogger.shared.log(withProviderContext(msg), level: "WARN")
                 await setFetchError(msg, for: account.id, accountType: account.type)
                 await registerCircuitBreakerFailure(for: account.id, accountType: account.type)
-                NotificationCenter.default.post(name: .claudeAISessionExpired, object: account.id)
+                if await shouldEmitClaudeAISessionExpiredNotification(for: account.id) {
+                    NotificationCenter.default.post(name: .claudeAISessionExpired, object: account.id)
+                }
             }
         }
     }
@@ -920,6 +924,18 @@ class PollingService: ObservableObject {
             return true
         default:
             return false
+        }
+    }
+
+    private func shouldEmitClaudeAISessionExpiredNotification(for accountId: UUID) async -> Bool {
+        await MainActor.run {
+            let now = Date()
+            if let previous = self.lastClaudeAISessionExpiredNoticeAtByAccount[accountId],
+               now.timeIntervalSince(previous) < self.claudeAISessionExpiredNoticeCooldownSeconds {
+                return false
+            }
+            self.lastClaudeAISessionExpiredNoticeAtByAccount[accountId] = now
+            return true
         }
     }
 
