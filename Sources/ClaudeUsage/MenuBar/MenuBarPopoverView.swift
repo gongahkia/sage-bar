@@ -9,6 +9,7 @@ struct MenuBarPopoverView: View {
     @State private var needsReAuth: Bool = false
     @State private var showModelBreakdown = false
     @State private var copyFeedback = false
+    @StateObject private var viewModel = ViewModel()
     @ObservedObject private var polling = PollingService.shared
     @ObservedObject private var errorLogger = ErrorLogger.shared
 
@@ -19,6 +20,51 @@ struct MenuBarPopoverView: View {
         let weekSnapshots: [UsageSnapshot]
         let daySnapshots: [UsageSnapshot]
         let modelHint: ModelHint?
+    }
+
+    @MainActor
+    private final class ViewModel: ObservableObject {
+        @Published private(set) var metricsByAccount: [UUID: AccountMetrics] = [:]
+        private var inflightLoads: [UUID: Task<Void, Never>] = [:]
+
+        func metrics(for accountId: UUID) -> AccountMetrics? {
+            metricsByAccount[accountId]
+        }
+
+        func load(account: Account) {
+            inflightLoads[account.id]?.cancel()
+            inflightLoads[account.id] = Task { [weak self] in
+                let loaded = await Self.fetchMetricsOffMain(account: account)
+                guard !Task.isCancelled else { return }
+                self?.metricsByAccount[account.id] = loaded
+            }
+        }
+
+        private static func fetchMetricsOffMain(account: Account) async -> AccountMetrics {
+            await Task.detached(priority: .utility) {
+                async let latestSnapshot = CacheManager.shared.latestAsync(forAccount: account.id)
+                async let todayAggregate = CacheManager.shared.todayAggregateAsync(forAccount: account.id)
+                async let latestForecast = CacheManager.shared.latestForecastAsync(forAccount: account.id)
+                async let weekSnapshots = CacheManager.shared.historyAsync(forAccount: account.id, days: 7)
+                async let daySnapshots = CacheManager.shared.historyAsync(forAccount: account.id, days: 1)
+                let modelHint = loadModelHint(accountId: account.id)
+                return await AccountMetrics(
+                    latestSnapshot: latestSnapshot,
+                    todayAggregate: todayAggregate,
+                    latestForecast: latestForecast,
+                    weekSnapshots: weekSnapshots,
+                    daySnapshots: daySnapshots,
+                    modelHint: modelHint
+                )
+            }.value
+        }
+
+        private nonisolated static func loadModelHint(accountId: UUID) -> ModelHint? {
+            let url = AppConstants.sharedContainerURL.appendingPathComponent("model_hints.json")
+            guard let data = try? Data(contentsOf: url),
+                  let hints = try? JSONDecoder().decode([ModelHint].self, from: data) else { return nil }
+            return hints.first(where: { $0.accountId == accountId && $0.cheaperAlternativeExists })
+        }
     }
 
     private var activeAccounts: [Account] {
@@ -39,7 +85,7 @@ struct MenuBarPopoverView: View {
                 accountPicker
             }
             if let account = currentAccount {
-                let metrics = metricsForAccount(account)
+                let metrics = viewModel.metrics(for: account.id)
                 accountFetchLabel(account: account, metrics: metrics) // task 78: per-account relative last-fetch
                 if needsReAuth && account.type == .claudeAI {
                     reAuthBanner
@@ -58,11 +104,11 @@ struct MenuBarPopoverView: View {
                         if account.type != .claudeAI {
                             chartSection(metrics: metrics)
                         }
-                        if let hint = metrics.modelHint,
+                        if let hint = metrics?.modelHint,
                            config.modelOptimizer.enabled && config.modelOptimizer.showInPopover {
                             modelHintBanner(hint: hint, account: account)
                         }
-                        pollHealthRow(account: account, metrics: metrics)
+                        pollHealthRow(metrics: metrics)
                     }
                 }
             }
@@ -79,13 +125,19 @@ struct MenuBarPopoverView: View {
         }
         .onAppear {
             restoreSelectedAccountIndex()
+            refreshCurrentAccountMetrics()
         }
         .onChange(of: selectedAccountIndex) { newValue in
             guard activeAccounts.indices.contains(newValue) else { return }
             UserDefaults.standard.set(activeAccounts[newValue].id.uuidString, forKey: selectedAccountDefaultsKey)
+            refreshCurrentAccountMetrics()
         }
         .onChange(of: activeAccounts.map(\.id)) { _ in
             restoreSelectedAccountIndex()
+            refreshCurrentAccountMetrics()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .usageDidUpdate)) { _ in
+            refreshCurrentAccountMetrics()
         }
     }
 
@@ -122,9 +174,12 @@ struct MenuBarPopoverView: View {
     }
 
     // MARK: – Today stats
-    private func todayStatsSection(account: Account, metrics: AccountMetrics) -> some View {
-        let agg = metrics.todayAggregate
-        let confidence = currentCostConfidence(account: account, latestSnapshot: metrics.latestSnapshot)
+    private func todayStatsSection(account: Account, metrics: AccountMetrics?) -> some View {
+        let agg = metrics?.todayAggregate ?? DailyAggregate(
+            date: Calendar.current.dateComponents([.year, .month, .day], from: Date()),
+            snapshots: []
+        )
+        let confidence = currentCostConfidence(account: account, latestSnapshot: metrics?.latestSnapshot)
         return VStack(alignment: .leading, spacing: 4) {
             statRow("Input Tokens", value: "\(agg.totalInputTokens.formatted())")
             statRow("Output Tokens", value: "\(agg.totalOutputTokens.formatted())")
@@ -135,9 +190,9 @@ struct MenuBarPopoverView: View {
     }
 
     // MARK: – Forecast
-    private func forecastSection(metrics: AccountMetrics) -> some View {
+    private func forecastSection(metrics: AccountMetrics?) -> some View {
         Group {
-            if let f = metrics.latestForecast {
+            if let f = metrics?.latestForecast {
                 VStack(alignment: .leading, spacing: 4) {
                     Label("Projected Spend", systemImage: "chart.line.uptrend.xyaxis")
                         .font(.caption).foregroundColor(.secondary)
@@ -153,8 +208,8 @@ struct MenuBarPopoverView: View {
     }
 
     // MARK: – 7-day chart
-    private func chartSection(metrics: AccountMetrics) -> some View {
-        let snaps = metrics.weekSnapshots
+    private func chartSection(metrics: AccountMetrics?) -> some View {
+        let snaps = metrics?.weekSnapshots ?? []
         let cal = Calendar.current
         let byDay: [(Date, Double)] = Dictionary(grouping: snaps, by: {
             cal.startOfDay(for: $0.timestamp)
@@ -171,28 +226,7 @@ struct MenuBarPopoverView: View {
         }
     }
 
-    private func metricsForAccount(_ account: Account) -> AccountMetrics {
-        let latestSnapshot = CacheManager.shared.latest(forAccount: account.id)
-        let todayAggregate = CacheManager.shared.todayAggregate(forAccount: account.id)
-        let latestForecast = CacheManager.shared.latestForecast(forAccount: account.id)
-        let weekSnapshots = CacheManager.shared.history(forAccount: account.id, days: 7)
-        let daySnapshots = CacheManager.shared.history(forAccount: account.id, days: 1)
-        return AccountMetrics(
-            latestSnapshot: latestSnapshot,
-            todayAggregate: todayAggregate,
-            latestForecast: latestForecast,
-            weekSnapshots: weekSnapshots,
-            daySnapshots: daySnapshots,
-            modelHint: modelHint(account: account)
-        )
-    }
-
     // MARK: – Model hint banner
-    private func modelHint(account: Account) -> ModelHint? {
-        guard let data = try? Data(contentsOf: AppConstants.sharedContainerURL.appendingPathComponent("model_hints.json")),
-              let hints = try? JSONDecoder().decode([ModelHint].self, from: data) else { return nil }
-        return hints.first(where: { $0.accountId == account.id && $0.cheaperAlternativeExists })
-    }
 
     private func modelHintBanner(hint: ModelHint, account: Account) -> some View {
         let dismissKey = "modelHintDismissed_\(account.id.uuidString)"
@@ -215,10 +249,10 @@ struct MenuBarPopoverView: View {
     }
 
     // MARK: – Poll health
-    private func pollHealthRow(account: Account, metrics: AccountMetrics) -> some View {
+    private func pollHealthRow(metrics: AccountMetrics?) -> some View {
         let staleMultiplier = 2.0
         return VStack(alignment: .leading, spacing: 2) {
-            if let latest = metrics.latestSnapshot {
+            if let latest = metrics?.latestSnapshot {
                 let ageSeconds = max(0, Date().timeIntervalSince(latest.timestamp))
                 let thresholdSeconds = Double(config.pollIntervalSeconds) * staleMultiplier
                 let staleByAge = ageSeconds > thresholdSeconds
@@ -239,15 +273,15 @@ struct MenuBarPopoverView: View {
     }
 
     // MARK: – ClaudeAI stats
-    private func claudeAIStatsSection(account: Account, metrics: AccountMetrics) -> some View {
-        let remaining = metrics.latestSnapshot?.modelBreakdown.first(where: { $0.modelId == "claude-ai-web" })?.inputTokens
+    private func claudeAIStatsSection(account: Account, metrics: AccountMetrics?) -> some View {
+        let remaining = metrics?.latestSnapshot?.modelBreakdown.first(where: { $0.modelId == "claude-ai-web" })?.inputTokens
         return VStack(alignment: .leading, spacing: 4) {
             if let r = remaining {
                 statRow("Messages remaining", value: "\(r)")
             } else {
                 Text("No data yet").font(.caption).foregroundColor(.secondary)
             }
-            confidenceRow(currentCostConfidence(account: account, latestSnapshot: metrics.latestSnapshot))
+            confidenceRow(currentCostConfidence(account: account, latestSnapshot: metrics?.latestSnapshot))
         }.padding(12)
     }
 
@@ -318,9 +352,9 @@ struct MenuBarPopoverView: View {
 
     // MARK: – Task 78: per-account last-fetch label
 
-    private func accountFetchLabel(account: Account, metrics: AccountMetrics) -> some View {
+    private func accountFetchLabel(account: Account, metrics: AccountMetrics?) -> some View {
         Group {
-            if let snap = metrics.latestSnapshot {
+            if let snap = metrics?.latestSnapshot {
                 Text("Last fetch: \(snap.timestamp, style: .relative) ago")
                     .font(.caption2).foregroundColor(.secondary)
                     .frame(maxWidth: .infinity, alignment: .trailing)
@@ -331,8 +365,8 @@ struct MenuBarPopoverView: View {
 
     // MARK: – Task 77: collapsible per-model cost breakdown
 
-    private func modelBreakdownSection(metrics: AccountMetrics) -> some View {
-        let byModel = Dictionary(grouping: metrics.daySnapshots.flatMap { $0.modelBreakdown }, by: { $0.modelId })
+    private func modelBreakdownSection(metrics: AccountMetrics?) -> some View {
+        let byModel = Dictionary(grouping: (metrics?.daySnapshots ?? []).flatMap { $0.modelBreakdown }, by: { $0.modelId })
         let rows: [(id: String, tok: Int, cost: Double)] = byModel.map { (id, us) in
             (id, us.reduce(0) { $0 + $1.inputTokens + $1.outputTokens }, us.reduce(0) { $0 + $1.costUSD })
         }.sorted { $0.cost > $1.cost }
@@ -417,6 +451,11 @@ struct MenuBarPopoverView: View {
         """
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
+    }
+
+    private func refreshCurrentAccountMetrics() {
+        guard let account = currentAccount else { return }
+        viewModel.load(account: account)
     }
 
     private func restoreSelectedAccountIndex() {
