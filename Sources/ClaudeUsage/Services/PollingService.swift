@@ -64,6 +64,11 @@ class PollingService: ObservableObject {
     private let pollDurationMaxSamples = 200
     private let pollSkipCountsByReasonKey = "pollSkipCountsByReason"
     @MainActor private var pollSkipCountsLoaded = false
+    @MainActor private var lastPolledAtByAccount: [UUID: Date] = [:]
+    @MainActor private var lastLocalLogEventAt: Date?
+    private let quietLocalPollMultiplier = 3
+    private let quietLocalPollMinSeconds: TimeInterval = 180
+    private let localActivityBurstWindowSeconds: TimeInterval = 120
 
     private init() {
         pathMonitor.pathUpdateHandler = { [weak self] path in
@@ -112,7 +117,10 @@ class PollingService: ObservableObject {
     }
 
     func handleClaudeCodeLogsChanged() async {
-        let pollInProgress = await MainActor.run { self.currentTask != nil || self.isPolling }
+        let pollInProgress = await MainActor.run {
+            self.lastLocalLogEventAt = Date()
+            return self.currentTask != nil || self.isPolling
+        }
         if pollInProgress {
             await MainActor.run { self.pendingLogRefresh = true }
             return
@@ -176,21 +184,25 @@ class PollingService: ObservableObject {
             await recordPollSkip(.noActiveAccounts)
             return
         }
-        let concurrencyLimit = min(max(1, activeAccounts.count), maxConcurrencyUpperCap)
+        let accountsToPoll = await selectAccountsForPolling(
+            activeAccounts,
+            pollIntervalSeconds: config.pollIntervalSeconds
+        )
+        let concurrencyLimit = min(max(1, accountsToPoll.count), maxConcurrencyUpperCap)
         let chunkSize = max(1, concurrencyLimit * 2)
 
         var chunkStart = 0
-        while chunkStart < activeAccounts.count {
+        while chunkStart < accountsToPoll.count {
             guard !Task.isCancelled else { return }
-            let chunkEnd = min(chunkStart + chunkSize, activeAccounts.count)
-            let chunk = Array(activeAccounts[chunkStart..<chunkEnd])
+            let chunkEnd = min(chunkStart + chunkSize, accountsToPoll.count)
+            let chunk = Array(accountsToPoll[chunkStart..<chunkEnd])
             await withTaskGroup(of: UUID?.self) { group in
                 var launched = 0
                 for account in chunk {
                     if launched >= concurrencyLimit { _ = await group.next() }
                     group.addTask { [account] in
                         guard !Task.isCancelled else { return nil }
-                        let jitter = self.accountPollJitterNanos(accountId: account.id, activeAccountCount: activeAccounts.count)
+                        let jitter = self.accountPollJitterNanos(accountId: account.id, activeAccountCount: accountsToPoll.count)
                         if jitter > 0 {
                             try? await Task.sleep(nanoseconds: jitter)
                         }
@@ -209,7 +221,7 @@ class PollingService: ObservableObject {
             chunkStart = chunkEnd
         }
         let successCount = updatedIds.count
-        let failures = max(0, activeAccounts.count - successCount)
+        let failures = max(0, accountsToPoll.count - successCount)
         let hasSuccessfulUpdates = successCount > 0
         await MainActor.run {
             self.lastPollSuccessCount = successCount
@@ -884,6 +896,56 @@ class PollingService: ObservableObject {
         let hash = accountId.uuidString.utf8.reduce(UInt64(0)) { ($0 &* 33) &+ UInt64($1) }
         let jitterMillis = hash % 350
         return jitterMillis * 1_000_000
+    }
+
+    private static func isLocalLogProvider(_ accountType: AccountType) -> Bool {
+        switch accountType {
+        case .claudeCode, .codex, .gemini:
+            return true
+        default:
+            return false
+        }
+    }
+
+    private func localQuietPollCadenceSeconds(basePollIntervalSeconds: Int) -> TimeInterval {
+        max(
+            TimeInterval(basePollIntervalSeconds * quietLocalPollMultiplier),
+            quietLocalPollMinSeconds
+        )
+    }
+
+    private func selectAccountsForPolling(_ activeAccounts: [Account], pollIntervalSeconds: Int, now: Date = Date()) async -> [Account] {
+        await MainActor.run {
+            let activeIds = Set(activeAccounts.map(\.id))
+            self.lastPolledAtByAccount = self.lastPolledAtByAccount.filter { activeIds.contains($0.key) }
+
+            let quietCadence = self.localQuietPollCadenceSeconds(basePollIntervalSeconds: pollIntervalSeconds)
+            let hasRecentLocalActivity = self.lastLocalLogEventAt.map {
+                now.timeIntervalSince($0) <= self.localActivityBurstWindowSeconds
+            } ?? false
+
+            var selected: [Account] = []
+            selected.reserveCapacity(activeAccounts.count)
+
+            for account in activeAccounts {
+                guard Self.isLocalLogProvider(account.type) else {
+                    selected.append(account)
+                    continue
+                }
+                if hasRecentLocalActivity {
+                    self.lastPolledAtByAccount[account.id] = now
+                    selected.append(account)
+                    continue
+                }
+                if let lastPolled = self.lastPolledAtByAccount[account.id],
+                   now.timeIntervalSince(lastPolled) < quietCadence {
+                    continue
+                }
+                self.lastPolledAtByAccount[account.id] = now
+                selected.append(account)
+            }
+            return selected
+        }
     }
 
     private func setFetchError(_ message: String, for accountId: UUID, accountType: AccountType? = nil) async {
