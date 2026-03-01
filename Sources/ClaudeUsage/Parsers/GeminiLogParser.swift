@@ -26,11 +26,57 @@ private struct GeminiDailyFileUsage {
     var modelTotals: [String: (input: Int, output: Int, cacheRead: Int)]
 }
 
+private struct PersistedGeminiModelTotals: Codable {
+    var input: Int
+    var output: Int
+    var cacheRead: Int
+}
+
+private struct PersistedGeminiDailyFileUsage: Codable {
+    var year: Int
+    var month: Int
+    var day: Int
+    var input: Int
+    var output: Int
+    var cacheRead: Int
+    var modelTotals: [String: PersistedGeminiModelTotals]
+
+    init(from usage: GeminiDailyFileUsage) {
+        self.year = usage.day.year ?? 0
+        self.month = usage.day.month ?? 0
+        self.day = usage.day.day ?? 0
+        self.input = usage.input
+        self.output = usage.output
+        self.cacheRead = usage.cacheRead
+        self.modelTotals = usage.modelTotals.mapValues {
+            PersistedGeminiModelTotals(input: $0.input, output: $0.output, cacheRead: $0.cacheRead)
+        }
+    }
+
+    var asUsage: GeminiDailyFileUsage {
+        GeminiDailyFileUsage(
+            day: DateComponents(year: year, month: month, day: day),
+            input: input,
+            output: output,
+            cacheRead: cacheRead,
+            modelTotals: modelTotals.mapValues { ($0.input, $0.output, $0.cacheRead) }
+        )
+    }
+}
+
+private struct PersistedGeminiFileCheckpoint: Codable {
+    var modifiedAt: Date
+    var size: Int
+    var inode: UInt64?
+    var usage: PersistedGeminiDailyFileUsage
+}
+
 class GeminiLogParser {
     static let shared = GeminiLogParser()
 
     private let geminiDir: URL
     private let fallbackInterval: TimeInterval
+    private let checkpointFile: URL
     private var fsEventStream: FSEventStreamRef?
     private var debounceWork: DispatchWorkItem?
     private var fallbackTimer: Timer?
@@ -56,11 +102,19 @@ class GeminiLogParser {
         self.geminiDir = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".gemini")
         self.fallbackInterval = 60
+        self.checkpointFile = AppConstants.sharedContainerURL.appendingPathComponent("gemini_file_checkpoints.json")
+        let loaded = Self.loadCheckpoints(from: self.checkpointFile)
+        self.fileChecksums = loaded.checksums
+        self.fileDailyUsage = loaded.usage
     }
 
-    internal init(geminiDir: URL, fallbackInterval: TimeInterval = 60) {
+    internal init(geminiDir: URL, fallbackInterval: TimeInterval = 60, checkpointFile: URL? = nil) {
         self.geminiDir = geminiDir
         self.fallbackInterval = fallbackInterval
+        self.checkpointFile = checkpointFile ?? geminiDir.appendingPathComponent("gemini_file_checkpoints.json")
+        let loaded = Self.loadCheckpoints(from: self.checkpointFile)
+        self.fileChecksums = loaded.checksums
+        self.fileDailyUsage = loaded.usage
     }
 
     func discoverSessionFiles() -> [URL] {
@@ -120,6 +174,7 @@ class GeminiLogParser {
             guard let record = parseFile(url) else { continue }
             fileDailyUsage[url] = computeDailyUsage(record: record, day: todayComps, fallbackDate: mod)
         }
+        persistCheckpoints()
 
         var totalInput = 0
         var totalOutput = 0
@@ -291,6 +346,44 @@ class GeminiLogParser {
         }
         debounceWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
+    }
+
+    private static func loadCheckpoints(from file: URL) -> (
+        checksums: [URL: (Date, Int, UInt64?)],
+        usage: [URL: GeminiDailyFileUsage]
+    ) {
+        guard let data = try? Data(contentsOf: file),
+              let raw = try? JSONDecoder().decode([String: PersistedGeminiFileCheckpoint].self, from: data) else {
+            return ([:], [:])
+        }
+        var checksums: [URL: (Date, Int, UInt64?)] = [:]
+        var usage: [URL: GeminiDailyFileUsage] = [:]
+        for (path, checkpoint) in raw {
+            let url = URL(fileURLWithPath: path)
+            checksums[url] = (checkpoint.modifiedAt, checkpoint.size, checkpoint.inode)
+            usage[url] = checkpoint.usage.asUsage
+        }
+        return (checksums, usage)
+    }
+
+    private func persistCheckpoints() {
+        var raw: [String: PersistedGeminiFileCheckpoint] = [:]
+        for (url, checksum) in fileChecksums {
+            guard let usage = fileDailyUsage[url] else { continue }
+            raw[url.path] = PersistedGeminiFileCheckpoint(
+                modifiedAt: checksum.0,
+                size: checksum.1,
+                inode: checksum.2,
+                usage: PersistedGeminiDailyFileUsage(from: usage)
+            )
+        }
+        do {
+            try FileManager.default.createDirectory(at: AppConstants.sharedContainerURL, withIntermediateDirectories: true)
+            let data = try JSONEncoder().encode(raw)
+            try data.write(to: checkpointFile, options: .atomic)
+        } catch {
+            ErrorLogger.shared.log("Failed to persist Gemini checkpoints: \(error.localizedDescription)", level: "WARN")
+        }
     }
 }
 
