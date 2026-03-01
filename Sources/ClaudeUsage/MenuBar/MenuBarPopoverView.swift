@@ -253,17 +253,27 @@ struct MenuBarPopoverView: View {
         let dismissKey = "modelHintDismissed_\(account.id.uuidString)"
         let dismissed = UserDefaults.standard.object(forKey: dismissKey) as? Date
         let shouldShow = dismissed.map { Date().timeIntervalSince($0) > 7 * 86400 } ?? true
+        let provider = hintProviderName(hint: hint, account: account)
+        let confidence = hintConfidenceLabel(hint.savingsConfidence)
         return Group {
             if shouldShow {
-                HStack {
-                    Image(systemName: "lightbulb").foregroundColor(.yellow)
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Image(systemName: "lightbulb").foregroundColor(.yellow)
+                        Text("\(provider) model recommendation")
+                            .font(.caption.weight(.semibold))
+                        Spacer()
+                        Button(action: { UserDefaults.standard.set(Date(), forKey: dismissKey) }) {
+                            Image(systemName: "xmark").font(.caption2)
+                        }.buttonStyle(.plain)
+                    }
                     Text("↓ ~\(String(format: "$%.2f", hint.estimatedSavingsUSD))/day switching to \(hint.recommendedModel)")
                         .font(.caption)
-                    Spacer()
-                    Button(action: { UserDefaults.standard.set(Date(), forKey: dismissKey) }) {
-                        Image(systemName: "xmark").font(.caption2)
-                    }.buttonStyle(.plain)
-                }.padding(.horizontal, 12).padding(.vertical, 6)
+                    Text("Confidence: \(confidence)")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.horizontal, 12).padding(.vertical, 6)
                 .background(Color.yellow.opacity(0.1)).cornerRadius(6).padding(.horizontal, 12)
             }
         }
@@ -434,6 +444,42 @@ struct MenuBarPopoverView: View {
 
     private func confidenceColor(_ confidence: String) -> Color {
         confidence == "Billing-grade" ? .green : .orange
+    }
+
+    private func hintProviderName(hint: ModelHint, account: Account) -> String {
+        let model = hint.recommendedModel.lowercased()
+        if model.hasPrefix("claude") {
+            return "Anthropic"
+        }
+        if model.hasPrefix("gpt") || model.hasPrefix("o1") || model.hasPrefix("o3") || model.hasPrefix("o4") {
+            return "OpenAI"
+        }
+        if model.hasPrefix("gemini") {
+            return "Google Gemini"
+        }
+        switch account.type {
+        case .claudeCode, .anthropicAPI, .claudeAI:
+            return "Anthropic"
+        case .codex, .openAIOrg:
+            return "OpenAI"
+        case .gemini:
+            return "Google Gemini"
+        case .windsurfEnterprise:
+            return "Windsurf"
+        case .githubCopilot:
+            return "GitHub Copilot"
+        }
+    }
+
+    private func hintConfidenceLabel(_ confidence: ModelHint.SavingsConfidence) -> String {
+        switch confidence {
+        case .measured:
+            return "Measured"
+        case .profileEstimated:
+            return "Profile-estimated"
+        case .heuristicEstimated:
+            return "Heuristic estimate"
+        }
     }
 
     @ViewBuilder
