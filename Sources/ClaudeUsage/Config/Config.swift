@@ -55,6 +55,40 @@ struct Config: Codable {
         )
     }
 
+    init(
+        schemaVersion: Int,
+        accounts: [Account],
+        pollIntervalSeconds: Int,
+        tui: TUIConfig,
+        display: DisplayConfig,
+        sparkline: SparklineConfig,
+        forecast: ForecastConfig,
+        webhook: WebhookConfig,
+        analytics: AnalyticsConfig,
+        modelOptimizer: ModelOptimizerConfig,
+        iCloudSync: iCloudSyncConfig,
+        hotkey: GlobalHotkeyConfig,
+        automations: [AutomationRule],
+        claudeAI: ClaudeAIConfig,
+        hotkeyConfig: HotkeyConfig
+    ) {
+        self.schemaVersion = schemaVersion
+        self.accounts = accounts
+        self.pollIntervalSeconds = pollIntervalSeconds
+        self.tui = tui
+        self.display = display
+        self.sparkline = sparkline
+        self.forecast = forecast
+        self.webhook = webhook
+        self.analytics = analytics
+        self.modelOptimizer = modelOptimizer
+        self.iCloudSync = iCloudSync
+        self.hotkey = hotkey
+        self.automations = automations
+        self.claudeAI = claudeAI
+        self.hotkeyConfig = hotkeyConfig
+    }
+
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         schemaVersion = try c.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1
