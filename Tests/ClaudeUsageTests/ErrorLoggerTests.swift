@@ -47,4 +47,16 @@ final class ErrorLoggerTests: XCTestCase {
         let size = (try? FileManager.default.attributesOfItem(atPath: logURL.path))?[.size] as? Int ?? -1
         XCTAssertEqual(size, 0, "errors.log must be 0 bytes after clearLog()")
     }
+
+    func testEmittedLogLineMatchesContract() {
+        logger.log("contract check", level: "WARN", file: "/tmp/Foo.swift", line: 42)
+        let exp = expectation(description: "write done")
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.3) { exp.fulfill() }
+        wait(for: [exp], timeout: 2)
+        guard let loggedLine = logger.readLast(1).first else {
+            XCTFail("expected one log line")
+            return
+        }
+        assertValidErrorLogLine(loggedLine)
+    }
 }
