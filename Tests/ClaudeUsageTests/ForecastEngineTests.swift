@@ -9,6 +9,19 @@ final class ForecastEngineTests: XCTestCase {
             cacheCreationTokens: 0, cacheReadTokens: 0, totalCostUSD: cost, modelBreakdown: [])
     }
 
+    private func cumulativeSnap(_ cost: Double, at date: Date, modelId: String = "codex-local") -> UsageSnapshot {
+        UsageSnapshot(
+            accountId: accountId,
+            timestamp: date,
+            inputTokens: 0,
+            outputTokens: 0,
+            cacheCreationTokens: 0,
+            cacheReadTokens: 0,
+            totalCostUSD: cost,
+            modelBreakdown: [ModelUsage(modelId: modelId, inputTokens: 0, outputTokens: 0, costUSD: cost)]
+        )
+    }
+
     func testZeroSnapshotsReturnsNil() {
         XCTAssertNil(ForecastEngine.compute(history: []))
     }
@@ -121,5 +134,35 @@ final class ForecastEngineTests: XCTestCase {
         let result = ForecastEngine.compute(history: snaps, now: noon)!
         XCTAssertGreaterThanOrEqual(result.projectedEOWCostUSD, result.projectedEODCostUSD)
         XCTAssertGreaterThanOrEqual(result.projectedEOMCostUSD, result.projectedEODCostUSD)
+    }
+
+    func testCumulativeProviderBurnRateUsesCostDeltas() {
+        let cal = Calendar.current
+        var comps = cal.dateComponents([.year, .month, .day], from: Date())
+        comps.hour = 12; comps.minute = 0; comps.second = 0
+        let noon = cal.date(from: comps)!
+        let snaps = [
+            cumulativeSnap(1.0, at: noon.addingTimeInterval(-2 * 3600)),
+            cumulativeSnap(3.0, at: noon.addingTimeInterval(-1 * 3600)),
+            cumulativeSnap(4.0, at: noon),
+        ]
+        let result = ForecastEngine.compute(history: snaps, now: noon)!
+        XCTAssertEqual(result.burnRatePerHour, 2.0, accuracy: 0.001)
+        XCTAssertEqual(result.projectedEODCostUSD, 4.0 + 2.0 * 12.0, accuracy: 0.1)
+    }
+
+    func testCumulativeProviderCounterResetTreatedAsFreshDelta() {
+        let cal = Calendar.current
+        var comps = cal.dateComponents([.year, .month, .day], from: Date())
+        comps.hour = 11; comps.minute = 0; comps.second = 0
+        let eleven = cal.date(from: comps)!
+        let snaps = [
+            cumulativeSnap(5.0, at: eleven.addingTimeInterval(-2 * 3600)),
+            cumulativeSnap(1.0, at: eleven.addingTimeInterval(-1 * 3600)), // reset
+            cumulativeSnap(3.0, at: eleven),
+        ]
+        let result = ForecastEngine.compute(history: snaps, now: eleven)!
+        XCTAssertGreaterThan(result.burnRatePerHour, 0)
+        XCTAssertGreaterThan(result.projectedEODCostUSD, 3.0)
     }
 }
