@@ -15,7 +15,7 @@ struct DailyAggregate {
 }
 
 enum CacheSchema {
-    static let currentVersion = 1
+    static let currentVersion = 2
 }
 
 struct UsageCachePayload: Codable {

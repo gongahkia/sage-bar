@@ -75,8 +75,15 @@ private actor CacheStore {
         }
         if let decoded = try? decoder().decode(UsageCachePayload.self, from: data) {
             let deduped = deduplicateSnapshots(decoded.snapshots)
+            let needsSchemaMigration = decoded.schemaVersion < CacheSchema.currentVersion
             if deduped.count != decoded.snapshots.count {
                 log.info("Deduplicated usage cache: \(decoded.snapshots.count) -> \(deduped.count)")
+            }
+            if needsSchemaMigration {
+                log.info("Migrating usage cache schema \(decoded.schemaVersion) -> \(CacheSchema.currentVersion)")
+            }
+            if deduped.count != decoded.snapshots.count || needsSchemaMigration {
+                // Persist canonical snapshots so legacy payloads include required defaulted fields.
                 saveSnapshots(deduped)
             }
             log.debug("Cache loaded: \(deduped.count) snapshots (schema \(decoded.schemaVersion))")

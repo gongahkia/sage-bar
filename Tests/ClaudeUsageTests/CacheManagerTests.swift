@@ -394,6 +394,50 @@ final class CacheManagerTests: XCTestCase {
         XCTAssertEqual(payload.snapshots.count, 1)
     }
 
+    func testVersionedUsagePayloadWithMissingStaleAndConfidenceFieldsMigratesOnRead() throws {
+        let url = fixtureDir.appendingPathComponent("usage_cache.json")
+        let legacyTimestamp = ISO8601DateFormatter().string(from: Date())
+        let legacyPayload: [String: Any] = [
+            "schemaVersion": 1,
+            "snapshots": [
+                [
+                    "accountId": accountId.uuidString,
+                    "timestamp": legacyTimestamp,
+                    "inputTokens": 25,
+                    "outputTokens": 5,
+                    "cacheCreationTokens": 0,
+                    "cacheReadTokens": 0,
+                    "totalCostUSD": 0.12,
+                    "modelBreakdown": [
+                        [
+                            "modelId": "claude-code-local",
+                            "inputTokens": 25,
+                            "outputTokens": 5,
+                            "cacheTokens": 0,
+                            "costUSD": 0.12
+                        ]
+                    ]
+                ]
+            ]
+        ]
+        let legacyData = try JSONSerialization.data(withJSONObject: legacyPayload, options: [])
+        try legacyData.write(to: url, options: .atomic)
+
+        let loaded = cm.load()
+        XCTAssertEqual(loaded.count, 1)
+        XCTAssertEqual(loaded.first?.isStale, false)
+        XCTAssertEqual(loaded.first?.costConfidence, .estimated)
+
+        let migratedData = try Data(contentsOf: url)
+        let migratedObject = try JSONSerialization.jsonObject(with: migratedData) as? [String: Any]
+        let schemaVersion = migratedObject?["schemaVersion"] as? Int
+        XCTAssertEqual(schemaVersion, CacheSchema.currentVersion)
+        let snapshots = migratedObject?["snapshots"] as? [[String: Any]]
+        let first = snapshots?.first
+        XCTAssertNotNil(first?["isStale"])
+        XCTAssertEqual(first?["costConfidence"] as? String, CostConfidence.estimated.rawValue)
+    }
+
     func testLegacyForecastArrayMigratesToVersionedPayloadOnRead() throws {
         let forecast = ForecastSnapshot(
             accountId: accountId,
