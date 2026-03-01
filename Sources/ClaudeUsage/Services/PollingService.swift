@@ -39,6 +39,7 @@ class PollingService: ObservableObject {
     private let circuitBreakerDurationSeconds: TimeInterval = 300
     private let claudeAISessionExpiredNoticeCooldownSeconds: TimeInterval = 900
     @MainActor private var nextPollCycleID: Int = 1
+    @MainActor private var lastNetworkRecoveryPollAt: Date?
     @MainActor private var pollDurationSamplesSeconds: [Double] = []
     private let pollDurationSamplesKey = "pollDurationSamplesSeconds"
     private let pollDurationMaxSamples = 200
@@ -46,7 +47,14 @@ class PollingService: ObservableObject {
     private init() {
         pathMonitor.pathUpdateHandler = { [weak self] path in
             let available = path.status == .satisfied
-            Task { @MainActor in self?.networkAvailable = available }
+            Task { @MainActor in
+                guard let self else { return }
+                let wasAvailable = self.networkAvailable
+                self.networkAvailable = available
+                if available && !wasAvailable {
+                    await self.triggerImmediateRecoveryPollIfNeeded()
+                }
+            }
             if !available {
                 ErrorLogger.shared.log("Network unavailable, skipping polls until reconnect", level: "WARN")
             }
@@ -925,6 +933,16 @@ class PollingService: ObservableObject {
         default:
             return false
         }
+    }
+
+    @MainActor
+    private func triggerImmediateRecoveryPollIfNeeded() async {
+        let now = Date()
+        if let last = lastNetworkRecoveryPollAt, now.timeIntervalSince(last) < 10 {
+            return
+        }
+        lastNetworkRecoveryPollAt = now
+        Task { await self.pollOnce() }
     }
 
     private func shouldEmitClaudeAISessionExpiredNotification(for accountId: UUID) async -> Bool {
