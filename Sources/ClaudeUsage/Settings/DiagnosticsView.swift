@@ -2,6 +2,7 @@ import SwiftUI
 
 struct DiagnosticsView: View {
     @ObservedObject private var errorLogger = ErrorLogger.shared
+    @ObservedObject private var polling = PollingService.shared
     @State private var entries: [String] = []
 
     var body: some View {
@@ -20,6 +21,12 @@ struct DiagnosticsView: View {
             Divider()
             HStack {
                 Text("\(entries.count) entries").font(.caption).foregroundColor(.secondary)
+                Text("Poll p50: \(polling.pollDurationP50Ms)ms")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                Text("Poll p90: \(polling.pollDurationP90Ms)ms")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
                 Spacer()
                 Button("Copy All") {
                     NSPasteboard.general.clearContents()

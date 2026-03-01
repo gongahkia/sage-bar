@@ -15,6 +15,8 @@ class PollingService: ObservableObject {
     @MainActor @Published var lastFetchError: String?
     @MainActor @Published var lastPollSuccessCount: Int = 0
     @MainActor @Published var lastPollFailureCount: Int = 0
+    @MainActor @Published var pollDurationP50Ms: Int = 0
+    @MainActor @Published var pollDurationP90Ms: Int = 0
 
     private var timer: Timer?
     private var currentTask: Task<Void, Never>?
@@ -35,6 +37,9 @@ class PollingService: ObservableObject {
     private let circuitBreakerThreshold = 3
     private let circuitBreakerDurationSeconds: TimeInterval = 300
     @MainActor private var nextPollCycleID: Int = 1
+    @MainActor private var pollDurationSamplesSeconds: [Double] = []
+    private let pollDurationSamplesKey = "pollDurationSamplesSeconds"
+    private let pollDurationMaxSamples = 200
 
     private init() {
         pathMonitor.pathUpdateHandler = { [weak self] path in
@@ -108,6 +113,8 @@ class PollingService: ObservableObject {
     }
 
     private func runPollCycle(cycleID: Int) async {
+        await loadPollDurationSamplesIfNeeded()
+        let cycleStartedAt = Date()
         guard !Task.isCancelled else { return }
         let available = await MainActor.run { self.networkAvailable }
         guard available else {
@@ -119,6 +126,9 @@ class PollingService: ObservableObject {
         log.info("[poll_cycle=\(cycleID)] Poll started: \(config.accounts.filter { $0.isActive }.count) active accounts")
         await MainActor.run { self.isPolling = true }
         defer {
+            Task {
+                await self.recordPollDuration(seconds: Date().timeIntervalSince(cycleStartedAt))
+            }
             Task { @MainActor in
                 self.isPolling = false
                 if !updatedIds.isEmpty {
@@ -715,6 +725,47 @@ class PollingService: ObservableObject {
             self.pendingLogRefresh = false
             return pending
         }
+    }
+
+    private func loadPollDurationSamplesIfNeeded() async {
+        await MainActor.run {
+            guard self.pollDurationSamplesSeconds.isEmpty else { return }
+            let stored = UserDefaults.standard.array(forKey: self.pollDurationSamplesKey) as? [Double] ?? []
+            self.pollDurationSamplesSeconds = stored
+            self.recomputePollDurationPercentiles()
+        }
+    }
+
+    private func recordPollDuration(seconds: Double) async {
+        await MainActor.run {
+            self.pollDurationSamplesSeconds.append(max(0, seconds))
+            if self.pollDurationSamplesSeconds.count > self.pollDurationMaxSamples {
+                self.pollDurationSamplesSeconds.removeFirst(self.pollDurationSamplesSeconds.count - self.pollDurationMaxSamples)
+            }
+            UserDefaults.standard.set(self.pollDurationSamplesSeconds, forKey: self.pollDurationSamplesKey)
+            self.recomputePollDurationPercentiles()
+        }
+    }
+
+    @MainActor
+    private func recomputePollDurationPercentiles() {
+        guard !pollDurationSamplesSeconds.isEmpty else {
+            pollDurationP50Ms = 0
+            pollDurationP90Ms = 0
+            return
+        }
+        let sorted = pollDurationSamplesSeconds.sorted()
+        let p50 = percentile(sortedValues: sorted, percentile: 0.50)
+        let p90 = percentile(sortedValues: sorted, percentile: 0.90)
+        pollDurationP50Ms = Int((p50 * 1000).rounded())
+        pollDurationP90Ms = Int((p90 * 1000).rounded())
+    }
+
+    private func percentile(sortedValues: [Double], percentile: Double) -> Double {
+        guard !sortedValues.isEmpty else { return 0 }
+        let clamped = min(max(percentile, 0), 1)
+        let index = Int((Double(sortedValues.count - 1) * clamped).rounded())
+        return sortedValues[index]
     }
 
     private func accountPollJitterNanos(accountId: UUID, activeAccountCount: Int) -> UInt64 {
