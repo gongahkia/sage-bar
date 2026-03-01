@@ -18,6 +18,13 @@ enum SyncState {
 }
 
 class iCloudSyncManager: ObservableObject {
+    private struct SyncEnvelope: Codable {
+        var schemaVersion: Int
+        var conflictEpoch: Int
+        var lastWriterID: String
+        var snapshots: [UsageSnapshot]
+    }
+
     static let shared = iCloudSyncManager()
     @Published var syncState: SyncState = .disabled
     @Published var lastSyncDate: Date? = UserDefaults.standard.object(forKey: "lastCloudSyncDate") as? Date
@@ -26,6 +33,7 @@ class iCloudSyncManager: ObservableObject {
     private let coordinator = NSFileCoordinator()
     private let coordTimeout: TimeInterval = 5
     private let lastSyncPayloadHashKey = "lastCloudSyncPayloadHash"
+    private let syncConflictEpochKey = "iCloudSyncConflictEpoch"
 
     private init() {}
 
@@ -62,16 +70,31 @@ class iCloudSyncManager: ObservableObject {
         let localSnaps = CacheManager.shared.load()
         let remoteData = await coordinateRead(at: remoteURL)
         var remoteSnaps: [UsageSnapshot] = []
+        var remoteConflictEpoch = 0
         if let data = remoteData {
             let dec = JSONDecoder(); dec.dateDecodingStrategy = .iso8601
-            remoteSnaps = (try? dec.decode(UsageCachePayload.self, from: data).snapshots)
-                ?? (try? dec.decode([UsageSnapshot].self, from: data))
-                ?? []
+            if let envelope = try? dec.decode(SyncEnvelope.self, from: data) {
+                remoteSnaps = envelope.snapshots
+                remoteConflictEpoch = envelope.conflictEpoch
+            } else {
+                remoteSnaps = (try? dec.decode(UsageCachePayload.self, from: data).snapshots)
+                    ?? (try? dec.decode([UsageSnapshot].self, from: data))
+                    ?? []
+            }
         }
         let merged = merge(local: localSnaps, remote: remoteSnaps)
         CacheManager.shared.save(merged)
         let enc = JSONEncoder(); enc.dateEncodingStrategy = .iso8601
-        guard let data = try? enc.encode(UsageCachePayload(snapshots: merged)) else { return }
+        let localEpoch = UserDefaults.standard.integer(forKey: syncConflictEpochKey)
+        let nextConflictEpoch = max(localEpoch, remoteConflictEpoch) + 1
+        let writerID = Host.current().localizedName ?? ProcessInfo.processInfo.hostName
+        let envelope = SyncEnvelope(
+            schemaVersion: CacheSchema.currentVersion,
+            conflictEpoch: nextConflictEpoch,
+            lastWriterID: writerID,
+            snapshots: merged
+        )
+        guard let data = try? enc.encode(envelope) else { return }
         let hash = contentHash(for: data)
         if UserDefaults.standard.string(forKey: lastSyncPayloadHashKey) == hash {
             log.debug("iCloud sync write skipped: payload hash unchanged")
@@ -79,6 +102,7 @@ class iCloudSyncManager: ObservableObject {
         }
         if await writeWithBackoff(data: data, to: remoteURL) {
             UserDefaults.standard.set(hash, forKey: lastSyncPayloadHashKey)
+            UserDefaults.standard.set(nextConflictEpoch, forKey: syncConflictEpochKey)
         }
     }
 
