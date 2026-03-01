@@ -143,48 +143,113 @@ class ClaudeCodeLogParser {
             ErrorLogger.shared.log("Skipping oversized log file \(url.lastPathComponent) (\(size / 1024 / 1024)MB)", level: "WARN")
             return []
         }
-        let text: String
+        let fileHandle: FileHandle
         do {
-            text = try String(contentsOf: url, encoding: .utf8)
+            fileHandle = try FileHandle(forReadingFrom: url)
         } catch {
             ErrorLogger.shared.log("Cannot read log file at \(url.path): \(error.localizedDescription)")
             return []
         }
+        defer { try? fileHandle.close() }
         let dec = JSONDecoder()
-        var results: [ClaudeCodeEntry] = []
+        var allResults: [ClaudeCodeEntry] = []
+        var incrementalResults: [ClaudeCodeEntry] = []
         var rejectedCount = 0
-        let normalizedText = normalizeConcatenatedJSONObjects(text)
-        let lines = normalizedText.split(omittingEmptySubsequences: true, whereSeparator: \.isNewline)
-        var startIndex = 0
+        var totalRecords = 0
+        var bytesRead = 0
+        let startIndex = incremental ? (lineCheckpoints[url] ?? 0) : 0
+        var recordBuffer: [UInt8] = []
+        var inString = false
+        var escaping = false
+        var braceDepth = 0
+
+        func processRecord(_ bytes: [UInt8]) -> Bool {
+            let raw = String(decoding: bytes, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !raw.isEmpty else { return true }
+            totalRecords += 1
+            do {
+                let entry = try dec.decode(ClaudeCodeEntry.self, from: Data(raw.utf8))
+                allResults.append(entry)
+                if !incremental || totalRecords > startIndex {
+                    incrementalResults.append(entry)
+                }
+            } catch {
+                rejectedCount += 1
+                let preview = String(raw.prefix(200))
+                ErrorLogger.shared.log("Malformed JSONL line \(totalRecords) in \(url.lastPathComponent): \(preview)", level: "WARN")
+                if recordDecodeFailureAndMaybeQuarantine(for: url) {
+                    return false
+                }
+            }
+            return true
+        }
+
         if incremental {
-            let prev = lineCheckpoints[url] ?? 0
-            if prev > lines.count {
+            lineCheckpoints[url] = max(0, startIndex)
+        }
+
+        parseLoop: while true {
+            let chunk: Data
+            do {
+                chunk = try fileHandle.read(upToCount: 64 * 1024) ?? Data()
+            } catch {
+                ErrorLogger.shared.log("Failed streaming read for \(url.lastPathComponent): \(error.localizedDescription)", level: "WARN")
+                break
+            }
+            if chunk.isEmpty { break }
+            bytesRead += chunk.count
+            for byte in chunk {
+                recordBuffer.append(byte)
+                if inString {
+                    if escaping {
+                        escaping = false
+                    } else if byte == 0x5C { // "\"
+                        escaping = true
+                    } else if byte == 0x22 { // "\""
+                        inString = false
+                    }
+                    continue
+                }
+                if byte == 0x22 { // "\""
+                    inString = true
+                    continue
+                }
+                if byte == 0x7B { // "{"
+                    braceDepth += 1
+                    continue
+                }
+                if byte == 0x7D, braceDepth > 0 { // "}"
+                    braceDepth -= 1
+                }
+
+                let isBoundaryNewline = byte == 0x0A && braceDepth == 0
+                let isBoundaryObjectClose = byte == 0x7D && braceDepth == 0
+                if isBoundaryNewline || isBoundaryObjectClose {
+                    if !processRecord(recordBuffer) {
+                        break parseLoop
+                    }
+                    recordBuffer.removeAll(keepingCapacity: true)
+                }
+            }
+        }
+
+        if !recordBuffer.isEmpty {
+            _ = processRecord(recordBuffer)
+        }
+
+        var results = incremental ? incrementalResults : allResults
+        if incremental {
+            let prev = startIndex
+            if prev > totalRecords {
                 ErrorLogger.shared.log(
                     "Claude checkpoint exceeds current line count for \(url.lastPathComponent); resetting checkpoint (file truncated or rotated)",
                     level: "WARN"
                 )
-                lineCheckpoints[url] = 0
-                persistLineCheckpoints()
-                startIndex = 0
+                lineCheckpoints[url] = totalRecords
+                results = allResults
             } else {
-                startIndex = prev
+                lineCheckpoints[url] = totalRecords
             }
-        }
-        for (offset, line) in lines.dropFirst(startIndex).enumerated() {
-            do {
-                results.append(try dec.decode(ClaudeCodeEntry.self, from: Data(line.utf8)))
-            } catch {
-                rejectedCount += 1
-                let preview = String(line.prefix(200))
-                let lineNumber = startIndex + offset + 1
-                ErrorLogger.shared.log("Malformed JSONL line \(lineNumber) in \(url.lastPathComponent): \(preview)", level: "WARN")
-                if recordDecodeFailureAndMaybeQuarantine(for: url) {
-                    break
-                }
-            }
-        }
-        if incremental {
-            lineCheckpoints[url] = lines.count
             persistLineCheckpoints()
         }
         ParserMetricsStore.shared.record(
@@ -192,7 +257,7 @@ class ClaudeCodeLogParser {
             filesScanned: 1,
             linesParsed: results.count,
             linesRejected: rejectedCount,
-            bytesRead: text.utf8.count
+            bytesRead: bytesRead
         )
         return results
     }
