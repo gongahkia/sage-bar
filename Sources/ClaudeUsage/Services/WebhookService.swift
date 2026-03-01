@@ -14,6 +14,7 @@ enum WebhookEvent {
 }
 
 class WebhookService {
+    private let maxPayloadBytes = 64 * 1024
     let maxRetries: Int
     private let session: URLSession
     private let baseRetryDelayNanos: UInt64
@@ -37,6 +38,11 @@ class WebhookService {
             throw APIError.networkError(URLError(.badURL))
         }
         let data = buildPayload(event: event, snapshot: snapshot, template: config.payloadTemplate)
+        guard data.count <= maxPayloadBytes else {
+            let msg = "Webhook payload too large (\(data.count) bytes); max allowed is \(maxPayloadBytes)"
+            ErrorLogger.shared.log(msg, level: "WARN")
+            throw APIError.serverError(413)
+        }
         try validateTemplateJSONIfNeeded(template: config.payloadTemplate, payload: data)
         var lastError: Error?
         let idempotencyKey = UUID().uuidString
