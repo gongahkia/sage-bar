@@ -152,6 +152,7 @@ class ClaudeCodeLogParser {
         }
         let dec = JSONDecoder()
         var results: [ClaudeCodeEntry] = []
+        var rejectedCount = 0
         let normalizedText = normalizeConcatenatedJSONObjects(text)
         let lines = normalizedText.split(omittingEmptySubsequences: true, whereSeparator: \.isNewline)
         var startIndex = 0
@@ -173,6 +174,7 @@ class ClaudeCodeLogParser {
             do {
                 results.append(try dec.decode(ClaudeCodeEntry.self, from: Data(line.utf8)))
             } catch {
+                rejectedCount += 1
                 let preview = String(line.prefix(200))
                 let lineNumber = startIndex + offset + 1
                 ErrorLogger.shared.log("Malformed JSONL line \(lineNumber) in \(url.lastPathComponent): \(preview)", level: "WARN")
@@ -185,6 +187,13 @@ class ClaudeCodeLogParser {
             lineCheckpoints[url] = lines.count
             persistLineCheckpoints()
         }
+        ParserMetricsStore.shared.record(
+            parser: "claude_code",
+            filesScanned: 1,
+            linesParsed: results.count,
+            linesRejected: rejectedCount,
+            bytesRead: text.utf8.count
+        )
         return results
     }
 
