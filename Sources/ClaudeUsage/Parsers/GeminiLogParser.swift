@@ -48,7 +48,7 @@ class GeminiLogParser {
         return f
     }()
 
-    private var fileChecksums: [URL: (Date, Int)] = [:] // mtime + size
+    private var fileChecksums: [URL: (Date, Int, UInt64?)] = [:] // mtime + size + inode
     private var fileDailyUsage: [URL: GeminiDailyFileUsage] = [:]
     private var missingDirLogged = false
 
@@ -110,12 +110,13 @@ class GeminiLogParser {
             let attrs = try? FileManager.default.attributesOfItem(atPath: url.path)
             guard let mod = attrs?[.modificationDate] as? Date else { continue }
             let size = (attrs?[.size] as? Int) ?? -1
+            let inode = (attrs?[.systemFileNumber] as? NSNumber)?.uint64Value
             if let prev = fileChecksums[url],
-               prev.0 == mod, prev.1 == size,
+               prev.0 == mod, prev.1 == size, prev.2 == inode,
                fileDailyUsage[url]?.day == todayComps {
                 continue
             }
-            fileChecksums[url] = (mod, size)
+            fileChecksums[url] = (mod, size, inode)
             guard let record = parseFile(url) else { continue }
             fileDailyUsage[url] = computeDailyUsage(record: record, day: todayComps, fallbackDate: mod)
         }

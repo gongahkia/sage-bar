@@ -71,7 +71,7 @@ class ClaudeCodeLogParser {
     static let shared = ClaudeCodeLogParser()
     private let claudeDir: URL
     let fallbackInterval: TimeInterval // internal for test override
-    private var fileChecksums: [URL: (Date, Int)] = [:] // mtime+size cache for skip-unchanged
+    private var fileChecksums: [URL: (Date, Int, UInt64?)] = [:] // mtime+size+inode cache for skip-unchanged
     private var fsEventStream: FSEventStreamRef?
     private var debounceWork: DispatchWorkItem?
     private var fallbackTimer: Timer?
@@ -237,9 +237,10 @@ class ClaudeCodeLogParser {
             let attrs = try? FileManager.default.attributesOfItem(atPath: url.path)
             let mod = attrs?[.modificationDate] as? Date
             let size = (attrs?[.size] as? Int) ?? -1
+            let inode = (attrs?[.systemFileNumber] as? NSNumber)?.uint64Value
             guard let mod else { continue }
-            if let prev = fileChecksums[url], prev.0 == mod, prev.1 == size { continue }
-            fileChecksums[url] = (mod, size)
+            if let prev = fileChecksums[url], prev.0 == mod, prev.1 == size, prev.2 == inode { continue }
+            fileChecksums[url] = (mod, size, inode)
             for entry in parseFile(url, incremental: true) {
                 guard let entryDate = entryTimestamp(entry, fallback: mod),
                       cal.dateComponents([.year,.month,.day], from: entryDate) == todayComps else { continue }
