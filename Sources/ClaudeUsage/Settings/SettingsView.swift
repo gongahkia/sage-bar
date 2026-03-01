@@ -120,6 +120,9 @@ struct AccountsTab: View {
 
     // task 88: test connection per account type
     private func testConnection(account: Account) async -> String {
+        guard account.type.capabilities.supportsConnectionTest else {
+            return "✗ Test connection unsupported for this provider type"
+        }
         switch account.type {
         case .claudeCode:
             return "✓ OK (local logs, no API)"
@@ -339,6 +342,10 @@ struct AddAccountSheet: View {
     }
 
     private var canSave: Bool {
+        let capabilityMode = type.capabilities.credentialMode
+        if capabilityMode == .none {
+            return true
+        }
         switch type {
         case .claudeCode, .codex, .gemini:
             return true

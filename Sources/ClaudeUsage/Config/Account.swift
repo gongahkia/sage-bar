@@ -11,6 +11,39 @@ enum AccountType: String, Codable, CaseIterable {
     case claudeAI = "claudeAI"        // session-based web account
 }
 
+enum ProviderCredentialMode {
+    case none
+    case anthropicAPIKey
+    case openAIAdminKey
+    case windsurfServiceKey
+    case githubTokenAndOrg
+    case claudeAISessionToken
+}
+
+struct ProviderCapabilities {
+    let credentialMode: ProviderCredentialMode
+    let supportsConnectionTest: Bool
+}
+
+extension AccountType {
+    var capabilities: ProviderCapabilities {
+        switch self {
+        case .claudeCode, .codex, .gemini:
+            return ProviderCapabilities(credentialMode: .none, supportsConnectionTest: true)
+        case .anthropicAPI:
+            return ProviderCapabilities(credentialMode: .anthropicAPIKey, supportsConnectionTest: true)
+        case .openAIOrg:
+            return ProviderCapabilities(credentialMode: .openAIAdminKey, supportsConnectionTest: true)
+        case .windsurfEnterprise:
+            return ProviderCapabilities(credentialMode: .windsurfServiceKey, supportsConnectionTest: true)
+        case .githubCopilot:
+            return ProviderCapabilities(credentialMode: .githubTokenAndOrg, supportsConnectionTest: true)
+        case .claudeAI:
+            return ProviderCapabilities(credentialMode: .claudeAISessionToken, supportsConnectionTest: true)
+        }
+    }
+}
+
 struct Account: Codable, Identifiable {
     var id: UUID
     var name: String
