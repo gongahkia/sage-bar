@@ -110,7 +110,11 @@ class AnthropicAPIClient {
         do {
             let req = request(path: "/v1/models")
             let (_, resp) = try await session.data(for: req)
-            return (resp as? HTTPURLResponse)?.statusCode == 200
+            guard let http = resp as? HTTPURLResponse else {
+                ErrorLogger.shared.log("Anthropic validateKey received non-HTTP response", level: "WARN")
+                return false
+            }
+            return http.statusCode == 200
         } catch { return false }
     }
 
@@ -122,7 +126,10 @@ class AnthropicAPIClient {
         let req = request(path: "/v1/usage", queryItems: items)
         do {
             let (data, resp) = try await session.data(for: req)
-            let http = resp as! HTTPURLResponse
+            guard let http = resp as? HTTPURLResponse else {
+                ErrorLogger.shared.log("Anthropic fetchUsage received non-HTTP response", level: "WARN")
+                throw APIError.networkError(URLError(.badServerResponse))
+            }
             try mapStatus(http.statusCode, headers: http.allHeaderFields)
             return try JSONDecoder().decode(AnthropicUsageResponse.self, from: data)
         } catch let e as APIError { throw e } catch { throw APIError.networkError(error) }
