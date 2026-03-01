@@ -4,6 +4,13 @@ struct DiagnosticsView: View {
     @ObservedObject private var errorLogger = ErrorLogger.shared
     @ObservedObject private var polling = PollingService.shared
     @State private var entries: [String] = []
+    
+    @MainActor
+    private var pollSkipSummary: String {
+        let totals = polling.pollSkipTotalsOrdered()
+        let parts = totals.map { "\($0.0.label): \($0.1)" }
+        return parts.joined(separator: " | ")
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -37,6 +44,15 @@ struct DiagnosticsView: View {
                     entries = []
                 }
             }.padding(.horizontal, 12).padding(.vertical, 8)
+            HStack {
+                Text("Poll skips: \(pollSkipSummary)")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .lineLimit(2)
+                Spacer()
+            }
+            .padding(.horizontal, 12)
+            .padding(.bottom, 8)
         }
         .onAppear { entries = errorLogger.readLast(50) }
         .onReceive(errorLogger.$lastError) { _ in

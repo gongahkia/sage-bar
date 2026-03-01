@@ -6,6 +6,24 @@ import OSLog
 private let log = Logger(subsystem: "dev.claudeusage", category: "PollingService")
 
 class PollingService: ObservableObject {
+    enum PollSkipReason: String, CaseIterable {
+        case networkUnavailable = "network_unavailable"
+        case noActiveAccounts = "no_active_accounts"
+        case circuitBreakerOpen = "circuit_breaker_open"
+        case providerRetryAfter = "provider_retry_after"
+        case recoveryPollCooldown = "recovery_poll_cooldown"
+
+        var label: String {
+            switch self {
+            case .networkUnavailable: return "network"
+            case .noActiveAccounts: return "no-active"
+            case .circuitBreakerOpen: return "circuit"
+            case .providerRetryAfter: return "retry-after"
+            case .recoveryPollCooldown: return "recovery-cooldown"
+            }
+        }
+    }
+
     static let shared = PollingService()
     static var anthropicClientFactory: (String) -> AnthropicAPIClient = { apiKey in
         AnthropicAPIClient(apiKey: apiKey)
@@ -17,6 +35,7 @@ class PollingService: ObservableObject {
     @MainActor @Published var lastPollFailureCount: Int = 0
     @MainActor @Published var pollDurationP50Ms: Int = 0
     @MainActor @Published var pollDurationP90Ms: Int = 0
+    @MainActor @Published private(set) var pollSkipCountsByReason: [String: Int] = [:]
 
     private var timer: Timer?
     private var currentTask: Task<Void, Never>?
@@ -43,6 +62,8 @@ class PollingService: ObservableObject {
     @MainActor private var pollDurationSamplesSeconds: [Double] = []
     private let pollDurationSamplesKey = "pollDurationSamplesSeconds"
     private let pollDurationMaxSamples = 200
+    private let pollSkipCountsByReasonKey = "pollSkipCountsByReason"
+    @MainActor private var pollSkipCountsLoaded = false
 
     private init() {
         pathMonitor.pathUpdateHandler = { [weak self] path in
@@ -100,6 +121,9 @@ class PollingService: ObservableObject {
     }
 
     func pollOnce() async {
+        await MainActor.run {
+            self.loadPollSkipCountsIfNeeded()
+        }
         let token = UUID()
         let cycleID = await MainActor.run { () -> Int in
             defer { self.nextPollCycleID += 1 }
@@ -130,6 +154,7 @@ class PollingService: ObservableObject {
         guard available else {
             log.warning("[poll_cycle=\(cycleID)] Network unavailable, skipping poll")
             ErrorLogger.shared.log("Network unavailable, skipping poll", level: "WARN")
+            await recordPollSkip(.networkUnavailable)
             return
         }
         var config = ConfigManager.shared.load()
@@ -149,6 +174,10 @@ class PollingService: ObservableObject {
         }
 
         let activeAccounts = config.accounts.filter { $0.isActive }
+        guard !activeAccounts.isEmpty else {
+            await recordPollSkip(.noActiveAccounts)
+            return
+        }
         let concurrencyLimit = min(max(1, activeAccounts.count), maxConcurrencyUpperCap)
         let chunkSize = max(1, concurrencyLimit * 2)
         var updatedIds: [UUID] = []
@@ -240,6 +269,7 @@ class PollingService: ObservableObject {
         if await isCircuitBreakerOpen(for: account.id, accountType: account.type) {
             let msg = "Circuit breaker open for account \(account.id.uuidString); skipping fetch until cooldown expires"
             ErrorLogger.shared.log(withProviderContext(msg), level: "WARN")
+            await recordPollSkip(.circuitBreakerOpen)
             await setFetchError(msg, for: account.id, accountType: account.type)
             return
         }
@@ -439,6 +469,7 @@ class PollingService: ObservableObject {
                 let seconds = Int(retryAfter.timeIntervalSinceNow.rounded(.up))
                 let msg = "Rate limited for account \(account.id.uuidString); deferred for \(max(1, seconds))s"
                 log.warning("\(msg, privacy: .public)")
+                await recordPollSkip(.providerRetryAfter)
                 await setFetchError(msg, for: account.id, accountType: account.type)
                 await registerCircuitBreakerFailure(for: account.id, accountType: account.type)
                 return
@@ -784,6 +815,36 @@ class PollingService: ObservableObject {
         }
     }
 
+    @MainActor
+    private func loadPollSkipCountsIfNeeded() {
+        guard !pollSkipCountsLoaded else { return }
+        let raw = UserDefaults.standard.dictionary(forKey: pollSkipCountsByReasonKey) ?? [:]
+        pollSkipCountsByReason = raw.reduce(into: [:]) { partialResult, entry in
+            if let value = entry.value as? Int {
+                partialResult[entry.key] = value
+            } else if let number = entry.value as? NSNumber {
+                partialResult[entry.key] = number.intValue
+            }
+        }
+        pollSkipCountsLoaded = true
+    }
+
+    private func recordPollSkip(_ reason: PollSkipReason) async {
+        await MainActor.run {
+            self.loadPollSkipCountsIfNeeded()
+            self.pollSkipCountsByReason[reason.rawValue, default: 0] += 1
+            UserDefaults.standard.set(self.pollSkipCountsByReason, forKey: self.pollSkipCountsByReasonKey)
+        }
+    }
+
+    @MainActor
+    func pollSkipTotalsOrdered() -> [(PollSkipReason, Int)] {
+        loadPollSkipCountsIfNeeded()
+        return PollSkipReason.allCases.map { reason in
+            (reason, pollSkipCountsByReason[reason.rawValue, default: 0])
+        }
+    }
+
     private func recordPollDuration(seconds: Double) async {
         await MainActor.run {
             self.pollDurationSamplesSeconds.append(max(0, seconds))
@@ -939,6 +1000,7 @@ class PollingService: ObservableObject {
     private func triggerImmediateRecoveryPollIfNeeded() async {
         let now = Date()
         if let last = lastNetworkRecoveryPollAt, now.timeIntervalSince(last) < 10 {
+            await recordPollSkip(.recoveryPollCooldown)
             return
         }
         lastNetworkRecoveryPollAt = now
