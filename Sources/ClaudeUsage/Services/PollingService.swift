@@ -222,7 +222,7 @@ class PollingService: ObservableObject {
         if await isCircuitBreakerOpen(for: account.id, accountType: account.type) {
             let msg = "Circuit breaker open for account \(account.id.uuidString); skipping fetch until cooldown expires"
             ErrorLogger.shared.log(withProviderContext(msg), level: "WARN")
-            await setFetchError(msg, for: account.id)
+            await setFetchError(msg, for: account.id, accountType: account.type)
             return
         }
         switch account.type {
@@ -278,14 +278,14 @@ class PollingService: ObservableObject {
             } catch {
                 let msg = "No OpenAI admin key for account \(account.id.uuidString): \(error.localizedDescription)"
                 ErrorLogger.shared.log(withProviderContext(msg))
-                await setFetchError(msg, for: account.id)
+                await setFetchError(msg, for: account.id, accountType: account.type)
                 await registerCircuitBreakerFailure(for: account.id, accountType: account.type)
                 return
             }
             guard let adminKey = ProviderCredentialCodec.openAIAdminKey(from: rawCredential) else {
                 let msg = "Invalid OpenAI credential payload for account \(account.id.uuidString)"
                 ErrorLogger.shared.log(withProviderContext(msg))
-                await setFetchError(msg, for: account.id)
+                await setFetchError(msg, for: account.id, accountType: account.type)
                 await registerCircuitBreakerFailure(for: account.id, accountType: account.type)
                 return
             }
@@ -297,23 +297,23 @@ class PollingService: ObservableObject {
             } catch APIError.invalidKey {
                 let msg = "Invalid OpenAI admin key for account \(account.id.uuidString)"
                 ErrorLogger.shared.log(withProviderContext(msg), file: #file, line: #line)
-                await setFetchError(msg, for: account.id)
+                await setFetchError(msg, for: account.id, accountType: account.type)
                 await registerCircuitBreakerFailure(for: account.id, accountType: account.type)
             } catch APIError.rateLimited(let retryAfter) {
                 let wait = max(1, retryAfter ?? 60)
                 let msg = "OpenAI usage API rate-limited for account \(account.id.uuidString); retry after \(wait)s"
                 ErrorLogger.shared.log(withProviderContext(msg), file: #file, line: #line)
-                await setFetchError(msg, for: account.id)
+                await setFetchError(msg, for: account.id, accountType: account.type)
                 await registerCircuitBreakerFailure(for: account.id, accountType: account.type)
             } catch APIError.networkError(let underlying) {
                 let msg = "OpenAI usage API network error for account \(account.id.uuidString): \(underlying.localizedDescription)"
                 ErrorLogger.shared.log(withProviderContext(msg), file: #file, line: #line)
-                await setFetchError(msg, for: account.id)
+                await setFetchError(msg, for: account.id, accountType: account.type)
                 await registerCircuitBreakerFailure(for: account.id, accountType: account.type)
             } catch {
                 let msg = "OpenAI usage API unexpected error for account \(account.id.uuidString): \(error.localizedDescription)"
                 ErrorLogger.shared.log(withProviderContext(msg), file: #file, line: #line)
-                await setFetchError(msg, for: account.id)
+                await setFetchError(msg, for: account.id, accountType: account.type)
                 await registerCircuitBreakerFailure(for: account.id, accountType: account.type)
             }
         case .windsurfEnterprise:
@@ -323,14 +323,14 @@ class PollingService: ObservableObject {
             } catch {
                 let msg = "No Windsurf service key for account \(account.id.uuidString): \(error.localizedDescription)"
                 ErrorLogger.shared.log(withProviderContext(msg))
-                await setFetchError(msg, for: account.id)
+                await setFetchError(msg, for: account.id, accountType: account.type)
                 await registerCircuitBreakerFailure(for: account.id, accountType: account.type)
                 return
             }
             guard let payload = ProviderCredentialCodec.windsurf(from: rawCredential) else {
                 let msg = "Invalid Windsurf credential payload for account \(account.id.uuidString)"
                 ErrorLogger.shared.log(withProviderContext(msg))
-                await setFetchError(msg, for: account.id)
+                await setFetchError(msg, for: account.id, accountType: account.type)
                 await registerCircuitBreakerFailure(for: account.id, accountType: account.type)
                 return
             }
@@ -342,23 +342,23 @@ class PollingService: ObservableObject {
             } catch APIError.invalidKey {
                 let msg = "Invalid Windsurf service key for account \(account.id.uuidString)"
                 ErrorLogger.shared.log(withProviderContext(msg), file: #file, line: #line)
-                await setFetchError(msg, for: account.id)
+                await setFetchError(msg, for: account.id, accountType: account.type)
                 await registerCircuitBreakerFailure(for: account.id, accountType: account.type)
             } catch APIError.rateLimited(let retryAfter) {
                 let wait = max(1, retryAfter ?? 60)
                 let msg = "Windsurf API rate-limited for account \(account.id.uuidString); retry after \(wait)s"
                 ErrorLogger.shared.log(withProviderContext(msg), file: #file, line: #line)
-                await setFetchError(msg, for: account.id)
+                await setFetchError(msg, for: account.id, accountType: account.type)
                 await registerCircuitBreakerFailure(for: account.id, accountType: account.type)
             } catch APIError.networkError(let underlying) {
                 let msg = "Windsurf API network error for account \(account.id.uuidString): \(underlying.localizedDescription)"
                 ErrorLogger.shared.log(withProviderContext(msg), file: #file, line: #line)
-                await setFetchError(msg, for: account.id)
+                await setFetchError(msg, for: account.id, accountType: account.type)
                 await registerCircuitBreakerFailure(for: account.id, accountType: account.type)
             } catch {
                 let msg = "Windsurf API unexpected error for account \(account.id.uuidString): \(error.localizedDescription)"
                 ErrorLogger.shared.log(withProviderContext(msg), file: #file, line: #line)
-                await setFetchError(msg, for: account.id)
+                await setFetchError(msg, for: account.id, accountType: account.type)
                 await registerCircuitBreakerFailure(for: account.id, accountType: account.type)
             }
         case .githubCopilot:
@@ -368,14 +368,14 @@ class PollingService: ObservableObject {
             } catch {
                 let msg = "No GitHub token for Copilot account \(account.id.uuidString): \(error.localizedDescription)"
                 ErrorLogger.shared.log(withProviderContext(msg))
-                await setFetchError(msg, for: account.id)
+                await setFetchError(msg, for: account.id, accountType: account.type)
                 await registerCircuitBreakerFailure(for: account.id, accountType: account.type)
                 return
             }
             guard let payload = ProviderCredentialCodec.copilot(from: rawCredential) else {
                 let msg = "Invalid GitHub Copilot credential payload for account \(account.id.uuidString)"
                 ErrorLogger.shared.log(withProviderContext(msg))
-                await setFetchError(msg, for: account.id)
+                await setFetchError(msg, for: account.id, accountType: account.type)
                 await registerCircuitBreakerFailure(for: account.id, accountType: account.type)
                 return
             }
@@ -387,23 +387,23 @@ class PollingService: ObservableObject {
             } catch APIError.invalidKey {
                 let msg = "Invalid GitHub token/permissions for Copilot account \(account.id.uuidString)"
                 ErrorLogger.shared.log(withProviderContext(msg), file: #file, line: #line)
-                await setFetchError(msg, for: account.id)
+                await setFetchError(msg, for: account.id, accountType: account.type)
                 await registerCircuitBreakerFailure(for: account.id, accountType: account.type)
             } catch APIError.rateLimited(let retryAfter) {
                 let wait = max(1, retryAfter ?? 60)
                 let msg = "GitHub Copilot metrics API rate-limited for account \(account.id.uuidString); retry after \(wait)s"
                 ErrorLogger.shared.log(withProviderContext(msg), file: #file, line: #line)
-                await setFetchError(msg, for: account.id)
+                await setFetchError(msg, for: account.id, accountType: account.type)
                 await registerCircuitBreakerFailure(for: account.id, accountType: account.type)
             } catch APIError.networkError(let underlying) {
                 let msg = "GitHub Copilot metrics API network error for account \(account.id.uuidString): \(underlying.localizedDescription)"
                 ErrorLogger.shared.log(withProviderContext(msg), file: #file, line: #line)
-                await setFetchError(msg, for: account.id)
+                await setFetchError(msg, for: account.id, accountType: account.type)
                 await registerCircuitBreakerFailure(for: account.id, accountType: account.type)
             } catch {
                 let msg = "GitHub Copilot metrics API unexpected error for account \(account.id.uuidString): \(error.localizedDescription)"
                 ErrorLogger.shared.log(withProviderContext(msg), file: #file, line: #line)
-                await setFetchError(msg, for: account.id)
+                await setFetchError(msg, for: account.id, accountType: account.type)
                 await registerCircuitBreakerFailure(for: account.id, accountType: account.type)
             }
         case .anthropicAPI:
@@ -413,7 +413,7 @@ class PollingService: ObservableObject {
             } catch {
                 let msg = "Keychain failure for account \(account.id.uuidString): \(error.localizedDescription)"
                 ErrorLogger.shared.log(withProviderContext(msg))
-                await setFetchError(msg, for: account.id)
+                await setFetchError(msg, for: account.id, accountType: account.type)
                 await registerCircuitBreakerFailure(for: account.id, accountType: account.type)
                 return
             }
@@ -421,7 +421,7 @@ class PollingService: ObservableObject {
                 let seconds = Int(retryAfter.timeIntervalSinceNow.rounded(.up))
                 let msg = "Rate limited for account \(account.id.uuidString); deferred for \(max(1, seconds))s"
                 log.warning("\(msg, privacy: .public)")
-                await setFetchError(msg, for: account.id)
+                await setFetchError(msg, for: account.id, accountType: account.type)
                 await registerCircuitBreakerFailure(for: account.id, accountType: account.type)
                 return
             }
@@ -438,7 +438,7 @@ class PollingService: ObservableObject {
             } catch APIError.invalidKey {
                 let msg = "Invalid API key for account \(account.id.uuidString)"
                 ErrorLogger.shared.log(withProviderContext(msg), file: #file, line: #line)
-                await setFetchError(msg, for: account.id)
+                await setFetchError(msg, for: account.id, accountType: account.type)
                 await registerCircuitBreakerFailure(for: account.id, accountType: account.type)
             } catch APIError.rateLimited(let retryAfter) {
                 let retryDate = Self.retryAfterDate(fromSeconds: retryAfter)
@@ -446,17 +446,17 @@ class PollingService: ObservableObject {
                 await CacheManager.shared.saveAnthropicRetryAfterAsync(retryDate, forAccount: account.id)
                 let msg = "Rate limited for account \(account.id.uuidString); retry after \(max(1, retrySeconds))s"
                 ErrorLogger.shared.log(withProviderContext(msg), file: #file, line: #line)
-                await setFetchError(msg, for: account.id)
+                await setFetchError(msg, for: account.id, accountType: account.type)
                 await registerCircuitBreakerFailure(for: account.id, accountType: account.type)
             } catch APIError.networkError(let underlying) {
                 let msg = "Network error for account \(account.id.uuidString): \(underlying.localizedDescription)"
                 ErrorLogger.shared.log(withProviderContext(msg), file: #file, line: #line)
-                await setFetchError(msg, for: account.id)
+                await setFetchError(msg, for: account.id, accountType: account.type)
                 await registerCircuitBreakerFailure(for: account.id, accountType: account.type)
             } catch {
                 let msg = "Unexpected error for account \(account.id.uuidString): \(error.localizedDescription)"
                 ErrorLogger.shared.log(withProviderContext(msg), file: #file, line: #line)
-                await setFetchError(msg, for: account.id)
+                await setFetchError(msg, for: account.id, accountType: account.type)
                 await registerCircuitBreakerFailure(for: account.id, accountType: account.type)
             }
         case .claudeAI:
@@ -466,7 +466,7 @@ class PollingService: ObservableObject {
             } catch {
                 let msg = "No session token for claudeAI account \(account.id.uuidString): \(error.localizedDescription)"
                 ErrorLogger.shared.log(withProviderContext(msg))
-                await setFetchError(msg, for: account.id)
+                await setFetchError(msg, for: account.id, accountType: account.type)
                 await registerCircuitBreakerFailure(for: account.id, accountType: account.type)
                 return
             }
@@ -488,14 +488,8 @@ class PollingService: ObservableObject {
             } else {
                 let msg = "claudeAI fetchUsage returned nil for account \(account.id.uuidString) — using cached snapshot"
                 ErrorLogger.shared.log(withProviderContext(msg), level: "WARN")
-                await setFetchError(msg, for: account.id)
+                await setFetchError(msg, for: account.id, accountType: account.type)
                 await registerCircuitBreakerFailure(for: account.id, accountType: account.type)
-                if var cached = await CacheManager.shared.latestAsync(forAccount: account.id) {
-                    cached.isStale = true
-                    cached.timestamp = Date()
-                    cached.costConfidence = .estimated
-                    await CacheManager.shared.appendAsync(cached)
-                }
                 NotificationCenter.default.post(name: .claudeAISessionExpired, object: account.id)
             }
         }
@@ -775,8 +769,11 @@ class PollingService: ObservableObject {
         return jitterMillis * 1_000_000
     }
 
-    private func setFetchError(_ message: String, for accountId: UUID) async {
+    private func setFetchError(_ message: String, for accountId: UUID, accountType: AccountType? = nil) async {
         await recordFetchOutcome(success: false, for: accountId)
+        if let accountType {
+            await markSnapshotStaleIfTTLAllows(accountId: accountId, accountType: accountType)
+        }
         let shouldDisable = await MainActor.run {
             let newFailureCount = (self.consecutiveFetchFailuresByAccount[accountId] ?? 0) + 1
             self.consecutiveFetchFailuresByAccount[accountId] = newFailureCount
@@ -788,6 +785,27 @@ class PollingService: ObservableObject {
         if shouldDisable {
             await disableAccountAfterRepeatedFailures(accountId: accountId)
         }
+    }
+
+    private func staleTTLSeconds(for accountType: AccountType) -> TimeInterval {
+        switch accountType {
+        case .anthropicAPI, .openAIOrg, .windsurfEnterprise, .githubCopilot:
+            return 900
+        case .claudeAI:
+            return 300
+        case .claudeCode, .codex, .gemini:
+            return 120
+        }
+    }
+
+    private func markSnapshotStaleIfTTLAllows(accountId: UUID, accountType: AccountType) async {
+        guard var latest = await CacheManager.shared.latestAsync(forAccount: accountId) else { return }
+        let ttl = staleTTLSeconds(for: accountType)
+        let age = Date().timeIntervalSince(latest.timestamp)
+        if latest.isStale && age < ttl { return }
+        latest.isStale = true
+        latest.timestamp = Date()
+        await CacheManager.shared.appendAsync(latest)
     }
 
     private func clearFetchError(for accountId: UUID) async {
