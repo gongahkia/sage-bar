@@ -261,6 +261,10 @@ struct MenuBarPopoverView: View {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { copyFeedback = false }
             }
             .buttonStyle(.plain).font(.caption)
+            Button("Copy Account Info") {
+                copyActiveAccountDebugInfo()
+            }
+            .buttonStyle(.plain).font(.caption)
             Spacer()
             if config.analytics.enabled {
                 Button("History") { showHistory = true }.buttonStyle(.plain).font(.caption)
@@ -345,6 +349,17 @@ struct MenuBarPopoverView: View {
         Input Tokens: \(agg.totalInputTokens)
         Output Tokens: \(agg.totalOutputTokens)
         Cost Today (USD): \(String(format: "%.4f", agg.totalCostUSD))
+        """
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+    }
+
+    private func copyActiveAccountDebugInfo() {
+        guard let account = currentAccount else { return }
+        let text = """
+        account_id=\(account.id.uuidString)
+        provider_type=\(account.type.rawValue)
+        account_name=\(account.name)
         """
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
