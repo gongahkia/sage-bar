@@ -23,4 +23,12 @@ final class CLIFormattingRegressionTests: XCTestCase {
             "CLI account filtering should normalize UUID case before membership checks"
         )
     }
+
+    func testAccountFilterIncludesNameAmbiguityGuard() throws {
+        let content = try cliMainSource()
+        XCTAssertTrue(
+            content.contains("is ambiguous; matched"),
+            "CLI account filtering should report ambiguous case-insensitive name matches"
+        )
+    }
 }

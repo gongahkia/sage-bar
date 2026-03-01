@@ -163,18 +163,37 @@ guard var snapshots else {
 // filter by account name/id; validate filter against config accounts
 if let filter = accountFilter {
     let cfgPath = configDir.appendingPathComponent("config.toml")
-    var knownIds: [String] = []
+    var accountRows: [(id: String, name: String)] = []
     if let obj = loadConfigJSONObject(from: cfgPath),
        let accounts = obj["accounts"] as? [[String: Any]] {
-        knownIds = accounts.compactMap { $0["id"] as? String }
+        accountRows = accounts.compactMap { row in
+            guard let id = row["id"] as? String else { return nil }
+            let name = (row["name"] as? String) ?? ""
+            return (id, name)
+        }
     }
     let filterLow = filter.lowercased()
-    let matched = knownIds.filter { $0.lowercased().hasPrefix(filterLow) }
-    if matched.isEmpty {
+    let exactIDMatches = accountRows.filter { $0.id.lowercased() == filterLow }.map(\.id)
+    let nameMatches = accountRows.filter { $0.name.lowercased() == filterLow }.map(\.id)
+    let idPrefixMatches = accountRows.filter { $0.id.lowercased().hasPrefix(filterLow) }.map(\.id)
+
+    let matchedIDs: [String]
+    if !exactIDMatches.isEmpty {
+        matchedIDs = exactIDMatches
+    } else if nameMatches.count == 1 {
+        matchedIDs = nameMatches
+    } else if nameMatches.count > 1 {
+        fputs("Account name '\(filter)' is ambiguous; matched \(nameMatches.count) accounts\n", stderr)
+        exit(1)
+    } else {
+        matchedIDs = idPrefixMatches
+    }
+
+    if matchedIDs.isEmpty {
         fputs("Account '\(filter)' not found in config\n", stderr)
         exit(1)
     }
-    let matchedSet = Set(matched.map { $0.lowercased() })
+    let matchedSet = Set(matchedIDs.map { $0.lowercased() })
     snapshots = snapshots.filter { matchedSet.contains($0.accountId.uuidString.lowercased()) }
 }
 
