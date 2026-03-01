@@ -41,6 +41,7 @@ class ConfigManager {
     static let shared = ConfigManager()
     private let configDir: URL
     private let configFile: URL
+    private let latestConfigSchemaVersion = 2
     private(set) var lastLoadError: ConfigLoadError?
 
     init(configDir: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".config/claude-usage")) {
@@ -52,21 +53,21 @@ class ConfigManager {
         do {
             try FileManager.default.createDirectory(at: configDir, withIntermediateDirectories: true)
             guard FileManager.default.fileExists(atPath: configFile.path) else {
-                return normalize(.default)
+                return migrateAndNormalize(.default)
             }
             let raw: String
             do {
                 raw = try String(contentsOf: configFile, encoding: .utf8)
             } catch {
                 emitLoadError(.fileReadFailed(error.localizedDescription))
-                return normalize(.default)
+                return migrateAndNormalize(.default)
             }
             if let rawData = raw.data(using: .utf8),
                !rawData.isEmpty {
                 do {
                     let decoded = try JSONDecoder().decode(Config.self, from: rawData)
                     lastLoadError = nil
-                    return normalize(decoded)
+                    return migrateAndNormalize(decoded)
                 } catch {
                     emitLoadError(.jsonDecodeFailed(error.localizedDescription))
                 }
@@ -76,28 +77,29 @@ class ConfigManager {
                 table = try TOMLTable(string: raw)
             } catch {
                 emitLoadError(.tomlParseFailed(error.localizedDescription))
-                return normalize(.default)
+                return migrateAndNormalize(.default)
             }
             let json = table.convert(to: .json)
-            guard let data = json.data(using: .utf8) else { return normalize(.default) }
+            guard let data = json.data(using: .utf8) else { return migrateAndNormalize(.default) }
             let decoded: Config
             do {
                 decoded = try JSONDecoder().decode(Config.self, from: data)
             } catch {
                 emitLoadError(.tomlDecodeFailed(error.localizedDescription))
-                return normalize(.default)
+                return migrateAndNormalize(.default)
             }
             lastLoadError = nil
-            return normalize(decoded)
+            return migrateAndNormalize(decoded)
         } catch {
             emitLoadError(.fileReadFailed(error.localizedDescription))
-            return normalize(.default)
+            return migrateAndNormalize(.default)
         }
     }
 
     @discardableResult
     func save(_ config: Config) -> Result<Void, ConfigSaveError> {
-        if let validationError = validate(config).first {
+        let normalizedConfig = migrateAndNormalize(config)
+        if let validationError = validate(normalizedConfig).first {
             let saveError = ConfigSaveError.validationFailed(validationError)
             ErrorLogger.shared.log("Config save error: \(saveError)")
             return .failure(saveError)
@@ -112,7 +114,7 @@ class ConfigManager {
 
         let data: Data
         do {
-            data = try JSONEncoder().encode(config)
+            data = try JSONEncoder().encode(normalizedConfig)
         } catch {
             let saveError = ConfigSaveError.encodeFailed(error.localizedDescription)
             ErrorLogger.shared.log("Config save error: \(saveError)")
@@ -157,8 +159,23 @@ class ConfigManager {
         }
     }
 
+    private func migrateAndNormalize(_ config: Config) -> Config {
+        let migrated = migrate(config)
+        return normalize(migrated)
+    }
+
+    private func migrate(_ config: Config) -> Config {
+        var migrated = config
+        if migrated.schemaVersion < latestConfigSchemaVersion {
+            // schema v2 introduces explicit config schemaVersion persistence
+            migrated.schemaVersion = latestConfigSchemaVersion
+        }
+        return migrated
+    }
+
     private func normalize(_ config: Config) -> Config {
         var normalized = config
+        normalized.schemaVersion = latestConfigSchemaVersion
         normalized.accounts.sort {
             if $0.order == $1.order {
                 return $0.createdAt < $1.createdAt
