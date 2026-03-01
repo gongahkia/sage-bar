@@ -203,6 +203,15 @@ class MenuBarManager {
 
     private func updateDualIcon(config: Config) {
         let active = config.accounts.filter { $0.isActive }
+        if config.display.dualIcon, active.count > 2 {
+            secondStatusItem.map { NSStatusBar.system.removeStatusItem($0) }
+            secondStatusItem = nil
+            var updated = config
+            updated.display.dualIcon = false
+            _ = ConfigManager.shared.save(updated)
+            ErrorLogger.shared.log("Dual icon mode auto-disabled because more than 2 active accounts are enabled", level: "WARN")
+            return
+        }
         guard config.display.dualIcon, active.count == 2 else {
             secondStatusItem.map { NSStatusBar.system.removeStatusItem($0) }
             secondStatusItem = nil
