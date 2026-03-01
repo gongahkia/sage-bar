@@ -79,6 +79,14 @@ struct AccountsTab: View {
                     ConfigManager.shared.save(config)
                 }
                 .font(.caption)
+                Toggle("Experimental Providers", isOn: Binding(
+                    get: { config.display.showExperimentalProviders },
+                    set: { newValue in
+                        config.display.showExperimentalProviders = newValue
+                        ConfigManager.shared.save(config)
+                    }
+                ))
+                .font(.caption)
                 Spacer()
                 Button("+") { showAddSheet = true }
             }.padding(.horizontal)
