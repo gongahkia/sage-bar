@@ -367,6 +367,10 @@ class CacheManager {
         blocking { await self.store.loadSnapshots() }
     }
 
+    func loadAsync() async -> [UsageSnapshot] {
+        await self.store.loadSnapshots()
+    }
+
     func save(_ snapshots: [UsageSnapshot]) {
         blocking {
             await self.store.saveSnapshots(snapshots)
@@ -379,22 +383,42 @@ class CacheManager {
         }
     }
 
+    func appendAsync(_ snapshot: UsageSnapshot) async {
+        await self.store.appendSnapshot(snapshot)
+    }
+
     func upsertAnthropicSnapshots(_ incoming: [UsageSnapshot], forAccount id: UUID) {
         blocking {
             await self.store.upsertAnthropicSnapshots(incoming, forAccount: id)
         }
     }
 
+    func upsertAnthropicSnapshotsAsync(_ incoming: [UsageSnapshot], forAccount id: UUID) async {
+        await self.store.upsertAnthropicSnapshots(incoming, forAccount: id)
+    }
+
     func latest(forAccount id: UUID) -> UsageSnapshot? {
         blocking { await self.store.latestSnapshot(forAccount: id) }
+    }
+
+    func latestAsync(forAccount id: UUID) async -> UsageSnapshot? {
+        await self.store.latestSnapshot(forAccount: id)
     }
 
     func history(forAccount id: UUID, days: Int) -> [UsageSnapshot] {
         blocking { await self.store.historySnapshots(forAccount: id, days: days) }
     }
 
+    func historyAsync(forAccount id: UUID, days: Int) async -> [UsageSnapshot] {
+        await self.store.historySnapshots(forAccount: id, days: days)
+    }
+
     func todayAggregate(forAccount id: UUID) -> DailyAggregate {
         blocking { await self.store.todayAggregate(forAccount: id) }
+    }
+
+    func todayAggregateAsync(forAccount id: UUID) async -> DailyAggregate {
+        await self.store.todayAggregate(forAccount: id)
     }
 
     func latestForecast(forAccount id: UUID) -> ForecastSnapshot? {
@@ -407,8 +431,16 @@ class CacheManager {
         }
     }
 
+    func saveForecastAsync(_ forecast: ForecastSnapshot) async {
+        await self.store.saveForecast(forecast)
+    }
+
     func loadAnthropicCursor(forAccount id: UUID) -> AnthropicIngestionCursor? {
         blocking { await self.store.loadCursor(forAccount: id) }
+    }
+
+    func loadAnthropicCursorAsync(forAccount id: UUID) async -> AnthropicIngestionCursor? {
+        await self.store.loadCursor(forAccount: id)
     }
 
     func saveAnthropicCursor(_ cursor: AnthropicIngestionCursor, forAccount id: UUID) {
@@ -417,8 +449,16 @@ class CacheManager {
         }
     }
 
+    func saveAnthropicCursorAsync(_ cursor: AnthropicIngestionCursor, forAccount id: UUID) async {
+        await self.store.saveCursor(cursor, forAccount: id)
+    }
+
     func loadAnthropicRetryAfter(forAccount id: UUID) -> Date? {
         blocking { await self.store.loadRetryAfter(forAccount: id) }
+    }
+
+    func loadAnthropicRetryAfterAsync(forAccount id: UUID) async -> Date? {
+        await self.store.loadRetryAfter(forAccount: id)
     }
 
     func saveAnthropicRetryAfter(_ retryAfter: Date, forAccount id: UUID) {
@@ -427,10 +467,18 @@ class CacheManager {
         }
     }
 
+    func saveAnthropicRetryAfterAsync(_ retryAfter: Date, forAccount id: UUID) async {
+        await self.store.saveRetryAfter(retryAfter, forAccount: id)
+    }
+
     func clearAnthropicRetryAfter(forAccount id: UUID) {
         blocking {
             await self.store.clearRetryAfter(forAccount: id)
         }
+    }
+
+    func clearAnthropicRetryAfterAsync(forAccount id: UUID) async {
+        await self.store.clearRetryAfter(forAccount: id)
     }
 
     func loadLastSuccess(forAccount id: UUID) -> Date? {
@@ -441,5 +489,9 @@ class CacheManager {
         blocking {
             await self.store.saveLastSuccess(date, forAccount: id)
         }
+    }
+
+    func saveLastSuccessAsync(_ date: Date, forAccount id: UUID) async {
+        await self.store.saveLastSuccess(date, forAccount: id)
     }
 }

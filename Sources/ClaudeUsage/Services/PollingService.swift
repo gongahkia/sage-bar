@@ -153,14 +153,14 @@ class PollingService: ObservableObject {
         // compute forecasts
         for account in activeAccounts {
             guard !Task.isCancelled else { return }
-            let history = CacheManager.shared.history(forAccount: account.id, days: 1)
+            let history = await CacheManager.shared.historyAsync(forAccount: account.id, days: 1)
             if let forecast = ForecastEngine.compute(history: history) {
-                CacheManager.shared.saveForecast(forecast)
+                await CacheManager.shared.saveForecastAsync(forecast)
             }
         }
 
         // generate model hints for popover
-        generateAndPersistModelHints(config: config, accounts: activeAccounts)
+        await generateAndPersistModelHints(config: config, accounts: activeAccounts)
 
         // iCloud sync if enabled
         if config.iCloudSync.enabled {
@@ -169,10 +169,10 @@ class PollingService: ObservableObject {
 
         // threshold notifications
         guard !Task.isCancelled else { return }
-        checkThresholds(config: config, accounts: activeAccounts)
+        await checkThresholds(config: config, accounts: activeAccounts)
 
         // automation evaluation
-        let matchedAutomations = evaluateAutomations(config: config, accounts: activeAccounts)
+        let matchedAutomations = await evaluateAutomations(config: config, accounts: activeAccounts)
         if !matchedAutomations.isEmpty {
             log.info("Automation evaluation matched \(matchedAutomations.count) rule(s)")
             await fireMatchedAutomations(matches: matchedAutomations, config: &config)
@@ -180,7 +180,7 @@ class PollingService: ObservableObject {
 
         // daily digest check
         guard !Task.isCancelled else { return }
-        checkDailyDigest(config: config, accounts: activeAccounts)
+        await checkDailyDigest(config: config, accounts: activeAccounts)
 
         NotificationCenter.default.post(
             name: .usageDidUpdate,
@@ -213,7 +213,7 @@ class PollingService: ObservableObject {
                 modelBreakdown: snap.modelBreakdown,
                 costConfidence: .estimated
             )
-            CacheManager.shared.append(snap)
+            await CacheManager.shared.appendAsync(snap)
             await clearFetchError(for: account.id)
         case .codex:
             var snap = CodexLogParser.shared.aggregateToday()
@@ -228,7 +228,7 @@ class PollingService: ObservableObject {
                 modelBreakdown: snap.modelBreakdown,
                 costConfidence: .estimated
             )
-            CacheManager.shared.append(snap)
+            await CacheManager.shared.appendAsync(snap)
             await clearFetchError(for: account.id)
         case .gemini:
             var snap = GeminiLogParser.shared.aggregateToday()
@@ -243,7 +243,7 @@ class PollingService: ObservableObject {
                 modelBreakdown: snap.modelBreakdown,
                 costConfidence: .estimated
             )
-            CacheManager.shared.append(snap)
+            await CacheManager.shared.appendAsync(snap)
             await clearFetchError(for: account.id)
         case .openAIOrg:
             let rawCredential: String
@@ -264,7 +264,7 @@ class PollingService: ObservableObject {
             do {
                 let client = OpenAIOrgUsageClient(adminAPIKey: adminKey)
                 let snap = try await client.fetchCurrentSnapshot(accountId: account.id)
-                CacheManager.shared.append(snap)
+                await CacheManager.shared.appendAsync(snap)
                 await clearFetchError(for: account.id)
             } catch APIError.invalidKey {
                 let msg = "Invalid OpenAI admin key for account \(account.id.uuidString)"
@@ -303,7 +303,7 @@ class PollingService: ObservableObject {
             do {
                 let client = WindsurfEnterpriseClient(serviceKey: payload.serviceKey, groupName: payload.groupName)
                 let snap = try await client.fetchCurrentSnapshot(accountId: account.id)
-                CacheManager.shared.append(snap)
+                await CacheManager.shared.appendAsync(snap)
                 await clearFetchError(for: account.id)
             } catch APIError.invalidKey {
                 let msg = "Invalid Windsurf service key for account \(account.id.uuidString)"
@@ -342,7 +342,7 @@ class PollingService: ObservableObject {
             do {
                 let client = GitHubCopilotMetricsClient(token: payload.token, organization: payload.organization)
                 let snap = try await client.fetchCurrentSnapshot(accountId: account.id)
-                CacheManager.shared.append(snap)
+                await CacheManager.shared.appendAsync(snap)
                 await clearFetchError(for: account.id)
             } catch APIError.invalidKey {
                 let msg = "Invalid GitHub token/permissions for Copilot account \(account.id.uuidString)"
@@ -372,7 +372,7 @@ class PollingService: ObservableObject {
                 await setFetchError(msg, for: account.id)
                 return
             }
-            if let retryAfter = CacheManager.shared.loadAnthropicRetryAfter(forAccount: account.id), retryAfter > Date() {
+            if let retryAfter = await CacheManager.shared.loadAnthropicRetryAfterAsync(forAccount: account.id), retryAfter > Date() {
                 let seconds = Int(retryAfter.timeIntervalSinceNow.rounded(.up))
                 let msg = "Rate limited for account \(account.id.uuidString); deferred for \(max(1, seconds))s"
                 log.warning("\(msg, privacy: .public)")
@@ -383,11 +383,11 @@ class PollingService: ObservableObject {
                 // Anthropic Usage API remains the canonical billing source for anthropicAPI accounts.
                 let result = try await fetchAnthropicCanonicalSnapshots(accountId: account.id, apiKey: key)
                 let snapshots = result.snapshots
-                CacheManager.shared.upsertAnthropicSnapshots(snapshots, forAccount: account.id)
+                await CacheManager.shared.upsertAnthropicSnapshotsAsync(snapshots, forAccount: account.id)
                 if let cursor = result.cursor {
-                    CacheManager.shared.saveAnthropicCursor(cursor, forAccount: account.id)
+                    await CacheManager.shared.saveAnthropicCursorAsync(cursor, forAccount: account.id)
                 }
-                CacheManager.shared.clearAnthropicRetryAfter(forAccount: account.id)
+                await CacheManager.shared.clearAnthropicRetryAfterAsync(forAccount: account.id)
                 await clearFetchError(for: account.id)
             } catch APIError.invalidKey {
                 let msg = "Invalid API key for account \(account.id.uuidString)"
@@ -396,7 +396,7 @@ class PollingService: ObservableObject {
             } catch APIError.rateLimited(let retryAfter) {
                 let retryDate = Self.retryAfterDate(fromSeconds: retryAfter)
                 let retrySeconds = Int(retryDate.timeIntervalSinceNow.rounded(.up))
-                CacheManager.shared.saveAnthropicRetryAfter(retryDate, forAccount: account.id)
+                await CacheManager.shared.saveAnthropicRetryAfterAsync(retryDate, forAccount: account.id)
                 let msg = "Rate limited for account \(account.id.uuidString); retry after \(max(1, retrySeconds))s"
                 ErrorLogger.shared.log(withProviderContext(msg), file: #file, line: #line)
                 await setFetchError(msg, for: account.id)
@@ -432,24 +432,24 @@ class PollingService: ObservableObject {
                     modelBreakdown: [ModelUsage(modelId: "claude-ai-web", inputTokens: usage.messagesRemaining, outputTokens: 0, costUSD: 0)],
                     costConfidence: .estimated
                 )
-                CacheManager.shared.append(snap)
+                await CacheManager.shared.appendAsync(snap)
                 await clearFetchError(for: account.id)
             } else {
                 let msg = "claudeAI fetchUsage returned nil for account \(account.id.uuidString) — using cached snapshot"
                 ErrorLogger.shared.log(withProviderContext(msg), level: "WARN")
                 await setFetchError(msg, for: account.id)
-                if var cached = CacheManager.shared.latest(forAccount: account.id) {
+                if var cached = await CacheManager.shared.latestAsync(forAccount: account.id) {
                     cached.isStale = true
                     cached.timestamp = Date()
                     cached.costConfidence = .estimated
-                    CacheManager.shared.append(cached)
+                    await CacheManager.shared.appendAsync(cached)
                 }
                 NotificationCenter.default.post(name: .claudeAISessionExpired, object: account.id)
             }
         }
     }
 
-    private func checkDailyDigest(config: Config, accounts: [Account]) {
+    private func checkDailyDigest(config: Config, accounts: [Account]) async {
         guard config.webhook.enabled, config.webhook.events.contains("daily_digest") else { return }
         let key = "lastDailyDigestDate"
         let cal = Calendar.current
@@ -458,7 +458,7 @@ class PollingService: ObservableObject {
         UserDefaults.standard.set(Date(), forKey: key)
         let ws = WebhookService()
         for account in accounts {
-            let agg = CacheManager.shared.todayAggregate(forAccount: account.id)
+            let agg = await CacheManager.shared.todayAggregateAsync(forAccount: account.id)
             let snap = UsageSnapshot(
                 accountId: account.id,
                 timestamp: Date(),
@@ -480,10 +480,10 @@ class PollingService: ObservableObject {
         }
     }
 
-    private func checkThresholds(config: Config, accounts: [Account]) {
+    private func checkThresholds(config: Config, accounts: [Account]) async {
         for account in accounts {
             guard let limit = account.costLimitUSD else { continue }
-            let agg = CacheManager.shared.todayAggregate(forAccount: account.id)
+            let agg = await CacheManager.shared.todayAggregateAsync(forAccount: account.id)
             let snapshot = UsageSnapshot(
                 accountId: account.id,
                 timestamp: Date(),
@@ -504,10 +504,10 @@ class PollingService: ObservableObject {
         }
     }
 
-    private func evaluateAutomations(config: Config, accounts: [Account]) -> [(AutomationRule, UsageSnapshot)] {
+    private func evaluateAutomations(config: Config, accounts: [Account]) async -> [(AutomationRule, UsageSnapshot)] {
         var matched: [(AutomationRule, UsageSnapshot)] = []
         for account in accounts {
-            let agg = CacheManager.shared.todayAggregate(forAccount: account.id)
+            let agg = await CacheManager.shared.todayAggregateAsync(forAccount: account.id)
             let snapshot = UsageSnapshot(
                 accountId: account.id,
                 timestamp: Date(),
@@ -557,7 +557,7 @@ class PollingService: ObservableObject {
     private func fetchAnthropicCanonicalSnapshots(accountId: UUID, apiKey: String) async throws -> (snapshots: [UsageSnapshot], cursor: AnthropicIngestionCursor?) {
         let client = Self.anthropicClientFactory(apiKey)
         let end = Date()
-        let cursor = CacheManager.shared.loadAnthropicCursor(forAccount: accountId)
+        let cursor = await CacheManager.shared.loadAnthropicCursorAsync(forAccount: accountId)
         let start = Self.anthropicStartDate(cursor: cursor, now: end)
         let response = try await fetchAnthropicUsageWithRetry(
             client: client,
@@ -576,17 +576,21 @@ class PollingService: ObservableObject {
         return Calendar.current.startOfDay(for: ts)
     }
 
-    internal func generateAndPersistModelHints(config: Config, accounts: [Account]) {
+    internal func generateAndPersistModelHints(config: Config, accounts: [Account]) async {
         let hints: [ModelHint]
         if config.modelOptimizer.enabled {
-            hints = accounts.compactMap { account in
-                guard let latest = CacheManager.shared.latest(forAccount: account.id) else { return nil }
-                return ModelOptimizerAnalyzer.analyze(
+            var computed: [ModelHint] = []
+            for account in accounts {
+                guard let latest = await CacheManager.shared.latestAsync(forAccount: account.id) else { continue }
+                if let hint = ModelOptimizerAnalyzer.analyze(
                     breakdown: latest.modelBreakdown,
                     accountId: account.id,
                     config: config.modelOptimizer
-                )
+                ) {
+                    computed.append(hint)
+                }
             }
+            hints = computed
         } else {
             hints = []
         }
@@ -697,7 +701,7 @@ class PollingService: ObservableObject {
 
     private func clearFetchError(for accountId: UUID) async {
         await recordFetchOutcome(success: true, for: accountId)
-        CacheManager.shared.saveLastSuccess(Date(), forAccount: accountId)
+        await CacheManager.shared.saveLastSuccessAsync(Date(), forAccount: accountId)
         await MainActor.run {
             self.fetchErrorsByAccount.removeValue(forKey: accountId)
             self.fetchErrorUpdatedAtByAccount.removeValue(forKey: accountId)

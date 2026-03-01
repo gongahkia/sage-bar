@@ -238,7 +238,7 @@ final class PollingServiceTests: XCTestCase {
 
         var config = Config.default
         config.modelOptimizer = ModelOptimizerConfig(enabled: true, cheapThresholdTokens: 200, showInPopover: true)
-        PollingService.shared.generateAndPersistModelHints(config: config, accounts: [account])
+        await PollingService.shared.generateAndPersistModelHints(config: config, accounts: [account])
 
         let hintsURL = AppConstants.sharedContainerURL.appendingPathComponent("model_hints.json")
         guard let data = try? Data(contentsOf: hintsURL) else {
