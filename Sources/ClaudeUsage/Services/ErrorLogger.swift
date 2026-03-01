@@ -37,6 +37,37 @@ final class ErrorLogger: ObservableObject {
         DispatchQueue.main.async { [weak self] in self?.lastError = err }
     }
 
+    func logStructured(
+        _ message: String,
+        level: String = "ERROR",
+        metadata: [String: String],
+        file: String = #file,
+        line: Int = #line
+    ) {
+        var payload: [String: Any] = [
+            "timestamp": isoTimestamp(),
+            "level": level,
+            "file": URL(fileURLWithPath: file).lastPathComponent,
+            "line": line,
+            "message": message,
+        ]
+        payload["metadata"] = metadata
+        let entry: String
+        if let data = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]),
+           let json = String(data: data, encoding: .utf8) {
+            entry = json + "\n"
+        } else {
+            entry = "[\(isoTimestamp())] [\(level)] \(URL(fileURLWithPath: file).lastPathComponent):\(line) — \(message) metadata=\(metadata)\n"
+        }
+        queue.async { [weak self] in
+            guard let self else { return }
+            self.append(entry)
+            self.rotateIfNeeded()
+        }
+        let err = AppError(timestamp: Date(), message: message)
+        DispatchQueue.main.async { [weak self] in self?.lastError = err }
+    }
+
     func readLast(_ n: Int = 500) -> [String] {
         queue.sync {
             guard let text = try? String(contentsOf: logFile, encoding: .utf8) else { return [] }
