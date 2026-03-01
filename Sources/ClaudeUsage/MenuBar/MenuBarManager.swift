@@ -75,7 +75,12 @@ class MenuBarManager {
     }
 
     @objc private func exportDiagnostics() {
-        let errors = ErrorLogger.shared.readLast(100).joined(separator: "\n")
+        let recentLogs = ErrorLogger.shared.readLast(300)
+        let highSignalLogs = recentLogs.filter { line in
+            line.contains("[WARN]") || line.contains("[ERROR]")
+        }
+        let selectedLogs = highSignalLogs.isEmpty ? Array(recentLogs.suffix(100)) : Array(highSignalLogs.suffix(100))
+        let errors = selectedLogs.joined(separator: "\n")
         var config = ConfigManager.shared.load()
         // sanitize sensitive fields
         if !config.webhook.url.isEmpty { config.webhook.url = "***" }
