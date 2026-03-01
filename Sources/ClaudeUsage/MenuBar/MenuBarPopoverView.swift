@@ -12,6 +12,15 @@ struct MenuBarPopoverView: View {
     @ObservedObject private var polling = PollingService.shared
     @ObservedObject private var errorLogger = ErrorLogger.shared
 
+    private struct AccountMetrics {
+        let latestSnapshot: UsageSnapshot?
+        let todayAggregate: DailyAggregate
+        let latestForecast: ForecastSnapshot?
+        let weekSnapshots: [UsageSnapshot]
+        let daySnapshots: [UsageSnapshot]
+        let modelHint: ModelHint?
+    }
+
     private var activeAccounts: [Account] {
         config.accounts
             .filter { $0.isActive }
@@ -30,29 +39,30 @@ struct MenuBarPopoverView: View {
                 accountPicker
             }
             if let account = currentAccount {
-                accountFetchLabel(account: account) // task 78: per-account relative last-fetch
+                let metrics = metricsForAccount(account)
+                accountFetchLabel(account: account, metrics: metrics) // task 78: per-account relative last-fetch
                 if needsReAuth && account.type == .claudeAI {
                     reAuthBanner
                 }
                 ScrollView {
                     LazyVStack(spacing: 0) {
                         if account.type == .claudeAI {
-                            claudeAIStatsSection(account: account)
+                            claudeAIStatsSection(account: account, metrics: metrics)
                         } else {
-                            todayStatsSection(account: account)
-                            modelBreakdownSection(account: account) // task 77
+                            todayStatsSection(account: account, metrics: metrics)
+                            modelBreakdownSection(metrics: metrics) // task 77
                         }
                         if account.type != .claudeAI && config.forecast.showInPopover && config.forecast.enabled {
-                            forecastSection(account: account)
+                            forecastSection(metrics: metrics)
                         }
                         if account.type != .claudeAI {
-                            chartSection(account: account)
+                            chartSection(metrics: metrics)
                         }
-                        if let hint = modelHint(account: account),
+                        if let hint = metrics.modelHint,
                            config.modelOptimizer.enabled && config.modelOptimizer.showInPopover {
                             modelHintBanner(hint: hint, account: account)
                         }
-                        pollHealthRow
+                        pollHealthRow(account: account, metrics: metrics)
                     }
                 }
             }
@@ -70,11 +80,11 @@ struct MenuBarPopoverView: View {
         .onAppear {
             restoreSelectedAccountIndex()
         }
-        .onChange(of: selectedAccountIndex) { _, newValue in
+        .onChange(of: selectedAccountIndex) { newValue in
             guard activeAccounts.indices.contains(newValue) else { return }
             UserDefaults.standard.set(activeAccounts[newValue].id.uuidString, forKey: selectedAccountDefaultsKey)
         }
-        .onChange(of: activeAccounts.map(\.id)) { _, _ in
+        .onChange(of: activeAccounts.map(\.id)) { _ in
             restoreSelectedAccountIndex()
         }
     }
@@ -112,22 +122,22 @@ struct MenuBarPopoverView: View {
     }
 
     // MARK: – Today stats
-    private func todayStatsSection(account: Account) -> some View {
-        let agg = CacheManager.shared.todayAggregate(forAccount: account.id)
-        let confidence = currentCostConfidence(account: account)
+    private func todayStatsSection(account: Account, metrics: AccountMetrics) -> some View {
+        let agg = metrics.todayAggregate
+        let confidence = currentCostConfidence(account: account, latestSnapshot: metrics.latestSnapshot)
         return VStack(alignment: .leading, spacing: 4) {
             statRow("Input Tokens", value: "\(agg.totalInputTokens.formatted())")
             statRow("Output Tokens", value: "\(agg.totalOutputTokens.formatted())")
-            statRow("Cache Tokens", value: "\((CacheManager.shared.todayAggregate(forAccount: account.id).snapshots.reduce(0) { $0 + $1.cacheReadTokens + $1.cacheCreationTokens }).formatted())")
+            statRow("Cache Tokens", value: "\((agg.snapshots.reduce(0) { $0 + $1.cacheReadTokens + $1.cacheCreationTokens }).formatted())")
             statRow("Cost Today", value: String(format: "$%.4f", agg.totalCostUSD))
             confidenceRow(confidence)
         }.padding(12)
     }
 
     // MARK: – Forecast
-    private func forecastSection(account: Account) -> some View {
+    private func forecastSection(metrics: AccountMetrics) -> some View {
         Group {
-            if let f = CacheManager.shared.latestForecast(forAccount: account.id) {
+            if let f = metrics.latestForecast {
                 VStack(alignment: .leading, spacing: 4) {
                     Label("Projected Spend", systemImage: "chart.line.uptrend.xyaxis")
                         .font(.caption).foregroundColor(.secondary)
@@ -143,8 +153,8 @@ struct MenuBarPopoverView: View {
     }
 
     // MARK: – 7-day chart
-    private func chartSection(account: Account) -> some View {
-        let snaps = CacheManager.shared.history(forAccount: account.id, days: 7)
+    private func chartSection(metrics: AccountMetrics) -> some View {
+        let snaps = metrics.weekSnapshots
         let cal = Calendar.current
         let byDay: [(Date, Double)] = Dictionary(grouping: snaps, by: {
             cal.startOfDay(for: $0.timestamp)
@@ -159,6 +169,22 @@ struct MenuBarPopoverView: View {
                 .frame(height: 80).padding(.horizontal, 12).padding(.bottom, 12)
             }
         }
+    }
+
+    private func metricsForAccount(_ account: Account) -> AccountMetrics {
+        let latestSnapshot = CacheManager.shared.latest(forAccount: account.id)
+        let todayAggregate = CacheManager.shared.todayAggregate(forAccount: account.id)
+        let latestForecast = CacheManager.shared.latestForecast(forAccount: account.id)
+        let weekSnapshots = CacheManager.shared.history(forAccount: account.id, days: 7)
+        let daySnapshots = CacheManager.shared.history(forAccount: account.id, days: 1)
+        return AccountMetrics(
+            latestSnapshot: latestSnapshot,
+            todayAggregate: todayAggregate,
+            latestForecast: latestForecast,
+            weekSnapshots: weekSnapshots,
+            daySnapshots: daySnapshots,
+            modelHint: modelHint(account: account)
+        )
     }
 
     // MARK: – Model hint banner
@@ -189,11 +215,10 @@ struct MenuBarPopoverView: View {
     }
 
     // MARK: – Poll health
-    private var pollHealthRow: some View {
+    private func pollHealthRow(account: Account, metrics: AccountMetrics) -> some View {
         let staleMultiplier = 2.0
         return VStack(alignment: .leading, spacing: 2) {
-            if let account = currentAccount,
-               let latest = CacheManager.shared.latest(forAccount: account.id) {
+            if let latest = metrics.latestSnapshot {
                 let ageSeconds = max(0, Date().timeIntervalSince(latest.timestamp))
                 let thresholdSeconds = Double(config.pollIntervalSeconds) * staleMultiplier
                 let staleByAge = ageSeconds > thresholdSeconds
@@ -214,21 +239,20 @@ struct MenuBarPopoverView: View {
     }
 
     // MARK: – ClaudeAI stats
-    private func claudeAIStatsSection(account: Account) -> some View {
-        let snap = CacheManager.shared.latest(forAccount: account.id)
-        let remaining = snap?.modelBreakdown.first(where: { $0.modelId == "claude-ai-web" })?.inputTokens
+    private func claudeAIStatsSection(account: Account, metrics: AccountMetrics) -> some View {
+        let remaining = metrics.latestSnapshot?.modelBreakdown.first(where: { $0.modelId == "claude-ai-web" })?.inputTokens
         return VStack(alignment: .leading, spacing: 4) {
             if let r = remaining {
                 statRow("Messages remaining", value: "\(r)")
             } else {
                 Text("No data yet").font(.caption).foregroundColor(.secondary)
             }
-            confidenceRow(currentCostConfidence(account: account))
+            confidenceRow(currentCostConfidence(account: account, latestSnapshot: metrics.latestSnapshot))
         }.padding(12)
     }
 
-    private func currentCostConfidence(account: Account) -> String {
-        if let latest = CacheManager.shared.latest(forAccount: account.id) {
+    private func currentCostConfidence(account: Account, latestSnapshot: UsageSnapshot?) -> String {
+        if let latest = latestSnapshot {
             return latest.costConfidence == .billingGrade ? "Billing-grade" : "Estimated"
         }
         return (account.type == .anthropicAPI || account.type == .openAIOrg) ? "Billing-grade" : "Estimated"
@@ -294,9 +318,9 @@ struct MenuBarPopoverView: View {
 
     // MARK: – Task 78: per-account last-fetch label
 
-    private func accountFetchLabel(account: Account) -> some View {
+    private func accountFetchLabel(account: Account, metrics: AccountMetrics) -> some View {
         Group {
-            if let snap = CacheManager.shared.latest(forAccount: account.id) {
+            if let snap = metrics.latestSnapshot {
                 Text("Last fetch: \(snap.timestamp, style: .relative) ago")
                     .font(.caption2).foregroundColor(.secondary)
                     .frame(maxWidth: .infinity, alignment: .trailing)
@@ -307,9 +331,8 @@ struct MenuBarPopoverView: View {
 
     // MARK: – Task 77: collapsible per-model cost breakdown
 
-    private func modelBreakdownSection(account: Account) -> some View {
-        let snaps = CacheManager.shared.history(forAccount: account.id, days: 1)
-        let byModel = Dictionary(grouping: snaps.flatMap { $0.modelBreakdown }, by: { $0.modelId })
+    private func modelBreakdownSection(metrics: AccountMetrics) -> some View {
+        let byModel = Dictionary(grouping: metrics.daySnapshots.flatMap { $0.modelBreakdown }, by: { $0.modelId })
         let rows: [(id: String, tok: Int, cost: Double)] = byModel.map { (id, us) in
             (id, us.reduce(0) { $0 + $1.inputTokens + $1.outputTokens }, us.reduce(0) { $0 + $1.costUSD })
         }.sorted { $0.cost > $1.cost }
