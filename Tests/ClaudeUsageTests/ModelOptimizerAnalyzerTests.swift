@@ -38,4 +38,20 @@ final class ModelOptimizerAnalyzerTests: XCTestCase {
     func testEmptyBreakdownReturnsNil() {
         XCTAssertNil(ModelOptimizerAnalyzer.analyze(breakdown: [], accountId: accountId, config: enabledConfig))
     }
+
+    func testCodexProviderRuleSuggestsCheaperModel() {
+        let mu = [usage(model: "codex-local", input: 1_000_000, output: 500, cost: 0)]
+        let hint = ModelOptimizerAnalyzer.analyze(breakdown: mu, accountId: accountId, config: enabledConfig)
+        XCTAssertNotNil(hint)
+        XCTAssertEqual(hint?.recommendedModel, "gpt-4o-mini")
+        XCTAssertGreaterThan(hint?.estimatedSavingsUSD ?? 0, 0)
+    }
+
+    func testGeminiProviderRuleSuggestsCheaperModel() {
+        let mu = [usage(model: "gemini-local", input: 1_000_000, output: 500, cost: 0)]
+        let hint = ModelOptimizerAnalyzer.analyze(breakdown: mu, accountId: accountId, config: enabledConfig)
+        XCTAssertNotNil(hint)
+        XCTAssertEqual(hint?.recommendedModel, "gemini-2.0-flash")
+        XCTAssertGreaterThan(hint?.estimatedSavingsUSD ?? 0, 0)
+    }
 }
