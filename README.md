@@ -1,4 +1,4 @@
-[![](https://img.shields.io/badge/sage-bar_1.0.0-passing-green)](https://github.com/gongahkia/sage-bar/releases/tag/1.0.0)
+[![](https://img.shields.io/badge/sage_bar_1.0.0-passing-green)](https://github.com/gongahkia/sage-bar/releases/tag/1.0.0)
 ![](https://github.com/gongahkia/sage-bar/actions/workflows/ci.yml/badge.svg)
 
 # `Sage Bar`
@@ -30,3 +30,4 @@ The below instructions are for locally running `Sage Bar`.
 ## Reference
 
 The name `Sage Bar` is in reference to...
+
