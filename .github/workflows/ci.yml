@@ -16,6 +16,23 @@ jobs:
       - uses: actions/checkout@v4
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode_15.4.app
+      - name: Cache Homebrew downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/Homebrew
+          key: ${{ runner.os }}-${{ matrix.os }}-homebrew-${{ hashFiles('.github/workflows/ci.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.os }}-homebrew-
+      - name: Cache SwiftPM artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            .build
+            ~/.swiftpm/cache
+            ~/.swiftpm/configuration
+          key: ${{ runner.os }}-${{ matrix.os }}-swiftpm-${{ hashFiles('Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.os }}-swiftpm-
       - name: Install SwiftLint
         run: brew install swiftlint
       - name: Lint
@@ -26,22 +43,59 @@ jobs:
         run: |
           OUTPUT=$(swift-format lint --recursive Sources/ Tests/ 2>&1)
           [ -z "$OUTPUT" ] || { echo "$OUTPUT"; exit 1; }
-      - name: Fail on unchecked try? outside allowlist
+      - name: Fail on unstructured try? call-sites
+        shell: bash
         run: |
-          MATCHES=$(rg "try\\?" Sources/ClaudeUsage -n || true)
-          if [ -z "$MATCHES" ]; then
+          set -euo pipefail
+
+          CURRENT=$(rg -n "try\\?" Sources/ClaudeUsage --no-heading || true)
+          if [ -z "$CURRENT" ]; then
             exit 0
           fi
-          FILTERED=$(echo "$MATCHES" | grep -Fv -f .ci/tryq_allowlist.txt || true)
-          if [ -n "$FILTERED" ]; then
-            echo "Unchecked try? usage outside allowlist:"
-            echo "$FILTERED"
+
+          CURRENT_LINES=$(printf '%s\n' "$CURRENT" | cut -d: -f1-2 | sort -t: -k1,1 -k2,2n | uniq)
+          ALLOWLIST=$(grep -vE '^\s*(#|$)' .ci/tryq_allowlist.txt | sort -t: -k1,1 -k2,2n | uniq || true)
+          NEW_LINES=$(comm -23 <(printf '%s\n' "$CURRENT_LINES") <(printf '%s\n' "$ALLOWLIST") || true)
+
+          if [ -z "$NEW_LINES" ]; then
+            exit 0
+          fi
+
+          echo "Detected non-allowlisted try? call-sites:"
+          echo "$NEW_LINES"
+
+          VIOLATIONS=""
+          while IFS=: read -r file line; do
+            [ -z "$file" ] && continue
+            start=$((line - 3))
+            if [ "$start" -lt 1 ]; then start=1; fi
+            end=$((line + 3))
+
+            if ! sed -n "${start},${end}p" "$file" | rg -q "ErrorLogger\\.shared\\.logStructured\\("; then
+              VIOLATIONS+="${file}:${line}\n"
+            fi
+          done <<< "$NEW_LINES"
+
+          if [ -n "$VIOLATIONS" ]; then
+            echo "New try? call-sites are missing structured logging context:"
+            printf "%b" "$VIOLATIONS"
+            echo "Add ErrorLogger.shared.logStructured(...) near the try? or add an explicit allowlist entry."
             exit 1
           fi
       - name: Validate prices.json
         run: python3 -c "import json,sys; json.load(open('Sources/ClaudeUsage/Resources/prices.json'))"
       - name: Build app target (release)
         run: swift build --target ClaudeUsage -c release -Xswiftc -warnings-as-errors
+      - name: Gate Config/Polling compile diagnostics
+        shell: bash
+        run: |
+          set -o pipefail
+          LOG_FILE="$(mktemp)"
+          swift build --target ClaudeUsage 2>&1 | tee "$LOG_FILE"
+          if rg -n "Sources/ClaudeUsage/Config/Config.swift:.*(warning|error):|Sources/ClaudeUsage/Services/PollingService.swift:.*(warning|error):" "$LOG_FILE"; then
+            echo "Compile diagnostics found in Config.swift or PollingService.swift."
+            exit 1
+          fi
       - name: Build CLI target (release)
         run: swift build --target ClaudeUsageCLI -c release -Xswiftc -warnings-as-errors
       - name: Build
