@@ -301,7 +301,7 @@ class PollingService: ObservableObject {
                 modelBreakdown: snap.modelBreakdown,
                 costConfidence: .estimated
             )
-            await CacheManager.shared.appendAsync(snap)
+            await appendSnapshotIfChanged(snap, accountType: account.type)
             await clearFetchError(for: account.id)
         case .codex:
             var snap = CodexLogParser.shared.aggregateToday()
@@ -316,7 +316,7 @@ class PollingService: ObservableObject {
                 modelBreakdown: snap.modelBreakdown,
                 costConfidence: .estimated
             )
-            await CacheManager.shared.appendAsync(snap)
+            await appendSnapshotIfChanged(snap, accountType: account.type)
             await clearFetchError(for: account.id)
         case .gemini:
             var snap = GeminiLogParser.shared.aggregateToday()
@@ -331,7 +331,7 @@ class PollingService: ObservableObject {
                 modelBreakdown: snap.modelBreakdown,
                 costConfidence: .estimated
             )
-            await CacheManager.shared.appendAsync(snap)
+            await appendSnapshotIfChanged(snap, accountType: account.type)
             await clearFetchError(for: account.id)
         case .openAIOrg:
             let rawCredential: String
@@ -354,7 +354,7 @@ class PollingService: ObservableObject {
             do {
                 let client = OpenAIOrgUsageClient(adminAPIKey: adminKey)
                 let snap = try await client.fetchCurrentSnapshot(accountId: account.id)
-                await CacheManager.shared.appendAsync(snap)
+                await appendSnapshotIfChanged(snap, accountType: account.type)
                 await clearFetchError(for: account.id)
             } catch APIError.invalidKey {
                 let msg = "Invalid OpenAI admin key for account \(account.id.uuidString)"
@@ -399,7 +399,7 @@ class PollingService: ObservableObject {
             do {
                 let client = WindsurfEnterpriseClient(serviceKey: payload.serviceKey, groupName: payload.groupName)
                 let snap = try await client.fetchCurrentSnapshot(accountId: account.id)
-                await CacheManager.shared.appendAsync(snap)
+                await appendSnapshotIfChanged(snap, accountType: account.type)
                 await clearFetchError(for: account.id)
             } catch APIError.invalidKey {
                 let msg = "Invalid Windsurf service key for account \(account.id.uuidString)"
@@ -444,7 +444,7 @@ class PollingService: ObservableObject {
             do {
                 let client = GitHubCopilotMetricsClient(token: payload.token, organization: payload.organization)
                 let snap = try await client.fetchCurrentSnapshot(accountId: account.id)
-                await CacheManager.shared.appendAsync(snap)
+                await appendSnapshotIfChanged(snap, accountType: account.type)
                 await clearFetchError(for: account.id)
             } catch APIError.invalidKey {
                 let msg = "Invalid GitHub token/permissions for Copilot account \(account.id.uuidString)"
@@ -546,7 +546,7 @@ class PollingService: ObservableObject {
                     modelBreakdown: [ModelUsage(modelId: "claude-ai-web", inputTokens: usage.messagesRemaining, outputTokens: 0, costUSD: 0)],
                     costConfidence: .estimated
                 )
-                await CacheManager.shared.appendAsync(snap)
+                await appendSnapshotIfChanged(snap, accountType: account.type)
                 await clearFetchError(for: account.id)
             } else {
                 let msg = "claudeAI fetchUsage returned nil for account \(account.id.uuidString) — using cached snapshot"
@@ -889,6 +889,38 @@ class PollingService: ObservableObject {
         let clamped = min(max(percentile, 0), 1)
         let index = Int((Double(sortedValues.count - 1) * clamped).rounded())
         return sortedValues[index]
+    }
+
+    private func appendSnapshotIfChanged(_ snapshot: UsageSnapshot, accountType: AccountType) async {
+        guard shouldShortCircuitUnchangedCumulativeWrites(for: accountType) else {
+            await CacheManager.shared.appendAsync(snapshot)
+            return
+        }
+        guard !(await isUnchangedCumulativeSnapshot(snapshot)) else { return }
+        await CacheManager.shared.appendAsync(snapshot)
+    }
+
+    private func shouldShortCircuitUnchangedCumulativeWrites(for accountType: AccountType) -> Bool {
+        switch accountType {
+        case .claudeCode, .codex, .gemini, .openAIOrg, .windsurfEnterprise, .githubCopilot, .claudeAI:
+            return true
+        case .anthropicAPI:
+            return false
+        }
+    }
+
+    private func isUnchangedCumulativeSnapshot(_ snapshot: UsageSnapshot) async -> Bool {
+        guard let latest = await CacheManager.shared.latestAsync(forAccount: snapshot.accountId) else {
+            return false
+        }
+        guard Calendar.current.isDate(latest.timestamp, inSameDayAs: snapshot.timestamp) else {
+            return false
+        }
+        return latest.inputTokens == snapshot.inputTokens
+            && latest.outputTokens == snapshot.outputTokens
+            && latest.cacheCreationTokens == snapshot.cacheCreationTokens
+            && latest.cacheReadTokens == snapshot.cacheReadTokens
+            && abs(latest.totalCostUSD - snapshot.totalCostUSD) < 0.000_001
     }
 
     private func accountPollJitterNanos(accountId: UUID, activeAccountCount: Int) -> UInt64 {
