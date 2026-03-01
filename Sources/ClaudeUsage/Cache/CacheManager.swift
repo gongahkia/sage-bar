@@ -21,6 +21,7 @@ private actor CacheStore {
     private let anthropicCursorFile: URL
     private let anthropicRetryAfterFile: URL
     private let lastSuccessFile: URL
+    private var snapshotMemoryCache: [UsageSnapshot]?
 
     init(baseURL: URL) {
         self.cacheFile = baseURL.appendingPathComponent("usage_cache.json")
@@ -54,7 +55,13 @@ private actor CacheStore {
     }
 
     func loadSnapshots() -> [UsageSnapshot] {
-        guard let data = try? Data(contentsOf: cacheFile) else { return [] }
+        if let cached = snapshotMemoryCache {
+            return cached
+        }
+        guard let data = try? Data(contentsOf: cacheFile) else {
+            snapshotMemoryCache = []
+            return []
+        }
         if let decoded = try? decoder().decode(UsageCachePayload.self, from: data) {
             let deduped = deduplicateSnapshots(decoded.snapshots)
             if deduped.count != decoded.snapshots.count {
@@ -62,15 +69,18 @@ private actor CacheStore {
                 saveSnapshots(deduped)
             }
             log.debug("Cache loaded: \(deduped.count) snapshots (schema \(decoded.schemaVersion))")
+            snapshotMemoryCache = deduped
             return deduped
         }
         if let legacy = try? decoder().decode([UsageSnapshot].self, from: data) {
             log.info("Migrating legacy usage cache payload")
             let deduped = deduplicateSnapshots(legacy)
             saveSnapshots(deduped)
+            snapshotMemoryCache = deduped
             return deduped
         }
         ErrorLogger.shared.log("JSON decode failed for usage_cache.json")
+        snapshotMemoryCache = []
         return []
     }
 
@@ -79,6 +89,7 @@ private actor CacheStore {
             let payload = UsageCachePayload(snapshots: snapshots)
             let data = try encoder().encode(payload)
             try data.write(to: cacheFile, options: .atomic)
+            snapshotMemoryCache = snapshots
             log.debug("Cache saved: \(snapshots.count) snapshots")
         } catch {
             ErrorLogger.shared.log("Cache write failed: \(error.localizedDescription)")
