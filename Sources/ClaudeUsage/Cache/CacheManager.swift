@@ -6,6 +6,8 @@ private let log = Logger(subsystem: "dev.claudeusage", category: "CacheManager")
 private actor CacheStore {
     private static let retentionDays = 30
     private static let maxSnapshotCacheBytes = 25 * 1024 * 1024
+    private static let compactionEntryThreshold = 1000
+    private static let compactionWriteInterval = 50
     private static let fractionalISO8601Formatter: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -23,6 +25,7 @@ private actor CacheStore {
     private let anthropicRetryAfterFile: URL
     private let lastSuccessFile: URL
     private var snapshotMemoryCache: [UsageSnapshot]?
+    private var writesSinceCompaction = 0
 
     init(baseURL: URL) {
         self.cacheFile = baseURL.appendingPathComponent("usage_cache.json")
@@ -111,6 +114,8 @@ private actor CacheStore {
         let cutoff = Calendar.current.date(byAdding: .day, value: -Self.retentionDays, to: Date())!
         var snapshots = loadSnapshots().filter { $0.timestamp >= cutoff }
         snapshots.append(snapshot)
+        writesSinceCompaction += 1
+        snapshots = compactIfNeeded(snapshots)
         saveSnapshots(snapshots)
     }
 
@@ -131,6 +136,8 @@ private actor CacheStore {
                 indexByKey[key] = snapshots.count - 1
             }
         }
+        writesSinceCompaction += 1
+        snapshots = compactIfNeeded(snapshots)
         saveSnapshots(snapshots)
     }
 
@@ -356,6 +363,19 @@ private actor CacheStore {
         let rhsScore = snapshotScore(rhs, tokenTotal: rhsTokenTotal)
         if rhsScore > lhsScore { return rhs }
         return lhs
+    }
+
+    private func compactIfNeeded(_ snapshots: [UsageSnapshot]) -> [UsageSnapshot] {
+        guard snapshots.count >= Self.compactionEntryThreshold,
+              writesSinceCompaction >= Self.compactionWriteInterval else {
+            return snapshots
+        }
+        writesSinceCompaction = 0
+        let compacted = deduplicateSnapshots(snapshots)
+        if compacted.count != snapshots.count {
+            log.info("Compacted usage cache snapshots: \(snapshots.count) -> \(compacted.count)")
+        }
+        return compacted
     }
 
     private func snapshotScore(_ snapshot: UsageSnapshot, tokenTotal: Int) -> (Int, Int, Int, Double, TimeInterval) {
