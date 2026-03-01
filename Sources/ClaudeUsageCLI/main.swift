@@ -236,6 +236,40 @@ let tuiConfig = TUIConfig(
     labelWidth: 18
 )
 
+func isCumulativeSnapshot(_ snapshot: UsageSnapshot) -> Bool {
+    let model = snapshot.modelBreakdown.first?.modelId ?? ""
+    let cumulativeModels: Set<String> = [
+        "claude-code-local",
+        "claude-ai-web",
+        "codex-local",
+        "gemini-local",
+        "openai-org",
+        "windsurf-enterprise",
+        "copilot-metrics",
+    ]
+    return cumulativeModels.contains(model)
+}
+
+func normalizeDailySnapshots(_ snapshots: [UsageSnapshot]) -> [UsageSnapshot] {
+    var eventSnapshots: [UsageSnapshot] = []
+    var cumulativeSnapshots: [UsageSnapshot] = []
+    for snapshot in snapshots {
+        if isCumulativeSnapshot(snapshot) {
+            cumulativeSnapshots.append(snapshot)
+        } else {
+            eventSnapshots.append(snapshot)
+        }
+    }
+    if let latestCumulative = cumulativeSnapshots.max(by: { $0.timestamp < $1.timestamp }) {
+        eventSnapshots.append(latestCumulative)
+    }
+    return eventSnapshots
+}
+
+func normalizeByAccountWithinDay(_ snapshots: [UsageSnapshot]) -> [UsageSnapshot] {
+    Dictionary(grouping: snapshots, by: \.accountId).values.flatMap { normalizeDailySnapshots($0) }
+}
+
 // MARK: – Output
 
 if formatJSON && !showForecast && !showModels {
@@ -277,9 +311,10 @@ if showHistory {
         cal.startOfDay(for: $0.timestamp)
     }
     for (day, snaps) in grouped.sorted(by: { $0.key < $1.key }) {
-        let cost = snaps.reduce(0) { $0 + $1.totalCostUSD }
-        let inp = snaps.reduce(0) { $0 + $1.inputTokens }
-        let out2 = snaps.reduce(0) { $0 + $1.outputTokens }
+        let normalized = normalizeByAccountWithinDay(snaps)
+        let cost = normalized.reduce(0) { $0 + $1.totalCostUSD }
+        let inp = normalized.reduce(0) { $0 + $1.inputTokens }
+        let out2 = normalized.reduce(0) { $0 + $1.outputTokens }
         let fmt = DateFormatter(); fmt.dateFormat = "yyyy-MM-dd"
         let costText = "$" + pad(String(format: "%.3f", cost), width: 7)
         print("\(pad(fmt.string(from: day), width: 12)) | \(costText) | \(pad("\(inp)", width: 10)) | \(pad("\(out2)", width: 10))")
@@ -294,7 +329,10 @@ if showHeatmap {
     var grid = Array(repeating: Array(repeating: 0.0, count: 24), count: 7)
     var counts = Array(repeating: Array(repeating: 0, count: 24), count: 7)
     let cal = Calendar.current
-    for snap in snapshots {
+    let normalizedForHeatmap = Dictionary(grouping: snapshots) { cal.startOfDay(for: $0.timestamp) }
+        .values
+        .flatMap { normalizeByAccountWithinDay($0) }
+    for snap in normalizedForHeatmap {
         let weekday = (cal.component(.weekday, from: snap.timestamp) - 1 + 6) % 7 // Mon=0
         let hour = cal.component(.hour, from: snap.timestamp)
         grid[weekday][hour] += snap.totalCostUSD
