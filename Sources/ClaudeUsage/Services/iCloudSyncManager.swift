@@ -94,10 +94,13 @@ class iCloudSyncManager: ObservableObject {
                     ?? []
             }
         }
+        let localEpoch = UserDefaults.standard.integer(forKey: syncConflictEpochKey)
+        if remoteConflictEpoch > localEpoch && !remoteSnaps.isEmpty {
+            ErrorLogger.shared.log("iCloud conflict detected: remote epoch \(remoteConflictEpoch) > local \(localEpoch); merging with remote-preferred", level: "WARN")
+        }
         let merged = merge(local: localSnaps, remote: remoteSnaps)
         await CacheManager.shared.saveAsync(merged)
         let enc = JSONEncoder(); enc.dateEncodingStrategy = .iso8601
-        let localEpoch = UserDefaults.standard.integer(forKey: syncConflictEpochKey)
         let nextConflictEpoch = max(localEpoch, remoteConflictEpoch) + 1
         let writerID = Host.current().localizedName ?? ProcessInfo.processInfo.hostName
         let envelope = SyncEnvelope(
