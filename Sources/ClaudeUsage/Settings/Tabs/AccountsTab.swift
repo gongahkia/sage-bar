@@ -117,6 +117,9 @@ struct AccountsTab: View {
                         connectionTasks[account.id] = task
                     }.font(.caption).buttonStyle(.bordered)
                 }
+                Button(role: .destructive) { deleteTarget = account } label: {
+                    Image(systemName: "trash")
+                }.font(.caption).buttonStyle(.bordered)
                 Toggle("", isOn: Binding(
                     get: { account.isActive },
                     set: { newVal in

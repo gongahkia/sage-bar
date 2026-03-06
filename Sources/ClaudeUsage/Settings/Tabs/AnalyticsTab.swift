@@ -10,7 +10,6 @@ struct AnalyticsTab: View {
             Section("Forecast") {
                 Toggle("Show spend forecasts", isOn: $config.forecast.enabled)
                 Toggle("Show in popover", isOn: $config.forecast.showInPopover)
-                Toggle("Show in TUI", isOn: $config.forecast.showInTUI)
             }
             Section("History") {
                 Toggle("Show monthly view", isOn: $config.analytics.showMonthlyView)

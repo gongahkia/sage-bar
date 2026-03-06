@@ -11,10 +11,14 @@ class SettingsWindowController: NSWindowController {
             backing: .buffered,
             defer: false
         )
-        window.title = "Claude Usage Settings"
+        window.title = "Sage Bar Settings"
         window.minSize = NSSize(width: 760, height: 520)
         window.center()
         super.init(window: window)
+        if let iconURL = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"),
+           let icon = NSImage(contentsOf: iconURL) {
+            NSApp.applicationIconImage = icon
+        }
         window.contentView = NSHostingView(rootView: SettingsView())
         window.delegate = self
     }
