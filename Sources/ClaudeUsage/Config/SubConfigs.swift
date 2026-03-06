@@ -207,6 +207,48 @@ struct GlobalHotkeyConfig: Codable, Equatable {
     }
 }
 
+struct ProviderPollingConfig: Codable, Equatable {
+    var claudeCode: Int
+    var codex: Int
+    var gemini: Int
+    var anthropicAPI: Int
+    var openAIOrg: Int
+    var windsurfEnterprise: Int
+    var githubCopilot: Int
+    var claudeAI: Int
+    static var `default`: ProviderPollingConfig {
+        ProviderPollingConfig(
+            claudeCode: 300, codex: 300, gemini: 300,
+            anthropicAPI: 300, openAIOrg: 900,
+            windsurfEnterprise: 600, githubCopilot: 3600, claudeAI: 300
+        )
+    }
+    func interval(for type: AccountType) -> Int {
+        switch type {
+        case .claudeCode: return claudeCode
+        case .codex: return codex
+        case .gemini: return gemini
+        case .anthropicAPI: return anthropicAPI
+        case .openAIOrg: return openAIOrg
+        case .windsurfEnterprise: return windsurfEnterprise
+        case .githubCopilot: return githubCopilot
+        case .claudeAI: return claudeAI
+        }
+    }
+    mutating func setInterval(_ seconds: Int, for type: AccountType) {
+        switch type {
+        case .claudeCode: claudeCode = seconds
+        case .codex: codex = seconds
+        case .gemini: gemini = seconds
+        case .anthropicAPI: anthropicAPI = seconds
+        case .openAIOrg: openAIOrg = seconds
+        case .windsurfEnterprise: windsurfEnterprise = seconds
+        case .githubCopilot: githubCopilot = seconds
+        case .claudeAI: claudeAI = seconds
+        }
+    }
+}
+
 struct HotkeyConfig: Codable, Equatable {
     var primaryKeyCode: Int         // virtual key code (e.g., 32 for U)
     var primaryModifiers: [String]  // ["command","shift"]

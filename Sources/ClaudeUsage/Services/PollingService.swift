@@ -94,7 +94,14 @@ class PollingService: ObservableObject {
     @MainActor
     func start(config: Config) {
         stop()
-        let interval = TimeInterval(config.pollIntervalSeconds)
+        let activeTypes = Set(config.accounts.filter(\.isActive).map(\.type))
+        let minInterval: Int
+        if activeTypes.isEmpty {
+            minInterval = config.pollIntervalSeconds
+        } else {
+            minInterval = activeTypes.map { config.providerPolling.interval(for: $0) }.min() ?? config.pollIntervalSeconds
+        }
+        let interval = TimeInterval(max(60, minInterval))
         timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { _ in
             Task { await PollingService.shared.pollOnce() }
         }
@@ -188,7 +195,8 @@ class PollingService: ObservableObject {
         }
         let accountsToPoll = await selectAccountsForPolling(
             activeAccounts,
-            pollIntervalSeconds: config.pollIntervalSeconds
+            pollIntervalSeconds: config.pollIntervalSeconds,
+            providerPolling: config.providerPolling
         )
         let fetchConfig = config
         let updatedIds = await PollingOrchestrator.pollAccounts(
@@ -991,12 +999,11 @@ class PollingService: ObservableObject {
         )
     }
 
-    private func selectAccountsForPolling(_ activeAccounts: [Account], pollIntervalSeconds: Int, now: Date = Date()) async -> [Account] {
+    private func selectAccountsForPolling(_ activeAccounts: [Account], pollIntervalSeconds: Int, providerPolling: ProviderPollingConfig, now: Date = Date()) async -> [Account] {
         await MainActor.run {
             let activeIds = Set(activeAccounts.map(\.id))
             self.lastPolledAtByAccount = self.lastPolledAtByAccount.filter { activeIds.contains($0.key) }
 
-            let quietCadence = self.localQuietPollCadenceSeconds(basePollIntervalSeconds: pollIntervalSeconds)
             let hasRecentLocalActivity = self.lastLocalLogEventAt.map {
                 now.timeIntervalSince($0) <= self.localActivityBurstWindowSeconds
             } ?? false
@@ -1005,18 +1012,23 @@ class PollingService: ObservableObject {
             selected.reserveCapacity(activeAccounts.count)
 
             for account in activeAccounts {
-                guard Self.isLocalLogProvider(account.type) else {
-                    selected.append(account)
-                    continue
-                }
-                if hasRecentLocalActivity {
-                    self.lastPolledAtByAccount[account.id] = now
-                    selected.append(account)
-                    continue
-                }
-                if let lastPolled = self.lastPolledAtByAccount[account.id],
-                   now.timeIntervalSince(lastPolled) < quietCadence {
-                    continue
+                let providerInterval = providerPolling.interval(for: account.type)
+                if Self.isLocalLogProvider(account.type) {
+                    let quietCadence = self.localQuietPollCadenceSeconds(basePollIntervalSeconds: providerInterval)
+                    if hasRecentLocalActivity {
+                        self.lastPolledAtByAccount[account.id] = now
+                        selected.append(account)
+                        continue
+                    }
+                    if let lastPolled = self.lastPolledAtByAccount[account.id],
+                       now.timeIntervalSince(lastPolled) < quietCadence {
+                        continue
+                    }
+                } else {
+                    if let lastPolled = self.lastPolledAtByAccount[account.id],
+                       now.timeIntervalSince(lastPolled) < TimeInterval(providerInterval) {
+                        continue
+                    }
                 }
                 self.lastPolledAtByAccount[account.id] = now
                 selected.append(account)

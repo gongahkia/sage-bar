@@ -17,6 +17,7 @@ struct Config: Codable {
     var automations: [AutomationRule]
     var claudeAI: ClaudeAIConfig
     var hotkeyConfig: HotkeyConfig
+    var providerPolling: ProviderPollingConfig
 
     enum CodingKeys: String, CodingKey {
         case schemaVersion
@@ -35,6 +36,7 @@ struct Config: Codable {
         case automations
         case claudeAI
         case hotkeyConfig
+        case providerPolling
     }
 
     static var `default`: Config {
@@ -54,7 +56,8 @@ struct Config: Codable {
             hotkey: .default,
             automations: [],
             claudeAI: .default,
-            hotkeyConfig: .default
+            hotkeyConfig: .default,
+            providerPolling: .default
         )
     }
 
@@ -74,7 +77,8 @@ struct Config: Codable {
         hotkey: GlobalHotkeyConfig,
         automations: [AutomationRule],
         claudeAI: ClaudeAIConfig,
-        hotkeyConfig: HotkeyConfig
+        hotkeyConfig: HotkeyConfig,
+        providerPolling: ProviderPollingConfig = .default
     ) {
         self.schemaVersion = schemaVersion
         self.accounts = accounts
@@ -92,6 +96,7 @@ struct Config: Codable {
         self.automations = automations
         self.claudeAI = claudeAI
         self.hotkeyConfig = hotkeyConfig
+        self.providerPolling = providerPolling
     }
 
     init(from decoder: Decoder) throws {
@@ -112,5 +117,6 @@ struct Config: Codable {
         automations = try c.decode([AutomationRule].self, forKey: .automations)
         claudeAI = try c.decode(ClaudeAIConfig.self, forKey: .claudeAI)
         hotkeyConfig = try c.decode(HotkeyConfig.self, forKey: .hotkeyConfig)
+        providerPolling = try c.decodeIfPresent(ProviderPollingConfig.self, forKey: .providerPolling) ?? .default
     }
 }
