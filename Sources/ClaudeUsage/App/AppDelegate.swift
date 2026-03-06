@@ -7,6 +7,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var updateTimer: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        if let icon = NSImage(contentsOf: Bundle.module.bundleURL.appendingPathComponent("AppIcon.icns")) {
+            NSApp.applicationIconImage = icon
+        }
         NSApp.setActivationPolicy(.accessory) // suppress Dock icon
 
         if shouldEnableSparkleUpdater {

@@ -15,10 +15,6 @@ class SettingsWindowController: NSWindowController {
         window.minSize = NSSize(width: 760, height: 520)
         window.center()
         super.init(window: window)
-        if let iconURL = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"),
-           let icon = NSImage(contentsOf: iconURL) {
-            NSApp.applicationIconImage = icon
-        }
         window.contentView = NSHostingView(rootView: SettingsView())
         window.delegate = self
     }

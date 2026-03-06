@@ -81,6 +81,24 @@ struct AccountsTab: View {
                 ConfigManager.shared.save(config)
             }
         }
+        .alert("Delete Account", isPresented: Binding(
+            get: { deleteTarget != nil },
+            set: { if !$0 { deleteTarget = nil } }
+        )) {
+            Button("Cancel", role: .cancel) { deleteTarget = nil }
+            Button("Delete", role: .destructive) {
+                guard let target = deleteTarget else { return }
+                try? KeychainManager.delete(service: AppConstants.keychainService, account: target.id.uuidString)
+                if target.type == .claudeAI {
+                    try? KeychainManager.delete(service: AppConstants.keychainSessionTokenService, account: target.id.uuidString)
+                }
+                config.accounts.removeAll { $0.id == target.id }
+                ConfigManager.shared.save(config)
+                deleteTarget = nil
+            }
+        } message: {
+            Text("Remove \"\(deleteTarget?.name ?? "")\"? This cannot be undone.")
+        }
     }
 
     @ViewBuilder
