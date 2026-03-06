@@ -36,6 +36,10 @@ struct DiagnosticsView: View {
                     .font(.caption)
                     .foregroundColor(.secondary)
                 Spacer()
+                Button("Refresh") {
+                    entries = errorLogger.readLast(50)
+                    reloadParserMetrics()
+                }
                 Button("Copy All") {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(entries.joined(separator: "\n"), forType: .string)
