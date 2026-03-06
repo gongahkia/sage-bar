@@ -148,7 +148,12 @@ class MenuBarManager {
             let agg = CacheManager.shared.todayAggregate(forAccount: account.id)
             let costStr = String(format: "$%.4f", agg.totalCostUSD)
             let tokens = agg.totalInputTokens + agg.totalOutputTokens
-            let unit = account.type == .githubCopilot ? "activities" : "tokens"
+            let unit: String
+            switch account.type {
+            case .githubCopilot: unit = "activities"
+            case .claudeAI: unit = "messages"
+            default: unit = "tokens"
+            }
             let tokStr = tokens >= 1000 ? "\(tokens / 1000)k \(unit)" : "\(tokens) \(unit)"
             let costLabel: String
             switch account.type {
