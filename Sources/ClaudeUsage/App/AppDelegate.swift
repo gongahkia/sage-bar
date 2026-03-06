@@ -10,7 +10,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if let icon = NSImage(contentsOf: Bundle.module.bundleURL.appendingPathComponent("AppIcon.icns")) {
             NSApp.applicationIconImage = icon
         }
-        NSApp.setActivationPolicy(.accessory) // suppress Dock icon
+        NSApp.setActivationPolicy(.accessory)
+
+        // onboarding on first launch
+        if !OnboardingWindowController.hasOnboarded {
+            OnboardingWindowController.shared.showWindow()
+        }
 
         if shouldEnableSparkleUpdater {
             updaterController = SPUStandardUpdaterController(

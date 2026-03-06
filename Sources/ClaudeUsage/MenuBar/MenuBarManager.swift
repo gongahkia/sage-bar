@@ -162,14 +162,11 @@ class MenuBarManager {
         let refreshItem = NSMenuItem(title: "Refresh Now", action: #selector(refreshNow), keyEquivalent: "r")
         refreshItem.target = self
         mainMenu.addItem(refreshItem)
-        let detailItem = NSMenuItem(title: "Detailed View…", action: #selector(showDetailedView), keyEquivalent: "d")
-        detailItem.target = self
-        mainMenu.addItem(detailItem)
         mainMenu.addItem(.separator())
-        // settings / quit
-        let settingsItem = NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
-        settingsItem.target = self
-        mainMenu.addItem(settingsItem)
+        // open sage bar (lockout-style)
+        let openItem = NSMenuItem(title: "Open Sage Bar…", action: #selector(openSageBar), keyEquivalent: "o")
+        openItem.target = self
+        mainMenu.addItem(openItem)
         let checkItem = NSMenuItem(title: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "")
         checkItem.target = self
         mainMenu.addItem(checkItem)
@@ -179,10 +176,7 @@ class MenuBarManager {
     }
 
     @objc private func refreshNow() { PollingService.shared.forceRefresh() }
-    @objc private func openSettings() { SettingsWindowController.shared.showWindow() }
-    @objc private func showDetailedView() {
-        togglePopover()
-    }
+    @objc private func openSageBar() { SettingsWindowController.shared.showWindow() }
 
     private func onUsageUpdate(_ notif: Notification) async {
         let config = ConfigManager.shared.load()

@@ -23,8 +23,11 @@ class SettingsWindowController: NSWindowController {
 
     func showWindow() {
         NSApp.setActivationPolicy(.regular)
-        NSApp.activate(ignoringOtherApps: true)
         window?.makeKeyAndOrderFront(nil)
+        // brief delay then flip back so Dock icon only shows while window is open
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            NSApp.activate(ignoringOtherApps: true)
+        }
     }
 }
 
