@@ -55,6 +55,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         Task { @MainActor in
             PollingService.shared.start(config: config)
         }
+        ErrorLogger.shared.log("App launched, \(config.accounts.filter(\.isActive).count) active accounts", level: "INFO")
     }
 
     func applicationWillTerminate(_ notification: Notification) {
