@@ -190,7 +190,7 @@ class MenuBarManager {
     // MARK: – Sparkline
 
     func updateSparklineIcon(snapshots: [UsageSnapshot], config: SparklineConfig) {
-        guard config.enabled else { return }
+        guard config.enabled, snapshots.count >= 2 else { return }
         let values: [Double] = snapshots.map {
             config.style == "cost" ? $0.totalCostUSD : Double($0.inputTokens + $0.outputTokens)
         }
