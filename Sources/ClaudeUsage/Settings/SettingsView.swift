@@ -46,12 +46,36 @@ struct SettingsView: View {
     @State private var selectedPane: SettingsPane = .accounts
 
     var body: some View {
-        NavigationSplitView {
-            List(SettingsPane.allCases, selection: $selectedPane) { pane in
-                Label(pane.title, systemImage: pane.systemImage)
+        HStack(spacing: 0) {
+            // sidebar
+            ScrollView {
+                VStack(spacing: 2) {
+                    ForEach(SettingsPane.allCases) { pane in
+                        Button(action: { selectedPane = pane }) {
+                            HStack(spacing: 8) {
+                                Image(systemName: pane.systemImage)
+                                    .frame(width: 20)
+                                Text(pane.title)
+                                Spacer()
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .fill(selectedPane == pane ? Color.accentColor.opacity(0.2) : Color.clear)
+                            )
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundColor(selectedPane == pane ? .accentColor : .primary)
+                    }
+                }
+                .padding(8)
             }
-            .listStyle(.sidebar)
-        } detail: {
+            .frame(width: 180)
+            .background(Color(nsColor: .controlBackgroundColor))
+            Divider()
+            // detail
             detailView
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
