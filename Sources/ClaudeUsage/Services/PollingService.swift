@@ -1114,7 +1114,8 @@ class PollingService: ObservableObject {
             let next = (self.circuitBreakerFailureCountByAccount[accountId] ?? 0) + 1
             self.circuitBreakerFailureCountByAccount[accountId] = next
             if next >= self.circuitBreakerThreshold {
-                self.circuitBreakerOpenUntilByAccount[accountId] = Date().addingTimeInterval(self.circuitBreakerDurationSeconds)
+                let jitter = Double.random(in: 0...0.3) * self.circuitBreakerDurationSeconds // up to 30% jitter
+                self.circuitBreakerOpenUntilByAccount[accountId] = Date().addingTimeInterval(self.circuitBreakerDurationSeconds + jitter)
                 self.circuitBreakerFailureCountByAccount[accountId] = 0
                 return true
             }
