@@ -7,6 +7,7 @@ struct AccountsTab: View {
     @State private var config = ConfigManager.shared.load()
     @State private var showAddSheet = false
     @State private var deleteTarget: Account?
+    @State private var showDeleteAlert = false
     @State private var connectionStatus: [UUID: String] = [:] // task 88
     @State private var connectionTesting: Set<UUID> = []
     @State private var connectionTasks: [UUID: Task<Void, Never>] = [:]
@@ -81,10 +82,7 @@ struct AccountsTab: View {
                 ConfigManager.shared.save(config)
             }
         }
-        .alert("Delete Account", isPresented: Binding(
-            get: { deleteTarget != nil },
-            set: { if !$0 { deleteTarget = nil } }
-        )) {
+        .alert("Delete \"\(deleteTarget?.name ?? "")\"?", isPresented: $showDeleteAlert) {
             Button("Cancel", role: .cancel) { deleteTarget = nil }
             Button("Delete", role: .destructive) {
                 guard let target = deleteTarget else { return }
@@ -97,7 +95,7 @@ struct AccountsTab: View {
                 deleteTarget = nil
             }
         } message: {
-            Text("Remove \"\(deleteTarget?.name ?? "")\"? This cannot be undone.")
+            Text("This cannot be undone.")
         }
     }
 
@@ -135,7 +133,10 @@ struct AccountsTab: View {
                         connectionTasks[account.id] = task
                     }.font(.caption).buttonStyle(.bordered)
                 }
-                Button(role: .destructive) { deleteTarget = account } label: {
+                Button(role: .destructive) {
+                    deleteTarget = account
+                    showDeleteAlert = true
+                } label: {
                     Image(systemName: "trash")
                 }.font(.caption).buttonStyle(.bordered)
                 Toggle("", isOn: Binding(
