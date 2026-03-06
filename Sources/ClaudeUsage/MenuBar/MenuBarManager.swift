@@ -117,7 +117,71 @@ class MenuBarManager {
         rebuildMainMenu()
         statusItem.menu = mainMenu
         statusItem.button?.performClick(nil)
-        statusItem.menu = nil // reset so next click triggers action again
+        statusItem.menu = nil
+    }
+
+    private func rebuildMainMenu() {
+        mainMenu.removeAllItems()
+        let config = ConfigManager.shared.load()
+        let active = config.accounts.filter(\.isActive).sorted {
+            $0.order == $1.order ? $0.createdAt < $1.createdAt : $0.order < $1.order
+        }
+        // header
+        let titleItem = NSMenuItem(title: "Sage Bar", action: nil, keyEquivalent: "")
+        titleItem.attributedTitle = NSAttributedString(string: "Sage Bar", attributes: [.font: NSFontManager.shared.convert(NSFont.menuFont(ofSize: 13), toHaveTrait: .boldFontMask)])
+        mainMenu.addItem(titleItem)
+        if let date = PollingService.shared.lastPollDate {
+            let fmt = RelativeDateTimeFormatter(); fmt.unitsStyle = .abbreviated
+            let ago = fmt.localizedString(for: date, relativeTo: Date())
+            let sub = NSMenuItem(title: "Last synced: \(ago)", action: nil, keyEquivalent: "")
+            sub.attributedTitle = NSAttributedString(string: "Last synced: \(ago)", attributes: [.font: NSFont.menuFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor])
+            mainMenu.addItem(sub)
+        }
+        mainMenu.addItem(.separator())
+        // per-account usage
+        if active.isEmpty {
+            let noAcct = NSMenuItem(title: "No active accounts", action: nil, keyEquivalent: "")
+            noAcct.isEnabled = false
+            mainMenu.addItem(noAcct)
+        }
+        for account in active {
+            let agg = CacheManager.shared.todayAggregate(forAccount: account.id)
+            let costStr = String(format: "$%.4f", agg.totalCostUSD)
+            let tokens = agg.totalInputTokens + agg.totalOutputTokens
+            let tokStr = tokens >= 1000 ? "\(tokens / 1000)k tokens" : "\(tokens) tokens"
+            let acctItem = NSMenuItem(title: "\(account.name)  —  \(costStr)", action: nil, keyEquivalent: "")
+            acctItem.attributedTitle = NSAttributedString(string: "\(account.name)  —  \(costStr)", attributes: [.font: NSFont.menuFont(ofSize: 13)])
+            mainMenu.addItem(acctItem)
+            let detail = NSMenuItem(title: "\(tokStr)  ·  \(account.type.rawValue)", action: nil, keyEquivalent: "")
+            detail.attributedTitle = NSAttributedString(string: "\(tokStr)  ·  \(account.type.rawValue)", attributes: [.font: NSFont.menuFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor])
+            detail.indentationLevel = 1
+            mainMenu.addItem(detail)
+        }
+        mainMenu.addItem(.separator())
+        // actions
+        let refreshItem = NSMenuItem(title: "Refresh Now", action: #selector(refreshNow), keyEquivalent: "r")
+        refreshItem.target = self
+        mainMenu.addItem(refreshItem)
+        let detailItem = NSMenuItem(title: "Detailed View…", action: #selector(showDetailedView), keyEquivalent: "d")
+        detailItem.target = self
+        mainMenu.addItem(detailItem)
+        mainMenu.addItem(.separator())
+        // settings / quit
+        let settingsItem = NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
+        settingsItem.target = self
+        mainMenu.addItem(settingsItem)
+        let checkItem = NSMenuItem(title: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "")
+        checkItem.target = self
+        mainMenu.addItem(checkItem)
+        mainMenu.addItem(.separator())
+        let quitItem = NSMenuItem(title: "Quit Sage Bar", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        mainMenu.addItem(quitItem)
+    }
+
+    @objc private func refreshNow() { PollingService.shared.forceRefresh() }
+    @objc private func openSettings() { SettingsWindowController.shared.showWindow() }
+    @objc private func showDetailedView() {
+        togglePopover()
     }
 
     private func onUsageUpdate(_ notif: Notification) async {
@@ -206,6 +270,7 @@ class MenuBarManager {
     }
 
     // MARK: – Dual icon
+
 
     private func updateDualIcon(config: Config) async {
         let active = config.accounts.filter { $0.isActive }
