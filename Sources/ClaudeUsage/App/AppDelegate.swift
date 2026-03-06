@@ -7,8 +7,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var updateTimer: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        if let icon = NSImage(contentsOf: Bundle.module.bundleURL.appendingPathComponent("AppIcon.icns")) {
+        if let url = Bundle.module.url(forResource: "AppIcon", withExtension: "icns"),
+           let icon = NSImage(contentsOf: url) {
             NSApp.applicationIconImage = icon
+        } else if let url = Bundle.module.url(forResource: "AppIcon", withExtension: "png"),
+                  let icon = NSImage(contentsOf: url) {
+            NSApp.applicationIconImage = icon
+        } else {
+            ErrorLogger.shared.log("Failed to load app icon from bundle", level: "WARN")
         }
         NSApp.setActivationPolicy(.accessory)
 
