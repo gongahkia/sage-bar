@@ -33,12 +33,11 @@ struct AccountsTab: View {
                     }.onDelete { idx in
                         for i in idx {
                             let a = config.accounts[i]
-                            try? KeychainManager.delete(service: AppConstants.keychainService, account: a.id.uuidString)
+                            do { try KeychainManager.delete(service: AppConstants.keychainService, account: a.id.uuidString) }
+                            catch { ErrorLogger.shared.log("Keychain delete failed for \(a.name): \(error.localizedDescription)", level: "WARN") }
                             if a.type == .claudeAI {
-                                try? KeychainManager.delete(
-                                    service: AppConstants.keychainSessionTokenService,
-                                    account: a.id.uuidString
-                                )
+                                do { try KeychainManager.delete(service: AppConstants.keychainSessionTokenService, account: a.id.uuidString) }
+                                catch { ErrorLogger.shared.log("Keychain session token delete failed for \(a.name): \(error.localizedDescription)", level: "WARN") }
                             }
                         }
                         config.accounts.remove(atOffsets: idx)
@@ -77,7 +76,8 @@ struct AccountsTab: View {
             AddAccountSheet(showExperimentalProviders: config.display.showExperimentalProviders) { newAccount, key in
                 config.accounts.append(newAccount)
                 if let key, !key.isEmpty {
-                    try? KeychainManager.store(key: key, service: AppConstants.keychainService, account: newAccount.id.uuidString)
+                    do { try KeychainManager.store(key: key, service: AppConstants.keychainService, account: newAccount.id.uuidString) }
+                    catch { ErrorLogger.shared.log("Keychain store failed for \(newAccount.name): \(error.localizedDescription)") }
                 }
                 ConfigManager.shared.save(config)
             }
@@ -86,9 +86,11 @@ struct AccountsTab: View {
             Button("Cancel", role: .cancel) { deleteTarget = nil }
             Button("Delete", role: .destructive) {
                 guard let target = deleteTarget else { return }
-                try? KeychainManager.delete(service: AppConstants.keychainService, account: target.id.uuidString)
+                do { try KeychainManager.delete(service: AppConstants.keychainService, account: target.id.uuidString) }
+                catch { ErrorLogger.shared.log("Keychain delete failed for \(target.name): \(error.localizedDescription)", level: "WARN") }
                 if target.type == .claudeAI {
-                    try? KeychainManager.delete(service: AppConstants.keychainSessionTokenService, account: target.id.uuidString)
+                    do { try KeychainManager.delete(service: AppConstants.keychainSessionTokenService, account: target.id.uuidString) }
+                    catch { ErrorLogger.shared.log("Keychain session delete failed for \(target.name): \(error.localizedDescription)", level: "WARN") }
                 }
                 config.accounts.removeAll { $0.id == target.id }
                 ConfigManager.shared.save(config)
@@ -325,7 +327,8 @@ struct AddAccountSheet: View {
         if type == .claudeAI {
             let a = Account(name: name, type: type)
             if !sessionToken.isEmpty {
-                try? KeychainManager.store(key: sessionToken, service: AppConstants.keychainSessionTokenService, account: a.id.uuidString)
+                do { try KeychainManager.store(key: sessionToken, service: AppConstants.keychainSessionTokenService, account: a.id.uuidString) }
+                catch { ErrorLogger.shared.log("Keychain session token store failed: \(error.localizedDescription)") }
             }
             onSave(a, nil)
             dismiss()

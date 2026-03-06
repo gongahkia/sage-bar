@@ -101,8 +101,12 @@ final class ParserMetricsStore {
                 cpuTimeMs: prev.cpuTimeMs + max(0, cpuTimeMs),
                 wallTimeMs: prev.wallTimeMs + max(0, wallTimeMs)
             )
-            guard let data = try? JSONEncoder().encode(all) else { return }
-            try? AtomicFileWriter.write(data, to: self.fileURL)
+            do {
+                let data = try JSONEncoder().encode(all)
+                try AtomicFileWriter.write(data, to: self.fileURL)
+            } catch {
+                ErrorLogger.shared.log("Parser metrics write failed: \(error.localizedDescription)", level: "WARN")
+            }
         }
     }
 

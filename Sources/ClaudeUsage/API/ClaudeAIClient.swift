@@ -38,7 +38,13 @@ struct ClaudeAIClient {
     }
 
     func fetchUsage() async -> ClaudeAIUsage? {
-        guard let response = try? await fetchRemainingUsage() else { return nil }
+        let response: ClaudeAIUsageResponse
+        do {
+            response = try await fetchRemainingUsage()
+        } catch {
+            ErrorLogger.shared.log("ClaudeAI fetchUsage failed: \(error)", level: "WARN")
+            return nil
+        }
         return ClaudeAIUsage(
             messagesRemaining: response.messageLimit.remaining,
             messagesUsed: response.messageLimit.used ?? 0

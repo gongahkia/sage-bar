@@ -11,11 +11,16 @@ final class AutomationCooldownStore {
 
     func lastFiredAt(ruleID: UUID) -> Date? {
         queue.sync {
-            guard let data = try? Data(contentsOf: fileURL) else { return nil }
+            guard let data = try? Data(contentsOf: fileURL) else { return nil } // file may not exist yet
             let dec = JSONDecoder()
             dec.dateDecodingStrategy = .iso8601
-            guard let all = try? dec.decode([String: Date].self, from: data) else { return nil }
-            return all[ruleID.uuidString]
+            do {
+                let all = try dec.decode([String: Date].self, from: data)
+                return all[ruleID.uuidString]
+            } catch {
+                ErrorLogger.shared.log("Cooldown store decode failed: \(error.localizedDescription)", level: "WARN")
+                return nil
+            }
         }
     }
 
@@ -25,13 +30,21 @@ final class AutomationCooldownStore {
             if let data = try? Data(contentsOf: self.fileURL) {
                 let dec = JSONDecoder()
                 dec.dateDecodingStrategy = .iso8601
-                all = (try? dec.decode([String: Date].self, from: data)) ?? [:]
+                do {
+                    all = try dec.decode([String: Date].self, from: data)
+                } catch {
+                    ErrorLogger.shared.log("Cooldown store decode failed on write path: \(error.localizedDescription)", level: "WARN")
+                }
             }
             all[ruleID.uuidString] = date
             let enc = JSONEncoder()
             enc.dateEncodingStrategy = .iso8601
-            guard let data = try? enc.encode(all) else { return }
-            try? AtomicFileWriter.write(data, to: self.fileURL)
+            do {
+                let data = try enc.encode(all)
+                try AtomicFileWriter.write(data, to: self.fileURL)
+            } catch {
+                ErrorLogger.shared.log("Cooldown store write failed: \(error.localizedDescription)")
+            }
         }
     }
 }
