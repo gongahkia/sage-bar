@@ -148,9 +148,11 @@ class MenuBarManager {
             let agg = CacheManager.shared.todayAggregate(forAccount: account.id)
             let costStr = String(format: "$%.4f", agg.totalCostUSD)
             let tokens = agg.totalInputTokens + agg.totalOutputTokens
-            let tokStr = tokens >= 1000 ? "\(tokens / 1000)k tokens" : "\(tokens) tokens"
-            let acctItem = NSMenuItem(title: "\(account.name)  —  \(costStr)", action: nil, keyEquivalent: "")
-            acctItem.attributedTitle = NSAttributedString(string: "\(account.name)  —  \(costStr)", attributes: [.font: NSFont.menuFont(ofSize: 13)])
+            let unit = account.type == .githubCopilot ? "activities" : "tokens"
+            let tokStr = tokens >= 1000 ? "\(tokens / 1000)k \(unit)" : "\(tokens) \(unit)"
+            let costLabel = account.type == .githubCopilot ? "n/a" : costStr
+            let acctItem = NSMenuItem(title: "\(account.name)  —  \(costLabel)", action: nil, keyEquivalent: "")
+            acctItem.attributedTitle = NSAttributedString(string: "\(account.name)  —  \(costLabel)", attributes: [.font: NSFont.menuFont(ofSize: 13)])
             mainMenu.addItem(acctItem)
             let detail = NSMenuItem(title: "\(tokStr)  ·  \(account.type.rawValue)", action: nil, keyEquivalent: "")
             detail.attributedTitle = NSAttributedString(string: "\(tokStr)  ·  \(account.type.displayName)", attributes: [.font: NSFont.menuFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor])
