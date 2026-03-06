@@ -3,22 +3,27 @@ import Foundation
 import Sparkle
 
 class AppDelegate: NSObject, NSApplicationDelegate {
-    private let updaterController = SPUStandardUpdaterController(
-        startingUpdater: true,
-        updaterDelegate: nil,
-        userDriverDelegate: nil
-    )
+    private var updaterController: SPUStandardUpdaterController?
     private var updateTimer: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory) // suppress Dock icon
 
-        // check for updates immediately on launch
-        updaterController.updater.checkForUpdatesInBackground()
-
-        // daily update check timer
-        updateTimer = Timer.scheduledTimer(withTimeInterval: 86400, repeats: true) { [weak self] _ in
-            self?.updaterController.updater.checkForUpdatesInBackground()
+        if shouldEnableSparkleUpdater {
+            updaterController = SPUStandardUpdaterController(
+                startingUpdater: true,
+                updaterDelegate: nil,
+                userDriverDelegate: nil
+            )
+            // check for updates immediately on launch
+            updaterController?.updater.checkForUpdatesInBackground()
+            // daily update check timer
+            updateTimer = Timer.scheduledTimer(withTimeInterval: 86400, repeats: true) { [weak self] _ in
+                self?.updaterController?.updater.checkForUpdatesInBackground()
+            }
+        } else {
+            updaterController = nil
+            updateTimer = nil
         }
 
         // setup menu bar
@@ -54,5 +59,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         HotkeyManager.shared.unregisterAll()
         PollingService.shared.stop()
         iCloudSyncManager.shared.stopMetadataQuery()
+    }
+
+    private var shouldEnableSparkleUpdater: Bool {
+        guard Bundle.main.bundleURL.pathExtension.lowercased() == "app" else { return false }
+        guard let bundleID = Bundle.main.bundleIdentifier, !bundleID.isEmpty else { return false }
+        guard let feedURL = Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String,
+              !feedURL.isEmpty,
+              URL(string: feedURL) != nil else {
+            return false
+        }
+        return true
     }
 }

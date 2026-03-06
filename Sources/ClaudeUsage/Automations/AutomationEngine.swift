@@ -70,8 +70,7 @@ struct AutomationEngine {
             return await runProcess(execPath: "/usr/bin/osascript", args: ["-e", script], injectedEnv: injectedEnv, ruleName: rule.name)
         case .openURL(let url):
             guard let u = URL(string: url) else { return false }
-            await MainActor.run { NSWorkspace.shared.open(u) }
-            return true
+            return await MainActor.run { NSWorkspace.shared.open(u) }
         case .say(let text):
             return await runProcess(execPath: "/usr/bin/say", args: [text], injectedEnv: injectedEnv, ruleName: rule.name)
         case .afplay(let path):
@@ -114,11 +113,11 @@ struct AutomationEngine {
             try process.run()
             let deadline = Date().addingTimeInterval(processTimeoutSeconds)
             while process.isRunning && Date() < deadline {
-                Thread.sleep(forTimeInterval: 0.05)
+                try? await Task.sleep(nanoseconds: 50_000_000)
             }
             if process.isRunning {
                 process.terminate()
-                Thread.sleep(forTimeInterval: 0.1)
+                try? await Task.sleep(nanoseconds: 100_000_000)
                 if process.isRunning {
                     _ = kill(process.processIdentifier, SIGKILL)
                 }
@@ -186,6 +185,11 @@ struct AutomationEngine {
             || ProcessInfo.processInfo.processName == "xctest"
             || NSClassFromString("XCTestCase") != nil
         guard !runningTests else {
+            return nil
+        }
+        guard Bundle.main.bundleURL.pathExtension.lowercased() == "app",
+              let bundleID = Bundle.main.bundleIdentifier,
+              !bundleID.isEmpty else {
             return nil
         }
         return UNUserNotificationCenter.current()

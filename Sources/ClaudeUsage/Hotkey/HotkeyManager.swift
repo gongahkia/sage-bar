@@ -58,7 +58,9 @@ class HotkeyManager {
         let keyCode = CGKeyCode(keyCodeFor(key: config.key))
         let mods = modifierFlags(from: config.modifiers)
         let binding = HotkeyBinding(id: "primary", keyCode: keyCode, modifiers: mods) {
-            MenuBarManager.shared.togglePopover()
+            Task { @MainActor in
+                MenuBarManager.shared.togglePopover()
+            }
         }
         unregisterAll()
         register(binding: binding)

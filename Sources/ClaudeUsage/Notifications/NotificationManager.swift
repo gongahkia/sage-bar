@@ -117,7 +117,21 @@ class NotificationManager {
         guard !isRunningUnderXCTest else {
             return nil
         }
+        // `swift run` launches an unbundled executable; UserNotifications can assert in that context.
+        guard hasValidAppBundleRuntimeForUserNotifications else {
+            return nil
+        }
         return UNUserNotificationCenter.current()
+    }
+
+    private var hasValidAppBundleRuntimeForUserNotifications: Bool {
+        guard Bundle.main.bundleURL.pathExtension.lowercased() == "app" else {
+            return false
+        }
+        guard let bundleID = Bundle.main.bundleIdentifier, !bundleID.isEmpty else {
+            return false
+        }
+        return true
     }
 
     private var isRunningUnderXCTest: Bool {
