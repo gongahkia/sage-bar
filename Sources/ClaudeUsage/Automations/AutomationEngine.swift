@@ -174,9 +174,15 @@ struct AutomationEngine {
         AutomationAction.parse(commandString: command) == nil ? "Command not in allowlist or contains forbidden characters" : nil
     }
 
+    private static let sensitiveEnvKeys = [
+        "CLAUDE_COST", "CLAUDE_TOKENS", "CLAUDE_ACCOUNT",
+        "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GITHUB_TOKEN",
+        "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN",
+    ]
+
     private static func processEnvironment(injectedEnv: [String: String]) -> [String: String] {
         var env = ProcessInfo.processInfo.environment
-        for key in ["CLAUDE_COST", "CLAUDE_TOKENS", "CLAUDE_ACCOUNT"] {
+        for key in sensitiveEnvKeys {
             env.removeValue(forKey: key)
         }
         for (key, value) in injectedEnv {
