@@ -150,7 +150,12 @@ class MenuBarManager {
             let tokens = agg.totalInputTokens + agg.totalOutputTokens
             let unit = account.type == .githubCopilot ? "activities" : "tokens"
             let tokStr = tokens >= 1000 ? "\(tokens / 1000)k \(unit)" : "\(tokens) \(unit)"
-            let costLabel = account.type == .githubCopilot ? "n/a" : costStr
+            let costLabel: String
+            switch account.type {
+            case .githubCopilot, .claudeAI: costLabel = "n/a"
+            case .windsurfEnterprise: costLabel = "\(costStr) est."
+            default: costLabel = costStr
+            }
             let acctItem = NSMenuItem(title: "\(account.name)  —  \(costLabel)", action: nil, keyEquivalent: "")
             acctItem.attributedTitle = NSAttributedString(string: "\(account.name)  —  \(costLabel)", attributes: [.font: NSFont.menuFont(ofSize: 13)])
             mainMenu.addItem(acctItem)
