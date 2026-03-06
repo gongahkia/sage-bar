@@ -17,6 +17,7 @@ enum KeychainManager {
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
             kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
         ]
         var status = SecItemAdd(query as CFDictionary, nil)
         if status == errSecDuplicateItem {
