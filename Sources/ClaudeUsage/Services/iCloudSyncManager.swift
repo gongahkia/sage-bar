@@ -106,7 +106,12 @@ class iCloudSyncManager: ObservableObject {
             lastWriterID: writerID,
             snapshots: merged
         )
-        guard let data = try? enc.encode(envelope) else { return }
+        let data: Data
+        do { data = try enc.encode(envelope) }
+        catch {
+            ErrorLogger.shared.log("iCloud sync envelope encode failed: \(error.localizedDescription)")
+            return
+        }
         let hash = contentHash(for: data)
         if UserDefaults.standard.string(forKey: lastSyncPayloadHashKey) == hash {
             log.debug("iCloud sync write skipped: payload hash unchanged")

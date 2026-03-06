@@ -130,7 +130,11 @@ class WebhookService {
         default:
             break
         }
-        return (try? JSONSerialization.data(withJSONObject: obj)) ?? Data()
+        do { return try JSONSerialization.data(withJSONObject: obj) }
+        catch {
+            ErrorLogger.shared.log("Webhook payload serialization failed: \(error.localizedDescription)", level: "WARN")
+            return Data()
+        }
     }
 
     func sendTest(config: WebhookConfig) async -> Result<Void, Error> {
@@ -148,7 +152,11 @@ class WebhookService {
             "account": "test",
             "timestamp": SharedDateFormatters.iso8601InternetDateTime.string(from: Date()),
         ]
-        req.httpBody = try? JSONSerialization.data(withJSONObject: obj)
+        do { req.httpBody = try JSONSerialization.data(withJSONObject: obj) }
+        catch {
+            ErrorLogger.shared.log("Webhook test payload serialization failed: \(error.localizedDescription)", level: "WARN")
+            return .failure(error)
+        }
         do {
             let (_, resp) = try await session.data(for: req)
             guard (resp as? HTTPURLResponse).map({ (200...299).contains($0.statusCode) }) == true else {
