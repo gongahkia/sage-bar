@@ -2,10 +2,10 @@
 import PackageDescription
 
 let package = Package(
-    name: "ClaudeUsage",
+    name: "SageBar",
     platforms: [.macOS(.v13)],
     products: [
-        .executable(name: "ClaudeUsage", targets: ["ClaudeUsage"]),
+        .executable(name: "SageBar", targets: ["SageBar"]),
     ],
     dependencies: [
         .package(url: "https://github.com/LebJe/TOMLKit.git", from: "0.5.0"),
@@ -13,7 +13,7 @@ let package = Package(
     ],
     targets: [
         .executableTarget(
-            name: "ClaudeUsage",
+            name: "SageBar",
             dependencies: [
                 "TOMLKit",
                 .product(name: "Sparkle", package: "Sparkle"),
@@ -26,9 +26,9 @@ let package = Package(
             ]
         ),
         .testTarget(
-            name: "ClaudeUsageTests",
+            name: "SageBarTests",
             dependencies: [
-                "ClaudeUsage",
+                "SageBar",
                 "TOMLKit",
             ],
             path: "Tests/ClaudeUsageTests"

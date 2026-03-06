@@ -25,7 +25,7 @@ class NotificationManager {
         let cost = String(format: "$%.2f", snapshot.totalCostUSD)
         let limit = String(format: "$%.2f", limitUSD)
         let content = UNMutableNotificationContent()
-        content.title = "Claude Usage Alert"
+        content.title = "Sage Bar Alert"
         content.body = "Account '\(account.name)' reached \(cost) today (limit: \(limit))"
         content.sound = .default
         let req = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
@@ -70,7 +70,7 @@ class NotificationManager {
         let burn = String(format: "$%.2f/h", burnRateUSDPerHour)
         let threshold = String(format: "$%.2f/h", thresholdUSDPerHour)
         let content = UNMutableNotificationContent()
-        content.title = "Claude Usage Burn-Rate Alert"
+        content.title = "Sage Bar Burn-Rate Alert"
         content.body = "Account '\(account.name)' is burning at \(burn) (threshold: \(threshold))"
         content.sound = .default
         let req = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)

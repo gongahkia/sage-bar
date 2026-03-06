@@ -1,6 +1,6 @@
 import XCTest
 import Foundation
-@testable import ClaudeUsage
+@testable import SageBar
 
 final class PerformanceBenchmarksTests: XCTestCase {
     private var tmpDir: URL!

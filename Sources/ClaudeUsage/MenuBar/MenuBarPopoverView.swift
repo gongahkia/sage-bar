@@ -164,7 +164,7 @@ struct MenuBarPopoverView: View {
     // MARK: – Header
     private var header: some View {
         HStack {
-            Text("Claude Usage").font(.headline)
+            Text("Sage Bar").font(.headline)
             if polling.lastPollFailureCount > 0 {
                 let partial = polling.lastPollSuccessCount > 0
                 Text(partial ? "Partial" : "Failed")

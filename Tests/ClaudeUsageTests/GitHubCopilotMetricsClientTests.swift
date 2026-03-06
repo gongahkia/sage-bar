@@ -1,5 +1,5 @@
 import XCTest
-@testable import ClaudeUsage
+@testable import SageBar
 
 final class GitHubCopilotMetricsClientTests: XCTestCase {
     private func makeSession(_ handler: @escaping (URLRequest) throws -> (HTTPURLResponse, Data)) -> URLSession {

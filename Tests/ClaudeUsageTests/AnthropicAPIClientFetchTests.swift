@@ -1,5 +1,5 @@
 import XCTest
-@testable import ClaudeUsage
+@testable import SageBar
 
 private func mockClient(statusCode: Int, body: Data, headers: [String: String] = [:]) -> AnthropicAPIClient {
     let config = URLSessionConfiguration.ephemeral

@@ -1,5 +1,5 @@
 import XCTest
-@testable import ClaudeUsage
+@testable import SageBar
 
 final class ForecastEngineTests: XCTestCase {
     private let accountId = UUID()

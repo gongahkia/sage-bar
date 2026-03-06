@@ -1,5 +1,5 @@
 import XCTest
-@testable import ClaudeUsage
+@testable import SageBar
 
 final class ClaudeCodeLogParserTests: XCTestCase {
     private let parser = ClaudeCodeLogParser.shared

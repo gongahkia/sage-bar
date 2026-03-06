@@ -303,7 +303,7 @@ class GitHubCopilotMetricsClient {
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         req.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version")
-        req.setValue("claude-usage-tracker", forHTTPHeaderField: "User-Agent")
+        req.setValue("sage-bar", forHTTPHeaderField: "User-Agent")
 
         do {
             let (data, resp) = try await session.data(for: req)

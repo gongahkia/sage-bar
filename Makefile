@@ -10,4 +10,4 @@ clean:
 	rm -rf .build/
 
 run:
-	swift run ClaudeUsage
+	swift run SageBar

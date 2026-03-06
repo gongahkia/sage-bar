@@ -28,7 +28,7 @@ enum AutomationAction {
         case "open": return rest.isEmpty ? nil : .openURL(url: rest)
         case "say": return rest.isEmpty ? nil : .say(text: rest)
         case "afplay": return rest.isEmpty ? nil : .afplay(path: rest)
-        case "terminal-notifier": return .notification(title: "Claude Usage", body: rest)
+        case "terminal-notifier": return .notification(title: "Sage Bar", body: rest)
         case "curl":
             let args = rest.split(separator: " ").map(String.init)
             guard args.count == 1, let target = args.first else { return nil }

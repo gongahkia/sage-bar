@@ -23,8 +23,8 @@ struct UsageRecordQuery: EntityQuery {
 }
 
 struct GetTodayUsageIntent: AppIntent {
-    static let title: LocalizedStringResource = "Get Claude Usage Today"
-    static let description = IntentDescription("Returns today's Claude usage data for all active accounts.")
+    static let title: LocalizedStringResource = "Get Sage Bar Usage Today"
+    static let description = IntentDescription("Returns today's usage data for all active accounts.")
 
     func perform() async throws -> some ReturnsValue<[UsageRecord]> {
         let config = ConfigManager.shared.load()

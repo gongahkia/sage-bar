@@ -1,5 +1,5 @@
 import XCTest
-@testable import ClaudeUsage
+@testable import SageBar
 
 final class NotificationManagerTests: XCTestCase {
     private func snap(accountId: UUID, cost: Double) -> UsageSnapshot {

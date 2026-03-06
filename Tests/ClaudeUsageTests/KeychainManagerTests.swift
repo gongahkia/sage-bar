@@ -1,5 +1,5 @@
 import XCTest
-@testable import ClaudeUsage
+@testable import SageBar
 
 final class KeychainManagerTests: XCTestCase {
     private let service = "claude-usage-test"

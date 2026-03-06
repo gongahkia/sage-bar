@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE dictionary SYSTEM "file://localhost/System/Library/DTDs/sdef.dtd">
-<dictionary title="Claude Usage Suite">
-    <suite name="Claude Usage Suite" code="CLUH" description="Claude usage data access">
+<dictionary title="Sage Bar Suite">
+    <suite name="Sage Bar Suite" code="CLUH" description="Sage Bar usage data access">
         <class name="usage record" code="CUSR" description="Daily usage record" plural="usage records">
             <property name="account name" code="acnm" type="text" access="r" description="Account name"/>
             <property name="input tokens" code="intf" type="integer" access="r" description="Input tokens today"/>

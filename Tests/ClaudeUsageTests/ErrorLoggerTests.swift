@@ -1,5 +1,5 @@
 import XCTest
-@testable import ClaudeUsage
+@testable import SageBar
 
 final class ErrorLoggerTests: XCTestCase {
     private var logURL: URL!

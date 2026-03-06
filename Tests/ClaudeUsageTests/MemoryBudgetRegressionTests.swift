@@ -1,7 +1,7 @@
 import XCTest
 import Foundation
 import Darwin
-@testable import ClaudeUsage
+@testable import SageBar
 
 final class MemoryBudgetRegressionTests: XCTestCase {
     private var tmpDir: URL!

@@ -1,5 +1,5 @@
 import XCTest
-@testable import ClaudeUsage
+@testable import SageBar
 
 final class CacheManagerTests: XCTestCase {
     private var cm: CacheManager!

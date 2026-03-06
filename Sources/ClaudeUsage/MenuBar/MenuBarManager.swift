@@ -9,6 +9,7 @@ class MenuBarManager {
     private var statusItem: NSStatusItem!
     private var popover: NSPopover!
     private let contextMenu = NSMenu()
+    private let mainMenu = NSMenu()
     private var monitor: Any?
     private var throttleWorkItem: DispatchWorkItem?
     private var secondStatusItem: NSStatusItem? // dual icon support
@@ -20,7 +21,7 @@ class MenuBarManager {
         self.updaterController = updaterController
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let btn = statusItem.button {
-            btn.image = NSImage(systemSymbolName: "chart.bar.fill", accessibilityDescription: "Claude Usage")
+            btn.image = NSImage(systemSymbolName: "chart.bar.fill", accessibilityDescription: "Sage Bar")
             btn.image?.isTemplate = true
             btn.action = #selector(handleStatusItemClick(_:))
             btn.target = self
@@ -90,10 +91,10 @@ class MenuBarManager {
         let enc = JSONEncoder(); enc.outputFormatting = [.prettyPrinted, .sortedKeys]; enc.dateEncodingStrategy = .iso8601
         let configJSON = (try? String(data: enc.encode(config), encoding: .utf8)) ?? "{}"
         let isoDate = SharedDateFormatters.iso8601FullDate.string(from: Date()).prefix(10)
-        let content = "# claude-usage diagnostics \(isoDate)\n\n## Errors (last 100)\n\(errors)\n\n## Config\n\(configJSON)\n"
+        let content = "# sage-bar diagnostics \(isoDate)\n\n## Errors (last 100)\n\(errors)\n\n## Config\n\(configJSON)\n"
         let dest = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Desktop")
-            .appendingPathComponent("claude-usage-diagnostics-\(isoDate).txt")
+            .appendingPathComponent("sage-bar-diagnostics-\(isoDate).txt")
         do {
             try content.write(to: dest, atomically: true, encoding: .utf8)
             NSWorkspace.shared.activateFileViewerSelecting([dest])
@@ -113,13 +114,10 @@ class MenuBarManager {
     }
 
     @objc private func handleStatusItemClick(_ sender: NSStatusBarButton) {
-        guard let event = NSApp.currentEvent else { togglePopover(); return }
-        let isRightClick = event.type == .rightMouseUp || event.modifierFlags.contains(.control)
-        if isRightClick {
-            NSMenu.popUpContextMenu(contextMenu, with: event, for: sender)
-        } else {
-            togglePopover()
-        }
+        rebuildMainMenu()
+        statusItem.menu = mainMenu
+        statusItem.button?.performClick(nil)
+        statusItem.menu = nil // reset so next click triggers action again
     }
 
     private func onUsageUpdate(_ notif: Notification) async {

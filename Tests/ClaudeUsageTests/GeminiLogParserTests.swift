@@ -1,5 +1,5 @@
 import XCTest
-@testable import ClaudeUsage
+@testable import SageBar
 
 final class GeminiLogParserTests: XCTestCase {
     private var tmpDir: URL!
