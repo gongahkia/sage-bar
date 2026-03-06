@@ -26,9 +26,11 @@ struct MenuBarPopoverView: View {
     private final class ViewModel: ObservableObject {
         private actor ModelHintsMemoStore {
             private var cachedHints: [ModelHint]?
+            private var cachedAt: Date?
+            private let ttlSeconds: TimeInterval = 300 // 5min TTL
 
             func hint(for accountId: UUID) -> ModelHint? {
-                if cachedHints == nil {
+                if cachedHints == nil || (cachedAt.map { Date().timeIntervalSince($0) > ttlSeconds } ?? true) {
                     let url = AppConstants.sharedContainerURL.appendingPathComponent("model_hints.json")
                     if let data = try? Data(contentsOf: url),
                        let hints = try? JSONDecoder().decode([ModelHint].self, from: data) {
@@ -36,12 +38,14 @@ struct MenuBarPopoverView: View {
                     } else {
                         cachedHints = []
                     }
+                    cachedAt = Date()
                 }
                 return cachedHints?.first(where: { $0.accountId == accountId && $0.cheaperAlternativeExists })
             }
 
             func invalidate() {
                 cachedHints = nil
+                cachedAt = nil
             }
         }
 
