@@ -625,7 +625,7 @@ class PollingService: ObservableObject {
     private func fireMatchedAutomations(matches: [(AutomationRule, UsageSnapshot)], config: inout Config) async {
         var didMutateConfig = false
         for (rule, snapshot) in matches {
-            let fired = await AutomationEngine.fire(rule: rule, snapshot: snapshot)
+            let fired = await AutomationEngine.fire(rule: rule, snapshot: snapshot, cooldownSeconds: config.pollIntervalSeconds)
             guard fired else { continue }
             if let idx = config.automations.firstIndex(where: { $0.id == rule.id }) {
                 config.automations[idx].lastFiredAt = Date()

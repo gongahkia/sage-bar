@@ -54,8 +54,15 @@ struct AutomationEngine {
     }
 
     @discardableResult
-    static func fire(rule: AutomationRule, snapshot: UsageSnapshot) async -> Bool {
+    static func fire(rule: AutomationRule, snapshot: UsageSnapshot, cooldownSeconds: Int = 300) async -> Bool {
         guard !rule.shellCommand.isEmpty else { return false }
+        if let lastFired = AutomationCooldownStore.shared.lastFiredAt(ruleID: rule.id) ?? rule.lastFiredAt {
+            let elapsed = Date().timeIntervalSince(lastFired)
+            if elapsed < TimeInterval(max(1, cooldownSeconds)) {
+                ErrorLogger.shared.log("Rule '\(rule.name)' skipped: cooldown \(Int(elapsed))s/\(cooldownSeconds)s", level: "INFO")
+                return false
+            }
+        }
         guard let action = AutomationAction.parse(commandString: rule.shellCommand) else {
             ErrorLogger.shared.log("Rejected command for rule '\(rule.name)': parse failed or metacharacter detected")
             return false
