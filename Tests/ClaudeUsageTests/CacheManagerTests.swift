@@ -440,7 +440,9 @@ final class CacheManagerTests: XCTestCase {
         let url = fixtureDir.appendingPathComponent("usage_cache.json")
         try legacyData.write(to: url, options: .atomic)
 
-        let loaded = cm.load()
+        // fresh CacheManager to avoid stale memory cache from setUp
+        let freshCM = CacheManager(baseURL: fixtureDir)
+        let loaded = freshCM.load()
         XCTAssertEqual(loaded.count, 1)
         XCTAssertEqual(loaded.first?.totalCostUSD ?? -1, 3.14, accuracy: 0.001)
 
@@ -480,7 +482,9 @@ final class CacheManagerTests: XCTestCase {
         let legacyData = try JSONSerialization.data(withJSONObject: legacyPayload, options: [])
         try legacyData.write(to: url, options: .atomic)
 
-        let loaded = cm.load()
+        // fresh CacheManager to avoid stale memory cache from setUp
+        let freshCM = CacheManager(baseURL: fixtureDir)
+        let loaded = freshCM.load()
         XCTAssertEqual(loaded.count, 1)
         XCTAssertEqual(loaded.first?.isStale, false)
         XCTAssertEqual(loaded.first?.costConfidence, .estimated)

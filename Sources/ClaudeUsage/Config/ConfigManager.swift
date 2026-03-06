@@ -83,7 +83,9 @@ class ConfigManager {
             guard let data = json.data(using: .utf8) else { return migrateAndNormalize(.default) }
             let decoded: Config
             do {
-                decoded = try JSONDecoder().decode(Config.self, from: data)
+                let tomlDecoder = JSONDecoder()
+                tomlDecoder.dateDecodingStrategy = .iso8601
+                decoded = try tomlDecoder.decode(Config.self, from: data)
             } catch {
                 emitLoadError(.tomlDecodeFailed(error.localizedDescription))
                 return migrateAndNormalize(.default)

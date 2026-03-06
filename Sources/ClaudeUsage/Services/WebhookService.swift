@@ -199,6 +199,24 @@ class WebhookService {
         guard let template = template?.trimmingCharacters(in: .whitespacesAndNewlines),
               !template.isEmpty,
               template.hasPrefix("{") || template.hasPrefix("[") else { return }
+        // validate raw template structure: placeholders replaced with safe dummy values
+        let dummied = template
+            .replacingOccurrences(of: "{{event}}", with: "x")
+            .replacingOccurrences(of: "{{account}}", with: "x")
+            .replacingOccurrences(of: "{{cost}}", with: "\"0\"")
+            .replacingOccurrences(of: "{{tokens}}", with: "\"0\"")
+            .replacingOccurrences(of: "{{date}}", with: "\"x\"")
+            .replacingOccurrences(of: "{{burn_rate_usd_per_hour}}", with: "\"0\"")
+            .replacingOccurrences(of: "{{threshold_usd_per_hour}}", with: "\"0\"")
+        if let dummyData = dummied.data(using: .utf8) {
+            do {
+                _ = try JSONSerialization.jsonObject(with: dummyData)
+            } catch {
+                ErrorLogger.shared.log("Webhook payload template is structurally invalid JSON", level: "WARN")
+                throw APIError.decodingFailed
+            }
+        }
+        // also validate the post-substitution payload
         do {
             _ = try JSONSerialization.jsonObject(with: payload)
         } catch {

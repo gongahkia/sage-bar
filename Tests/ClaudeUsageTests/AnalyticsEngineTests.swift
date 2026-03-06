@@ -49,10 +49,11 @@ final class AnalyticsEngineTests: XCTestCase {
 
     func testMTDNormalizesCumulativeSnapshotsToLatestDailyValue() {
         let cal = Calendar.current
-        let now = Date()
-        let earlier = cal.date(byAdding: .hour, value: -2, to: now)!
-        let latest = cal.date(byAdding: .hour, value: -1, to: now)!
-        let event = cal.date(byAdding: .hour, value: -3, to: now)!
+        // use noon today to avoid midnight day-boundary flakiness
+        let todayNoon = cal.date(bySettingHour: 12, minute: 0, second: 0, of: Date())!
+        let earlier = todayNoon.addingTimeInterval(-120) // 11:58
+        let latest = todayNoon.addingTimeInterval(-60)   // 11:59
+        let event = todayNoon.addingTimeInterval(-180)   // 11:57
         let snaps = [
             cumulativeSnap(1.0, at: earlier),
             cumulativeSnap(3.0, at: latest),

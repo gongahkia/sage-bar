@@ -67,7 +67,7 @@ final class MemoryBudgetRegressionTests: XCTestCase {
         let snapshots = makeSnapshots(
             from: Array(entries.prefix(appendCount)),
             accountId: accountId,
-            startDate: Date(timeIntervalSince1970: 1_730_000_000)
+            startDate: Date().addingTimeInterval(-86400) // yesterday, within 30-day retention
         )
 
         let cacheDir = tmpDir.appendingPathComponent("cache-under-test")

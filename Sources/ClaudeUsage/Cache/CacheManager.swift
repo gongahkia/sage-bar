@@ -128,9 +128,11 @@ private actor CacheStore {
     }
 
     func saveSnapshots(_ snapshots: [UsageSnapshot]) {
-        guard persistSnapshots(snapshots) else { return }
-        snapshotsByAccountIndex = buildSnapshotsByAccountIndex(snapshots)
-        aggregateByAccountDayIndex = buildAggregateByAccountDayIndex(snapshots)
+        let deduped = deduplicateSnapshots(snapshots)
+        let compacted = compactDailyCumulativeSnapshots(deduped)
+        guard persistSnapshots(compacted) else { return }
+        snapshotsByAccountIndex = buildSnapshotsByAccountIndex(compacted)
+        aggregateByAccountDayIndex = buildAggregateByAccountDayIndex(compacted)
     }
 
     private func persistSnapshots(_ snapshots: [UsageSnapshot]) -> Bool {
@@ -382,6 +384,7 @@ private actor CacheStore {
             && lhs.cacheCreationTokens == rhs.cacheCreationTokens
             && lhs.cacheReadTokens == rhs.cacheReadTokens
             && abs(lhs.totalCostUSD - rhs.totalCostUSD) < 0.000_001
+            && lhs.isStale == rhs.isStale
     }
 
     private func deduplicateSnapshots(_ snapshots: [UsageSnapshot]) -> [UsageSnapshot] {

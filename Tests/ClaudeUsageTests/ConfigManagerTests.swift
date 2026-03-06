@@ -175,6 +175,16 @@ final class ConfigManagerTests: XCTestCase {
         primaryModifiers = ["command", "shift"]
         chordEnabled = false
         chordSecondaryKeyCode = 0
+
+        [providerPolling]
+        claudeCode = 300
+        codex = 300
+        gemini = 300
+        anthropicAPI = 300
+        openAIOrg = 900
+        windsurfEnterprise = 600
+        githubCopilot = 3600
+        claudeAI = 300
         """
         try toml.write(to: configFile, atomically: true, encoding: .utf8)
         let loaded = cm.load()

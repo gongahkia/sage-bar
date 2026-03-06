@@ -82,7 +82,7 @@ final class WebhookServiceTests: XCTestCase {
         }
         let mockSession = URLSession(configuration: config)
         let svc = WebhookService(session: mockSession, maxRetries: 2)
-        let whConfig = WebhookConfig(enabled: true, url: "https://example.com/hook", events: [], payloadTemplate: nil)
+        let whConfig = WebhookConfig(enabled: true, url: "https://example.com/hook", events: [], payloadTemplate: nil, allowedHosts: ["example.com"])
         do {
             try await svc.send(event: .dailyDigest, snapshot: snap(), config: whConfig)
         } catch {}
@@ -105,7 +105,7 @@ final class WebhookServiceTests: XCTestCase {
         }
         let mockSession = URLSession(configuration: config)
         let svc = WebhookService(session: mockSession, maxRetries: 2, baseRetryDelayNanos: 1_000_000)
-        let whConfig = WebhookConfig(enabled: true, url: "https://example.com/hook", events: [], payloadTemplate: nil)
+        let whConfig = WebhookConfig(enabled: true, url: "https://example.com/hook", events: [], payloadTemplate: nil, allowedHosts: ["example.com"])
 
         do {
             try await svc.send(event: .dailyDigest, snapshot: snap(), config: whConfig)
@@ -188,7 +188,7 @@ final class WebhookServiceTests: XCTestCase {
         let mockSession = URLSession(configuration: config)
         let svc = WebhookService(session: mockSession, maxRetries: 0)
         let invalidTemplate = "{\"event\":\"{{event}}\",\"cost\":{{cost}}" // missing closing brace
-        let whConfig = WebhookConfig(enabled: true, url: "https://example.com/hook", events: [], payloadTemplate: invalidTemplate)
+        let whConfig = WebhookConfig(enabled: true, url: "https://example.com/hook", events: [], payloadTemplate: invalidTemplate, allowedHosts: ["example.com"])
 
         do {
             try await svc.send(event: .dailyDigest, snapshot: snap(), config: whConfig)
@@ -216,7 +216,7 @@ final class WebhookServiceTests: XCTestCase {
         let mockSession = URLSession(configuration: config)
         let svc = WebhookService(session: mockSession, maxRetries: 0)
         let template = "{\"event\":\"{{event}}\",\"date\":{{date}}}"
-        let whConfig = WebhookConfig(enabled: true, url: "https://example.com/hook", events: [], payloadTemplate: template)
+        let whConfig = WebhookConfig(enabled: true, url: "https://example.com/hook", events: [], payloadTemplate: template, allowedHosts: ["example.com"])
 
         do {
             try await svc.send(event: .dailyDigest, snapshot: snap(), config: whConfig)
@@ -245,7 +245,7 @@ final class WebhookServiceTests: XCTestCase {
         let mockSession = URLSession(configuration: config)
         let svc = WebhookService(session: mockSession, maxRetries: 0)
         let template = "[{\"event\":\"{{event}}\"}"
-        let whConfig = WebhookConfig(enabled: true, url: "https://example.com/hook", events: [], payloadTemplate: template)
+        let whConfig = WebhookConfig(enabled: true, url: "https://example.com/hook", events: [], payloadTemplate: template, allowedHosts: ["example.com"])
 
         do {
             try await svc.send(event: .dailyDigest, snapshot: snap(), config: whConfig)

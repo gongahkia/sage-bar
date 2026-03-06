@@ -226,10 +226,17 @@ class iCloudSyncManager: ObservableObject {
         return digest.map { String(format: "%02x", $0) }.joined()
     }
 
+    private static let mergeKeyFormatter: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
     private func mergeKey(for snapshot: UsageSnapshot) -> String {
         let modelId = snapshot.modelBreakdown.map(\.modelId).sorted().first ?? "unknown"
         let sourceType = sourceType(forModel: modelId)
-        return "\(snapshot.accountId.uuidString)|\(snapshot.timestamp.ISO8601Format())|\(modelId)|\(sourceType)"
+        let ts = Self.mergeKeyFormatter.string(from: snapshot.timestamp)
+        return "\(snapshot.accountId.uuidString)|\(ts)|\(modelId)|\(sourceType)"
     }
 
     private func sourceType(forModel modelId: String) -> String {
