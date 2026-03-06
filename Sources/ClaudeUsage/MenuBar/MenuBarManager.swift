@@ -153,7 +153,7 @@ class MenuBarManager {
             acctItem.attributedTitle = NSAttributedString(string: "\(account.name)  —  \(costStr)", attributes: [.font: NSFont.menuFont(ofSize: 13)])
             mainMenu.addItem(acctItem)
             let detail = NSMenuItem(title: "\(tokStr)  ·  \(account.type.rawValue)", action: nil, keyEquivalent: "")
-            detail.attributedTitle = NSAttributedString(string: "\(tokStr)  ·  \(account.type.rawValue)", attributes: [.font: NSFont.menuFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor])
+            detail.attributedTitle = NSAttributedString(string: "\(tokStr)  ·  \(account.type.displayName)", attributes: [.font: NSFont.menuFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor])
             detail.indentationLevel = 1
             mainMenu.addItem(detail)
         }

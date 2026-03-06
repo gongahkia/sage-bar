@@ -107,7 +107,7 @@ struct AccountsTab: View {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(account.name).fontWeight(.medium)
-                    Text(account.type.rawValue).font(.caption).foregroundColor(.secondary)
+                    Text(account.type.displayName).font(.caption).foregroundColor(.secondary)
                 }
                 Spacer()
                 if connectionTesting.contains(account.id) {
@@ -267,7 +267,7 @@ struct AddAccountSheet: View {
             TextField("Name", text: $name)
             Picker("Type", selection: $type) {
                 ForEach(providerOptions, id: \.self) { t in
-                    Text(t.rawValue).tag(t)
+                    Text(t.displayName).tag(t)
                 }
             }
             if type == .anthropicAPI {

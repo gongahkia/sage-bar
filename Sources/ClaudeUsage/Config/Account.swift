@@ -9,6 +9,18 @@ enum AccountType: String, Codable, CaseIterable {
     case windsurfEnterprise = "windsurfEnterprise" // Windsurf enterprise analytics APIs
     case githubCopilot = "githubCopilot" // GitHub Copilot organization usage metrics
     case claudeAI = "claudeAI"        // session-based web account
+    var displayName: String {
+        switch self {
+        case .claudeCode: return "Claude Code"
+        case .codex: return "Codex"
+        case .gemini: return "Gemini"
+        case .anthropicAPI: return "Anthropic API"
+        case .openAIOrg: return "OpenAI Org"
+        case .windsurfEnterprise: return "Windsurf Enterprise"
+        case .githubCopilot: return "GitHub Copilot"
+        case .claudeAI: return "Claude AI"
+        }
+    }
 }
 
 enum ProviderCredentialMode {
