@@ -20,7 +20,9 @@ enum PollingOrchestrator {
                 var launched = 0
                 for account in chunk {
                     if launched >= concurrencyLimit {
-                        _ = await group.next()
+                        if let id = await group.next(), let id {
+                            updatedIDs.append(id)
+                        }
                     }
                     group.addTask {
                         guard !Task.isCancelled else { return nil }

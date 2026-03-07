@@ -67,7 +67,7 @@ final class AnthropicAPIClientTests: XCTestCase {
         let prices = AnthropicAPIClient.loadPrices(from: url)
         XCTAssertTrue(prices.isEmpty, "zero inputPer1M entry should be excluded")
         let exp = expectation(description: "ErrorLogger gets warning")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { exp.fulfill() }
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.2) { exp.fulfill() }
         wait(for: [exp], timeout: 1)
         XCTAssertNotNil(ErrorLogger.shared.lastError, "ErrorLogger should have a warning for invalid entry")
     }
@@ -81,7 +81,7 @@ final class AnthropicAPIClientTests: XCTestCase {
         let prices = AnthropicAPIClient.loadPrices(from: url)
         XCTAssertTrue(prices.isEmpty, "malformed JSON should return empty dict")
         let exp = expectation(description: "ErrorLogger gets decode error")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { exp.fulfill() }
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.2) { exp.fulfill() }
         wait(for: [exp], timeout: 1)
         XCTAssertNotNil(ErrorLogger.shared.lastError)
     }

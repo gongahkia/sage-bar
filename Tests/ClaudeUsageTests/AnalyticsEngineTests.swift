@@ -79,8 +79,9 @@ final class AnalyticsEngineTests: XCTestCase {
     }
 
     func testRollingAverageNormalizesDailyCumulativeSnapshots() {
-        let now = Date()
-        let yesterday = now.addingTimeInterval(-86400)
+        let cal = Calendar.current
+        let now = cal.date(bySettingHour: 12, minute: 0, second: 0, of: Date())!
+        let yesterday = cal.date(byAdding: .day, value: -1, to: now)!
         let snaps = [
             cumulativeSnap(2.0, at: yesterday.addingTimeInterval(-3600)),
             cumulativeSnap(5.0, at: yesterday),

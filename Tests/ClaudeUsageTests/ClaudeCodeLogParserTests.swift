@@ -102,7 +102,7 @@ final class ClaudeCodeLogParserTests: XCTestCase {
         let entries = parser.parseFile(url)
         XCTAssertTrue(entries.isEmpty, "oversized file should return empty array")
         let exp = expectation(description: "ErrorLogger sets lastError")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { exp.fulfill() }
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.3) { exp.fulfill() }
         wait(for: [exp], timeout: 1)
         XCTAssertNotNil(ErrorLogger.shared.lastError, "ErrorLogger should have received oversized-file warning")
     }
