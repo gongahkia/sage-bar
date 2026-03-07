@@ -9,6 +9,16 @@ final class AutomationCooldownStore {
         fileURL = AppConstants.sharedContainerURL.appendingPathComponent("automation_cooldowns.json")
     }
 
+    init(fileURL: URL) { // testable seam
+        self.fileURL = fileURL
+    }
+
+    func reset() {
+        queue.sync {
+            try? FileManager.default.removeItem(at: fileURL)
+        }
+    }
+
     func lastFiredAt(ruleID: UUID) -> Date? {
         queue.sync {
             guard let data = try? Data(contentsOf: fileURL) else { return nil } // file may not exist yet

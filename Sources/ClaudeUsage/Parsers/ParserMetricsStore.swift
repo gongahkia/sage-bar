@@ -61,6 +61,10 @@ final class ParserMetricsStore {
         fileURL = AppConstants.sharedContainerURL.appendingPathComponent("parser_metrics.json")
     }
 
+    init(fileURL: URL) { // testable seam
+        self.fileURL = fileURL
+    }
+
     static func currentProcessCPUTimeMs() -> Int {
         var usage = rusage()
         guard getrusage(RUSAGE_SELF, &usage) == 0 else { return 0 }
