@@ -7,6 +7,11 @@ struct AboutTab: View {
         VStack {
             Spacer()
             VStack(spacing: 12) {
+                Image("WizardAboutIcon", bundle: .module)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 160, height: 160)
+
                 Text("Sage Bar").font(.largeTitle).fontWeight(.bold)
                 Text("Version \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")")
                     .foregroundColor(.secondary)
