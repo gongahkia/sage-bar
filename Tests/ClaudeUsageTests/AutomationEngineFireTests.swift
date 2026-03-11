@@ -4,6 +4,11 @@ import XCTest
 final class AutomationEngineFireTests: XCTestCase {
     private let accountId = UUID()
 
+    override func tearDown() {
+        AutomationEngine.resetHandlersForTests()
+        super.tearDown()
+    }
+
     private func snap() -> UsageSnapshot {
         UsageSnapshot(accountId: accountId, timestamp: Date(), inputTokens: 100,
             outputTokens: 50, cacheCreationTokens: 0, cacheReadTokens: 0, totalCostUSD: 3.14, modelBreakdown: [])
@@ -101,5 +106,57 @@ final class AutomationEngineFireTests: XCTestCase {
         XCTAssertNil(AutomationAction.parse(commandString: "rm -rf /"))
         XCTAssertNil(AutomationAction.parse(commandString: "python3 script.py"))
         XCTAssertNil(AutomationAction.parse(commandString: "dd if=/dev/zero of=/dev/disk0"))
+    }
+
+    func testRefreshNowNativeActionUsesInjectedHandler() async {
+        final class Box: @unchecked Sendable { var invoked = false }
+        let box = Box()
+        AutomationEngine.refreshNowHandler = { _ in
+            box.invoked = true
+            return true
+        }
+        let rule = AutomationRule(name: "refresh", triggerType: "cost_gt", threshold: 0, shellCommand: "", actionKind: "refresh_now")
+        let fired = await AutomationEngine.fire(rule: rule, snapshot: snap())
+        XCTAssertTrue(fired)
+        XCTAssertTrue(box.invoked)
+    }
+
+    func testCopySummaryNativeActionUsesInjectedHandler() async {
+        final class Box: @unchecked Sendable { var invoked = false }
+        let box = Box()
+        AutomationEngine.copyDailySummaryHandler = { _ in
+            box.invoked = true
+            return true
+        }
+        let rule = AutomationRule(name: "copy", triggerType: "cost_gt", threshold: 0, shellCommand: "", actionKind: "copy_daily_summary")
+        let fired = await AutomationEngine.fire(rule: rule, snapshot: snap())
+        XCTAssertTrue(fired)
+        XCTAssertTrue(box.invoked)
+    }
+
+    func testExportCSVNativeActionUsesInjectedHandler() async {
+        final class Box: @unchecked Sendable { var invoked = false }
+        let box = Box()
+        AutomationEngine.exportAccountCSVHandler = { _ in
+            box.invoked = true
+            return true
+        }
+        let rule = AutomationRule(name: "export", triggerType: "cost_gt", threshold: 0, shellCommand: "", actionKind: "export_account_csv")
+        let fired = await AutomationEngine.fire(rule: rule, snapshot: snap())
+        XCTAssertTrue(fired)
+        XCTAssertTrue(box.invoked)
+    }
+
+    func testOpenSettingsNativeActionUsesInjectedHandler() async {
+        final class Box: @unchecked Sendable { var invoked = false }
+        let box = Box()
+        AutomationEngine.openSettingsHandler = { _ in
+            box.invoked = true
+            return true
+        }
+        let rule = AutomationRule(name: "settings", triggerType: "cost_gt", threshold: 0, shellCommand: "", actionKind: "open_settings")
+        let fired = await AutomationEngine.fire(rule: rule, snapshot: snap())
+        XCTAssertTrue(fired)
+        XCTAssertTrue(box.invoked)
     }
 }

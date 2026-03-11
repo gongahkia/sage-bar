@@ -14,6 +14,11 @@ final class PollingServiceTests: XCTestCase {
             config.protocolClasses = [MockURLProtocol.self]
             return AnthropicAPIClient(apiKey: apiKey, session: URLSession(configuration: config))
         }
+        PollingService.claudeAIClientFactory = { sessionToken in
+            let config = URLSessionConfiguration.ephemeral
+            config.protocolClasses = [MockURLProtocol.self]
+            return ClaudeAIClient(sessionToken: sessionToken, session: URLSession(configuration: config))
+        }
         // make network calls fail (simulates nil return from fetchUsage)
         MockURLProtocol.requestHandler = { _ in throw URLError(.notConnectedToInternet) }
         // store a fake token so PollingService doesn't bail at keychain step
@@ -32,6 +37,7 @@ final class PollingServiceTests: XCTestCase {
     override func tearDown() async throws {
         URLProtocol.unregisterClass(MockURLProtocol.self)
         PollingService.anthropicClientFactory = { AnthropicAPIClient(apiKey: $0) }
+        PollingService.claudeAIClientFactory = { ClaudeAIClient(sessionToken: $0) }
         try? KeychainManager.delete(service: service, account: accountId.uuidString)
         try? FileManager.default.removeItem(at: AppConstants.sharedContainerURL.appendingPathComponent("model_hints.json"))
         try await super.tearDown()
@@ -92,10 +98,6 @@ final class PollingServiceTests: XCTestCase {
     }
 
     func testClaudeAIBranchStoresStaleSnapshotWhenFetchFails() async {
-        let account = Account(name: "Test AI", type: .claudeAI, isActive: true)
-        // mirror the accountId we pre-seeded
-        var a = account
-        // use reflection-safe workaround: re-create prior snapshot with same id
         let testAccount = Account(name: "Test AI", type: .claudeAI, isActive: true)
         // since Account.init assigns a new UUID, test via explicit prior + real account id
         let prior = UsageSnapshot(
@@ -112,6 +114,55 @@ final class PollingServiceTests: XCTestCase {
         try? await Task.sleep(nanoseconds: 300_000_000) // allow cache append to complete
         let latest = CacheManager.shared.latest(forAccount: testAccount.id)
         XCTAssertEqual(latest?.isStale, true, "snapshot should be marked stale when fetchUsage returns nil")
+    }
+
+    func testClaudeAIBranchPersistsStatusOnSuccessfulFetch() async {
+        let account = Account(name: "Status AI", type: .claudeAI, isActive: true)
+        try? KeychainManager.store(key: "fake-token-3", service: service, account: account.id.uuidString)
+        defer {
+            try? KeychainManager.delete(service: service, account: account.id.uuidString)
+            Task { await ClaudeAIStatusStore.shared.remove(accountId: account.id) }
+        }
+
+        MockURLProtocol.requestHandler = { req in
+            let body = """
+            {"messageLimit":{"remaining":12,"used":88,"resetAt":"2026-03-12T00:00:00Z"}}
+            """
+            let response = HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (response, Data(body.utf8))
+        }
+
+        await PollingService.shared.fetchAndStore(account: account, config: .default)
+        let status = await ClaudeAIStatusStore.shared.status(for: account.id)
+
+        XCTAssertEqual(status?.messagesRemaining, 12)
+        XCTAssertEqual(status?.messagesUsed, 88)
+        XCTAssertEqual(status?.resetAt, ISO8601DateFormatter().date(from: "2026-03-12T00:00:00Z"))
+    }
+
+    func testClaudeAIBranchMarksReauthRequiredOnUnauthorizedResponse() async {
+        let account = Account(name: "Reauth AI", type: .claudeAI, isActive: true)
+        try? KeychainManager.store(key: "fake-token-4", service: service, account: account.id.uuidString)
+        defer {
+            try? KeychainManager.delete(service: service, account: account.id.uuidString)
+            Task {
+                await ClaudeAIStatusStore.shared.remove(accountId: account.id)
+                await ClaudeAIQuotaHistoryStore.shared.remove(accountId: account.id)
+            }
+        }
+
+        MockURLProtocol.requestHandler = { req in
+            let response = HTTPURLResponse(url: req.url!, statusCode: 401, httpVersion: nil, headerFields: nil)!
+            return (response, Data())
+        }
+
+        await PollingService.shared.fetchAndStore(account: account, config: .default)
+        let status = await ClaudeAIStatusStore.shared.status(for: account.id)
+        let history = await ClaudeAIQuotaHistoryStore.shared.history(for: account.id, limit: 4)
+
+        XCTAssertEqual(status?.sessionHealth, .reauthRequired)
+        XCTAssertFalse(history.isEmpty)
+        XCTAssertEqual(history.first?.sessionHealth, .reauthRequired)
     }
 
     func testCodexBranchStoresEstimatedSnapshot() async {

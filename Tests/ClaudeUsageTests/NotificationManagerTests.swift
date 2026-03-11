@@ -109,4 +109,42 @@ final class NotificationManagerTests: XCTestCase {
             XCTAssertEqual(marked.timeIntervalSince1970, now.timeIntervalSince1970, accuracy: 0.001)
         }
     }
+
+    func testClaudeAILowQuotaOnlyMarksOncePerResetWindow() {
+        let account = Account(name: "claude-ai", type: .claudeAI, isActive: true)
+        let key = "claudeAILowQuotaNotified_\(account.id.uuidString)"
+        UserDefaults.standard.removeObject(forKey: key)
+        defer { UserDefaults.standard.removeObject(forKey: key) }
+
+        let resetAt = Date(timeIntervalSince1970: 1_700_000_000)
+        let status = ClaudeAIStatus(accountId: account.id, messagesRemaining: 5, messagesUsed: 95, resetAt: resetAt, lastUpdated: Date())
+        let config = ClaudeAIConfig(notifyOnLowMessages: true, lowMessagesThreshold: 10)
+
+        NotificationManager.shared.checkClaudeAILowQuota(account: account, status: status, config: config)
+        let firstValue = UserDefaults.standard.string(forKey: key)
+        NotificationManager.shared.checkClaudeAILowQuota(account: account, status: status, config: config)
+        let secondValue = UserDefaults.standard.string(forKey: key)
+
+        XCTAssertEqual(firstValue, secondValue)
+        XCTAssertEqual(firstValue, SharedDateFormatters.iso8601InternetDateTime.string(from: resetAt))
+    }
+
+    func testClaudeAILowQuotaRearmsForNewResetWindow() {
+        let account = Account(name: "claude-ai-next", type: .claudeAI, isActive: true)
+        let key = "claudeAILowQuotaNotified_\(account.id.uuidString)"
+        let firstReset = Date(timeIntervalSince1970: 1_700_000_000)
+        UserDefaults.standard.set(SharedDateFormatters.iso8601InternetDateTime.string(from: firstReset), forKey: key)
+        defer { UserDefaults.standard.removeObject(forKey: key) }
+
+        let nextReset = firstReset.addingTimeInterval(3600)
+        let status = ClaudeAIStatus(accountId: account.id, messagesRemaining: 3, messagesUsed: 97, resetAt: nextReset, lastUpdated: Date())
+        let config = ClaudeAIConfig(notifyOnLowMessages: true, lowMessagesThreshold: 10)
+
+        NotificationManager.shared.checkClaudeAILowQuota(account: account, status: status, config: config)
+
+        XCTAssertEqual(
+            UserDefaults.standard.string(forKey: key),
+            SharedDateFormatters.iso8601InternetDateTime.string(from: nextReset)
+        )
+    }
 }

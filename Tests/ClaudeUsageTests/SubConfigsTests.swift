@@ -47,13 +47,15 @@ final class SubConfigsTests: XCTestCase {
 
     func testConfigDefaultCreatesValidConfig() {
         let cfg = Config.default
-        XCTAssertEqual(cfg.schemaVersion, 3)
+        XCTAssertEqual(cfg.schemaVersion, 5)
         XCTAssertEqual(cfg.accounts.count, 1)
         XCTAssertEqual(cfg.accounts.first?.type, .claudeCode)
         XCTAssertEqual(cfg.accounts.first?.isActive, true)
         XCTAssertGreaterThan(cfg.pollIntervalSeconds, 0)
         XCTAssertEqual(cfg.providerPolling, .default)
         XCTAssertEqual(cfg.automations.count, 0)
+        XCTAssertTrue(cfg.claudeAI.notifyOnLowMessages)
+        XCTAssertEqual(cfg.claudeAI.lowMessagesThreshold, 10)
     }
 
     // MARK: - Config decoding missing providerPolling falls back to default
@@ -85,5 +87,33 @@ final class SubConfigsTests: XCTestCase {
         let data = try JSONEncoder().encode(original)
         let decoded = try JSONDecoder().decode(ProviderPollingConfig.self, from: data)
         XCTAssertEqual(decoded, original)
+    }
+
+    func testClaudeAIConfigDefaultsWhenKeysMissing() throws {
+        let config = try JSONDecoder().decode(ClaudeAIConfig.self, from: Data("{}".utf8))
+        XCTAssertTrue(config.notifyOnLowMessages)
+        XCTAssertEqual(config.lowMessagesThreshold, 10)
+    }
+
+    func testLegacyAutomationRuleDecodeDefaultsToShellAction() throws {
+        let id = UUID()
+        let json = """
+        {
+          "id": "\(id.uuidString)",
+          "name": "Legacy Rule",
+          "triggerType": "cost_gt",
+          "threshold": 5,
+          "shellCommand": "say hi",
+          "enabled": true
+        }
+        """
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let rule = try decoder.decode(AutomationRule.self, from: Data(json.utf8))
+        XCTAssertEqual(rule.id, id)
+        XCTAssertEqual(rule.actionKind, "shell")
+        XCTAssertEqual(rule.actionPayload, "say hi")
+        XCTAssertEqual(rule.accountIDs, [])
+        XCTAssertEqual(rule.groupLabels, [])
     }
 }

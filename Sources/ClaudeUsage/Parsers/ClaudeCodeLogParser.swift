@@ -419,6 +419,36 @@ class ClaudeCodeLogParser {
         }.sorted { $0.timestamp < $1.timestamp }
     }
 
+    func sessionUsage(in interval: DateInterval) -> [LocalSessionUsage] {
+        var usages: [LocalSessionUsage] = []
+        usages.reserveCapacity(32)
+        for url in discoverSessionFiles() {
+            let attrs = try? FileManager.default.attributesOfItem(atPath: url.path)
+            let mod = attrs?[.modificationDate] as? Date
+            var input = 0
+            var output = 0
+            var cache = 0
+            for entry in parseFile(url) {
+                guard let eventDate = entryTimestamp(entry, fallback: mod),
+                      interval.contains(eventDate) else { continue }
+                let usage = entry.usage ?? entry.message?.usage
+                input += usage?.input_tokens ?? 0
+                output += usage?.output_tokens ?? 0
+                cache += (usage?.cache_creation_input_tokens ?? 0) + (usage?.cache_read_input_tokens ?? 0)
+            }
+            guard input > 0 || output > 0 || cache > 0 else { continue }
+            usages.append(
+                LocalSessionUsage(
+                    sourcePath: url.path,
+                    inputTokens: input,
+                    outputTokens: output,
+                    cacheTokens: cache
+                )
+            )
+        }
+        return usages.sorted { $0.totalTokens > $1.totalTokens }
+    }
+
     // MARK: – FSEvents watcher
 
     func startWatching() {

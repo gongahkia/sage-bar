@@ -49,6 +49,10 @@ class HotkeyManager {
 
     // convenience: register from GlobalHotkeyConfig
     func register(config: GlobalHotkeyConfig) {
+        register(config: config, advancedConfig: .default)
+    }
+
+    func register(config: GlobalHotkeyConfig, advancedConfig: HotkeyConfig) {
         guard config.enabled else { unregisterAll(); return }
         guard AXIsProcessTrusted() else {
             ErrorLogger.shared.log("Accessibility permission not granted — hotkey disabled", level: "WARN")
@@ -64,6 +68,19 @@ class HotkeyManager {
         }
         unregisterAll()
         register(binding: binding)
+        if advancedConfig.chordEnabled, advancedConfig.chordSecondaryKeyCode > 0 {
+            let chordBinding = HotkeyBinding(
+                id: "cycle-next",
+                firstKeyCode: CGKeyCode(advancedConfig.primaryKeyCode),
+                secondKeyCode: CGKeyCode(advancedConfig.chordSecondaryKeyCode),
+                modifiers: modifierFlags(from: advancedConfig.primaryModifiers)
+            ) {
+                Task { @MainActor in
+                    MenuBarManager.shared.selectNextAccountAndPresent()
+                }
+            }
+            register(binding: chordBinding)
+        }
     }
 
     // MARK: – private

@@ -41,7 +41,7 @@ struct Config: Codable {
 
     static var `default`: Config {
         Config(
-            schemaVersion: 3,
+            schemaVersion: 5,
             accounts: [Account(name: "Local", type: .claudeCode, isActive: true)],
             pollIntervalSeconds: 300,
             tui: .default,

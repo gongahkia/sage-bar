@@ -38,11 +38,21 @@ final class ConfigManagerTests: XCTestCase {
 
     func testSaveAndReloadPreservesAccounts() {
         var config = Config.default
-        let acct = Account(name: "TestAccount", type: .anthropicAPI, isActive: true)
+        let acct = Account(
+            name: "TestAccount",
+            type: .anthropicAPI,
+            isActive: true,
+            groupLabel: "Client A",
+            isPinned: true,
+            workstreamRules: [WorkstreamRule(name: "Client A", pathPattern: "client-a")]
+        )
         config.accounts = [acct]
         cm.save(config)
         let reloaded = cm.load()
         XCTAssertEqual(reloaded.accounts.first?.name, "TestAccount")
+        XCTAssertEqual(reloaded.accounts.first?.groupLabel, "Client A")
+        XCTAssertEqual(reloaded.accounts.first?.isPinned, true)
+        XCTAssertEqual(reloaded.accounts.first?.workstreamRules.first?.name, "Client A")
     }
 
     func testSaveDoesNotPersistDeprecatedClaudeAISessionCookieField() throws {
@@ -96,15 +106,18 @@ final class ConfigManagerTests: XCTestCase {
         legacy.schemaVersion = 2
         legacy.display.showExperimentalProviders = false
         legacy.accounts = [Account(name: "Org API", type: .anthropicAPI, isActive: true)]
+        legacy.claudeAI = ClaudeAIConfig(notifyOnLowMessages: false, lowMessagesThreshold: 0)
 
         let data = try JSONEncoder().encode(legacy)
         try data.write(to: configFile)
 
         let loaded = cm.load()
-        XCTAssertEqual(loaded.schemaVersion, 3)
+        XCTAssertEqual(loaded.schemaVersion, 5)
         XCTAssertEqual(loaded.accounts.count, 1)
         XCTAssertEqual(loaded.accounts.first?.type, .anthropicAPI)
         XCTAssertTrue(loaded.display.showExperimentalProviders)
+        XCTAssertTrue(loaded.claudeAI.notifyOnLowMessages)
+        XCTAssertEqual(loaded.claudeAI.lowMessagesThreshold, 10)
     }
 
     func testTomlFallbackLoadsWhenJSONDecodeFails() throws {

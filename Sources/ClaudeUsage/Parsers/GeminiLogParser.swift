@@ -259,6 +259,38 @@ class GeminiLogParser {
         )
     }
 
+    func sessionUsage(in interval: DateInterval) -> [LocalSessionUsage] {
+        var usages: [LocalSessionUsage] = []
+        usages.reserveCapacity(32)
+        for url in discoverSessionFiles() {
+            let attrs = try? FileManager.default.attributesOfItem(atPath: url.path)
+            let mod = attrs?[.modificationDate] as? Date
+            guard let record = parseFile(url) else { continue }
+            var input = 0
+            var output = 0
+            var cache = 0
+            for message in record.messages {
+                guard message.type == "gemini",
+                      let tokens = message.tokens,
+                      let eventDate = entryTimestamp(raw: message.timestamp, fallback: mod),
+                      interval.contains(eventDate) else { continue }
+                input += max(0, tokens.input ?? 0)
+                output += max(0, tokens.output ?? 0)
+                cache += max(0, tokens.cached ?? 0)
+            }
+            guard input > 0 || output > 0 || cache > 0 else { continue }
+            usages.append(
+                LocalSessionUsage(
+                    sourcePath: url.path,
+                    inputTokens: input,
+                    outputTokens: output,
+                    cacheTokens: cache
+                )
+            )
+        }
+        return usages.sorted { $0.totalTokens > $1.totalTokens }
+    }
+
     private func computeDailyUsage(
         record: GeminiConversationRecord,
         day: DateComponents,

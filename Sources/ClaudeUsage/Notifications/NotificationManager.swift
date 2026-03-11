@@ -112,6 +112,35 @@ class NotificationManager {
         }
     }
 
+    func checkClaudeAILowQuota(
+        account: Account,
+        status: ClaudeAIStatus,
+        config: ClaudeAIConfig,
+        now: Date = Date()
+    ) {
+        guard config.notifyOnLowMessages else { return }
+        guard status.messagesRemaining <= config.lowMessagesThreshold else { return }
+        let windowKey = claudeAIResetWindowKey(status: status, now: now)
+        let defaultsKey = "claudeAILowQuotaNotified_\(account.id.uuidString)"
+        if UserDefaults.standard.string(forKey: defaultsKey) == windowKey {
+            return
+        }
+        UserDefaults.standard.set(windowKey, forKey: defaultsKey)
+
+        let content = UNMutableNotificationContent()
+        content.title = "Sage Bar Claude AI Alert"
+        if let resetAt = status.resetAt {
+            content.body = "Account '\(account.name)' has \(status.messagesRemaining) messages left until \(resetAt.formatted(date: .abbreviated, time: .shortened))."
+        } else {
+            content.body = "Account '\(account.name)' has \(status.messagesRemaining) messages left."
+        }
+        content.sound = .default
+        let req = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+        if let center = userNotificationCenterIfAvailable() {
+            center.add(req)
+        }
+    }
+
     private func userNotificationCenterIfAvailable() -> UNUserNotificationCenter? {
         // XCTest on macOS CLI can crash when touching UNUserNotificationCenter.current().
         guard !isRunningUnderXCTest else {
@@ -140,5 +169,13 @@ class NotificationManager {
             || env["XCTestSessionIdentifier"] != nil
             || ProcessInfo.processInfo.processName == "xctest"
             || NSClassFromString("XCTestCase") != nil
+    }
+
+    private func claudeAIResetWindowKey(status: ClaudeAIStatus, now: Date) -> String {
+        if let resetAt = status.resetAt {
+            return SharedDateFormatters.iso8601InternetDateTime.string(from: resetAt)
+        }
+        let startOfDay = Calendar.current.startOfDay(for: now)
+        return SharedDateFormatters.iso8601FullDate.string(from: startOfDay)
     }
 }

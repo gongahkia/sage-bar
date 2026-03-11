@@ -65,6 +65,15 @@ class MenuBarManager {
         let checkItem = NSMenuItem(title: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "")
         checkItem.target = self
         menu.addItem(checkItem)
+        let nextAccountItem = NSMenuItem(title: "Next Account", action: #selector(selectNextAccountFromMenu), keyEquivalent: "]")
+        nextAccountItem.target = self
+        menu.addItem(nextAccountItem)
+        let previousAccountItem = NSMenuItem(title: "Previous Account", action: #selector(selectPreviousAccountFromMenu), keyEquivalent: "[")
+        previousAccountItem.target = self
+        menu.addItem(previousAccountItem)
+        let exportUsageItem = NSMenuItem(title: "Export All Active Accounts CSV…", action: #selector(exportAllActiveAccountsCSV), keyEquivalent: "")
+        exportUsageItem.target = self
+        menu.addItem(exportUsageItem)
         let diagItem = NSMenuItem(title: "Export Diagnostics…", action: #selector(exportDiagnostics), keyEquivalent: "")
         diagItem.target = self
         menu.addItem(diagItem)
@@ -103,6 +112,16 @@ class MenuBarManager {
         }
     }
 
+    @objc private func exportAllActiveAccountsCSV() {
+        let config = ConfigManager.shared.load()
+        let accounts = Account.activeAccounts(in: config)
+        do {
+            _ = try UsageReportingService.exportCSV(for: accounts)
+        } catch {
+            ErrorLogger.shared.log("Export active accounts CSV failed: \(error.localizedDescription)")
+        }
+    }
+
     @objc func togglePopover() {
         guard let btn = statusItem.button else { return }
         if popover.isShown {
@@ -123,9 +142,8 @@ class MenuBarManager {
     private func rebuildMainMenu() {
         mainMenu.removeAllItems()
         let config = ConfigManager.shared.load()
-        let active = config.accounts.filter(\.isActive).sorted {
-            $0.order == $1.order ? $0.createdAt < $1.createdAt : $0.order < $1.order
-        }
+        let active = Account.activeAccounts(in: config)
+        let selected = AccountSelectionService.currentAccount(in: active)
         // header
         let titleItem = NSMenuItem(title: "Sage Bar", action: nil, keyEquivalent: "")
         titleItem.attributedTitle = NSAttributedString(string: "Sage Bar", attributes: [.font: NSFontManager.shared.convert(NSFont.menuFont(ofSize: 13), toHaveTrait: .boldFontMask)])
@@ -138,6 +156,20 @@ class MenuBarManager {
             mainMenu.addItem(sub)
         }
         mainMenu.addItem(.separator())
+        let pinnedAccounts = active.filter(\.isPinned)
+        if !pinnedAccounts.isEmpty {
+            let pinnedHeader = NSMenuItem(title: "Pinned", action: nil, keyEquivalent: "")
+            pinnedHeader.isEnabled = false
+            mainMenu.addItem(pinnedHeader)
+            for account in pinnedAccounts {
+                let item = NSMenuItem(title: account.displayLabel(among: active), action: #selector(openAccountFromMenu(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = account.id.uuidString
+                item.state = account.id == selected?.id ? .on : .off
+                mainMenu.addItem(item)
+            }
+            mainMenu.addItem(.separator())
+        }
         // per-account usage
         if active.isEmpty {
             let noAcct = NSMenuItem(title: "No active accounts", action: nil, keyEquivalent: "")
@@ -161,8 +193,10 @@ class MenuBarManager {
             case .windsurfEnterprise: costLabel = "\(costStr) est."
             default: costLabel = costStr
             }
-            let acctItem = NSMenuItem(title: "\(account.name)  —  \(costLabel)", action: nil, keyEquivalent: "")
-            acctItem.attributedTitle = NSAttributedString(string: "\(account.name)  —  \(costLabel)", attributes: [.font: NSFont.menuFont(ofSize: 13)])
+            let displayName = account.displayLabel(among: active)
+            let acctItem = NSMenuItem(title: "\(displayName)  —  \(costLabel)", action: nil, keyEquivalent: "")
+            acctItem.attributedTitle = NSAttributedString(string: "\(displayName)  —  \(costLabel)", attributes: [.font: NSFont.menuFont(ofSize: 13)])
+            acctItem.state = account.id == selected?.id ? .on : .off
             mainMenu.addItem(acctItem)
             let detail = NSMenuItem(title: "\(tokStr)  ·  \(account.type.rawValue)", action: nil, keyEquivalent: "")
             detail.attributedTitle = NSAttributedString(string: "\(tokStr)  ·  \(account.type.displayName)", attributes: [.font: NSFont.menuFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor])
@@ -171,9 +205,18 @@ class MenuBarManager {
         }
         mainMenu.addItem(.separator())
         // actions
+        let nextAccountItem = NSMenuItem(title: "Next Account", action: #selector(selectNextAccountFromMenu), keyEquivalent: "]")
+        nextAccountItem.target = self
+        mainMenu.addItem(nextAccountItem)
+        let previousAccountItem = NSMenuItem(title: "Previous Account", action: #selector(selectPreviousAccountFromMenu), keyEquivalent: "[")
+        previousAccountItem.target = self
+        mainMenu.addItem(previousAccountItem)
         let refreshItem = NSMenuItem(title: "Refresh Now", action: #selector(refreshNow), keyEquivalent: "r")
         refreshItem.target = self
         mainMenu.addItem(refreshItem)
+        let exportUsageItem = NSMenuItem(title: "Export All Active Accounts CSV…", action: #selector(exportAllActiveAccountsCSV), keyEquivalent: "")
+        exportUsageItem.target = self
+        mainMenu.addItem(exportUsageItem)
         mainMenu.addItem(.separator())
         // open sage bar (lockout-style)
         let openItem = NSMenuItem(title: "Open Sage Bar…", action: #selector(openSageBar), keyEquivalent: "o")
@@ -189,6 +232,18 @@ class MenuBarManager {
 
     @objc private func refreshNow() { PollingService.shared.forceRefresh() }
     @objc private func openSageBar() { SettingsWindowController.shared.showWindow() }
+    @objc private func openAccountFromMenu(_ sender: NSMenuItem) {
+        guard let rawID = sender.representedObject as? String,
+              let accountID = UUID(uuidString: rawID) else { return }
+        AccountSelectionService.select(accountID: accountID)
+        togglePopover()
+    }
+    @objc private func selectNextAccountFromMenu() {
+        selectNextAccountAndPresent()
+    }
+    @objc private func selectPreviousAccountFromMenu() {
+        selectPreviousAccountAndPresent()
+    }
 
     private func onUsageUpdate(_ notif: Notification) async {
         let config = ConfigManager.shared.load()
@@ -215,27 +270,30 @@ class MenuBarManager {
 
     private func updateTitle(config: Config) async {
         guard let btn = statusItem.button else { return }
+        var baseTitle = ""
+        var baseImage: NSImage?
         switch config.display.menubarStyle {
         case "cost":
             if let snap = await firstActiveSnapshot(config: config) {
-                btn.title = String(format: "$%.2f", snap.totalCostUSD)
-                btn.image = nil
+                baseTitle = String(format: "$%.2f", snap.totalCostUSD)
             }
         case "tokens":
             if let snap = await firstActiveSnapshot(config: config) {
                 let total = snap.inputTokens + snap.outputTokens
-                btn.title = total >= 1000 ? "\(total / 1000)k" : "\(total)"
-                btn.image = nil
+                baseTitle = total >= 1000 ? "\(total / 1000)k" : "\(total)"
             }
         default: // "icon"
-            btn.title = ""
-            btn.image = NSImage(systemSymbolName: "chart.bar.fill", accessibilityDescription: nil)
-            btn.image?.isTemplate = true
+            baseImage = NSImage(systemSymbolName: "chart.bar.fill", accessibilityDescription: nil)
+            baseImage?.isTemplate = true
         }
+        btn.title = baseTitle
+        btn.image = baseImage
+        await applyClaudeAIStatusBadge(config: config, button: btn)
     }
 
     private func firstActiveSnapshot(config: Config) async -> UsageSnapshot? {
-        guard let account = config.accounts.first(where: { $0.isActive }) else { return nil }
+        let activeAccounts = Account.activeAccounts(in: config)
+        guard let account = AccountSelectionService.currentAccount(in: activeAccounts) ?? activeAccounts.first else { return nil }
         return await CacheManager.shared.latestAsync(forAccount: account.id)
     }
 
@@ -267,7 +325,8 @@ class MenuBarManager {
     }
 
     private func redrawSparkline(config: Config) async {
-        guard let account = config.accounts.first(where: { $0.isActive }) else { return }
+        let activeAccounts = Account.activeAccounts(in: config)
+        guard let account = AccountSelectionService.currentAccount(in: activeAccounts) ?? activeAccounts.first else { return }
         let snaps = await CacheManager.shared.historyAsync(
             forAccount: account.id,
             days: config.sparkline.windowHours / 24 + 1
@@ -279,7 +338,7 @@ class MenuBarManager {
 
 
     private func updateDualIcon(config: Config) async {
-        let active = config.accounts.filter { $0.isActive }
+        let active = Account.activeAccounts(in: config)
         if config.display.dualIcon, active.count > 2 {
             secondStatusItem.map { NSStatusBar.system.removeStatusItem($0) }
             secondStatusItem = nil
@@ -309,6 +368,55 @@ class MenuBarManager {
             default:
                 secondStatusItem?.button?.image = NSImage(systemSymbolName: "chart.bar.fill", accessibilityDescription: nil)
             }
+        }
+    }
+
+    private func applyClaudeAIStatusBadge(config: Config, button: NSStatusBarButton) async {
+        guard config.display.showBadge else { return }
+        let claudeAIAccounts = Account.activeAccounts(in: config).filter { $0.type == .claudeAI }
+        guard !claudeAIAccounts.isEmpty else { return }
+        var requiresReauth = false
+        var hasLowQuota = false
+        for account in claudeAIAccounts {
+            guard let status = await ClaudeAIStatusStore.shared.status(for: account.id) else { continue }
+            if status.sessionHealth == .reauthRequired {
+                requiresReauth = true
+                break
+            }
+            if status.messagesRemaining <= config.claudeAI.lowMessagesThreshold {
+                hasLowQuota = true
+            }
+        }
+        guard requiresReauth || hasLowQuota else { return }
+        if config.display.menubarStyle == "icon" {
+            let symbolName = requiresReauth ? "key.fill" : "exclamationmark.triangle.fill"
+            button.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: "Claude AI warning")
+            button.image?.isTemplate = true
+            button.title = ""
+        } else if !button.title.hasPrefix("!") {
+            button.title = "!\(button.title)"
+        }
+    }
+
+    @MainActor
+    func selectNextAccountAndPresent() {
+        let activeAccounts = Account.activeAccounts(in: ConfigManager.shared.load())
+        guard AccountSelectionService.selectNext(in: activeAccounts) != nil else { return }
+        if !popover.isShown {
+            togglePopover()
+        } else {
+            popover.contentViewController = NSHostingController(rootView: MenuBarPopoverView())
+        }
+    }
+
+    @MainActor
+    func selectPreviousAccountAndPresent() {
+        let activeAccounts = Account.activeAccounts(in: ConfigManager.shared.load())
+        guard AccountSelectionService.selectPrevious(in: activeAccounts) != nil else { return }
+        if !popover.isShown {
+            togglePopover()
+        } else {
+            popover.contentViewController = NSHostingController(rootView: MenuBarPopoverView())
         }
     }
 }

@@ -59,6 +59,11 @@ final class AtomicFileWriterTests: XCTestCase {
         XCTAssertEqual(result, .success, "concurrent writes should complete within timeout")
         let final = try Data(contentsOf: dest)
         XCTAssertFalse(final.isEmpty, "file must contain data")
+        let leftovers = try FileManager.default.contentsOfDirectory(at: tmpDir, includingPropertiesForKeys: nil)
+        XCTAssertFalse(
+            leftovers.contains { $0.pathExtension == "tmp" },
+            "temporary files should be cleaned up after concurrent writes"
+        )
     }
 
     func testEmptyDataWrite() throws {

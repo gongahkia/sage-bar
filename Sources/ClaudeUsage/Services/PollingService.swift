@@ -29,6 +29,9 @@ class PollingService: ObservableObject {
     static var anthropicClientFactory: (String) -> AnthropicAPIClient = { apiKey in
         AnthropicAPIClient(apiKey: apiKey)
     }
+    static var claudeAIClientFactory: (String) -> ClaudeAIClient = { sessionToken in
+        ClaudeAIClient(sessionToken: sessionToken)
+    }
     @MainActor @Published var lastPollDate: Date?
     @MainActor @Published var isPolling: Bool = false
     @MainActor @Published var lastFetchError: String?
@@ -126,6 +129,15 @@ class PollingService: ObservableObject {
         Task { await pollOnce() }
     }
 
+    @MainActor
+    func requestFollowUpRefresh() {
+        if currentTask != nil || isPolling {
+            pendingLogRefresh = true
+            return
+        }
+        forceRefresh()
+    }
+
     func handleClaudeCodeLogsChanged() async {
         let pollInProgress = await MainActor.run {
             self.lastLocalLogEventAt = Date()
@@ -176,7 +188,8 @@ class PollingService: ObservableObject {
             return
         }
         var config = ConfigManager.shared.load()
-        log.info("[poll_cycle=\(cycleID)] Poll started: \(config.accounts.filter { $0.isActive }.count) active accounts")
+        let activeAccounts = Account.activeAccounts(in: config)
+        log.info("[poll_cycle=\(cycleID)] Poll started: \(activeAccounts.count) active accounts")
         await MainActor.run { self.isPolling = true }
         defer {
             Task {
@@ -188,7 +201,6 @@ class PollingService: ObservableObject {
             }
         }
 
-        let activeAccounts = config.accounts.filter { $0.isActive }
         guard !activeAccounts.isEmpty else {
             await recordPollSkip(.noActiveAccounts)
             return
@@ -488,11 +500,39 @@ class PollingService: ObservableObject {
                 await registerCircuitBreakerFailure(for: account.id, accountType: account.type)
                 return
             }
-            let aiClient = ClaudeAIClient(sessionToken: token)
-            if let usage = await aiClient.fetchUsage() {
+            let aiClient = Self.claudeAIClientFactory(token)
+            switch await aiClient.fetchUsageResult() {
+            case .success(let usage):
+                let now = Date()
+                let status = ClaudeAIStatus(
+                    accountId: account.id,
+                    messagesRemaining: usage.messagesRemaining,
+                    messagesUsed: usage.messagesUsed,
+                    resetAt: usage.resetAt,
+                    lastUpdated: now,
+                    lastSuccessfulSyncAt: now,
+                    lastErrorMessage: nil,
+                    sessionHealth: .healthy
+                )
+                await ClaudeAIStatusStore.shared.save(status)
+                await ClaudeAIQuotaHistoryStore.shared.append(
+                    ClaudeAIQuotaHistoryEntry(
+                        accountId: account.id,
+                        timestamp: now,
+                        messagesRemaining: usage.messagesRemaining,
+                        messagesUsed: usage.messagesUsed,
+                        resetAt: usage.resetAt,
+                        sessionHealth: .healthy
+                    )
+                )
+                NotificationManager.shared.checkClaudeAILowQuota(
+                    account: account,
+                    status: status,
+                    config: config.claudeAI
+                )
                 let snap = UsageSnapshot(
                     accountId: account.id,
-                    timestamp: Date(),
+                    timestamp: status.lastUpdated,
                     inputTokens: usage.messagesUsed,
                     outputTokens: 0,
                     cacheCreationTokens: 0,
@@ -503,12 +543,48 @@ class PollingService: ObservableObject {
                 )
                 await appendSnapshotIfChanged(snap, accountType: account.type)
                 await clearFetchError(for: account.id)
-            } else {
-                let msg = "claudeAI fetchUsage returned nil for account \(account.id.uuidString) — using cached snapshot"
+            case .failure(let error):
+                let existingStatus = await ClaudeAIStatusStore.shared.status(for: account.id)
+                let now = Date()
+                let sessionHealth: ClaudeAISessionHealth
+                switch error {
+                case .unauthorized, .forbidden:
+                    sessionHealth = .reauthRequired
+                case .invalidResponse, .networkError:
+                    sessionHealth = .temporaryFailure
+                }
+                let msg = "claudeAI fetchUsage failed for account \(account.id.uuidString): \(describeClaudeAIError(error)) — using cached snapshot"
                 ErrorLogger.shared.log(withProviderContext(msg), level: "WARN")
                 await setFetchError(msg, for: account.id, accountType: account.type)
                 await registerCircuitBreakerFailure(for: account.id, accountType: account.type)
-                if await shouldEmitClaudeAISessionExpiredNotification(for: account.id) {
+                let fallbackStatus = ClaudeAIStatus(
+                    accountId: account.id,
+                    messagesRemaining: existingStatus?.messagesRemaining ?? 0,
+                    messagesUsed: existingStatus?.messagesUsed ?? 0,
+                    resetAt: existingStatus?.resetAt,
+                    lastUpdated: now,
+                    lastSuccessfulSyncAt: existingStatus?.lastSuccessfulSyncAt,
+                    lastErrorMessage: describeClaudeAIError(error),
+                    sessionHealth: sessionHealth
+                )
+                await ClaudeAIStatusStore.shared.save(fallbackStatus)
+                await ClaudeAIQuotaHistoryStore.shared.append(
+                    ClaudeAIQuotaHistoryEntry(
+                        accountId: account.id,
+                        timestamp: now,
+                        messagesRemaining: fallbackStatus.messagesRemaining,
+                        messagesUsed: fallbackStatus.messagesUsed,
+                        resetAt: fallbackStatus.resetAt,
+                        sessionHealth: sessionHealth
+                    )
+                )
+                if var staleSnapshot = await CacheManager.shared.latestAsync(forAccount: account.id) {
+                    staleSnapshot.timestamp = now
+                    staleSnapshot.isStale = true
+                    await appendSnapshotIfChanged(staleSnapshot, accountType: account.type)
+                }
+                if sessionHealth == .reauthRequired,
+                   await shouldEmitClaudeAISessionExpiredNotification(for: account.id) {
                     NotificationCenter.default.post(name: .claudeAISessionExpired, object: account.id)
                 }
             }
@@ -1197,6 +1273,19 @@ class PollingService: ObservableObject {
             return
         }
         lastFetchError = fetchErrorsByAccount[latestAccountId]
+    }
+
+    private func describeClaudeAIError(_ error: ClaudeAIError) -> String {
+        switch error {
+        case .unauthorized:
+            return "session unauthorized"
+        case .forbidden:
+            return "session forbidden"
+        case .invalidResponse:
+            return "invalid response"
+        case .networkError(let underlying):
+            return "network error: \(underlying.localizedDescription)"
+        }
     }
 }
 

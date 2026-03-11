@@ -10,17 +10,30 @@
             <property name="last updated" code="lupd" type="date" access="r" description="Last update timestamp"/>
         </class>
         <command name="get today usage" code="CLUHgtus" description="Get today's usage for all active accounts">
+            <cocoa class="GetTodayUsageScriptCommand"/>
             <result type="usage record" description="List of usage records"/>
         </command>
         <command name="get forecast" code="CLUHgfct" description="Get spend forecast">
-            <result type="any" description="Forecast record with projectedEOD, projectedEOW, projectedEOM"/>
+            <cocoa class="GetForecastScriptCommand"/>
+            <parameter name="account" code="acct" type="text" optional="yes" description="Account UUID or display name"/>
+            <result type="text" description="Forecast summary"/>
         </command>
-        <command name="refresh" code="CLUHrefr" description="Force refresh usage data"/>
+        <command name="refresh" code="CLUHrefr" description="Force refresh usage data">
+            <cocoa class="RefreshScriptCommand"/>
+        </command>
         <command name="get current usage" code="CLUHgcus" description="Get current usage for the active account">
+            <cocoa class="GetCurrentUsageScriptCommand"/>
+            <parameter name="account" code="acct" type="text" optional="yes" description="Account UUID or display name"/>
             <result type="record" description="Record with accountName (text), totalInputTokens (integer), totalOutputTokens (integer), totalCostUSD (real)"/>
         </command>
         <command name="trigger poll" code="CLUHtpol" description="Trigger an immediate poll for all active accounts">
+            <cocoa class="TriggerPollScriptCommand"/>
             <result type="boolean" description="True if poll completed without error"/>
+        </command>
+        <command name="get usage summary" code="CLUHgsum" description="Get a shareable usage summary">
+            <cocoa class="GetUsageSummaryScriptCommand"/>
+            <parameter name="account" code="acct" type="text" optional="yes" description="Account UUID or display name"/>
+            <result type="text" description="Formatted usage summary"/>
         </command>
     </suite>
 </dictionary>

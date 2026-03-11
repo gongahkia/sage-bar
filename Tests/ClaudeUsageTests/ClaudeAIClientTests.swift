@@ -13,7 +13,7 @@ final class ClaudeAIClientTests: XCTestCase {
 
     func testFetchUsage200ReturnsCorrectValues() async {
         let json = """
-        {"messageLimit":{"remaining":45,"used":15,"resetAt":null}}
+        {"messageLimit":{"remaining":45,"used":15,"resetAt":"2026-03-12T10:00:00Z"}}
         """
         let client = makeClient { req in
             let resp = HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
@@ -23,6 +23,7 @@ final class ClaudeAIClientTests: XCTestCase {
         XCTAssertNotNil(usage)
         XCTAssertEqual(usage?.messagesRemaining, 45)
         XCTAssertEqual(usage?.messagesUsed, 15)
+        XCTAssertEqual(usage?.resetAt, ISO8601DateFormatter().date(from: "2026-03-12T10:00:00Z"))
     }
 
     func testFetchUsageNetworkErrorReturnsNil() async {

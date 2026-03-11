@@ -3,6 +3,7 @@ import Foundation
 struct ClaudeAIUsage {
     var messagesRemaining: Int
     var messagesUsed: Int
+    var resetAt: Date?
 }
 
 struct ClaudeAIUsageResponse: Decodable {
@@ -37,18 +38,31 @@ struct ClaudeAIClient {
         self.session = session
     }
 
-    func fetchUsage() async -> ClaudeAIUsage? {
-        let response: ClaudeAIUsageResponse
+    func fetchUsageResult() async -> Result<ClaudeAIUsage, ClaudeAIError> {
         do {
-            response = try await fetchRemainingUsage()
+            let response = try await fetchRemainingUsage()
+            return .success(
+                ClaudeAIUsage(
+                    messagesRemaining: response.messageLimit.remaining,
+                    messagesUsed: response.messageLimit.used ?? 0,
+                    resetAt: response.messageLimit.resetAt
+                )
+            )
+        } catch let error as ClaudeAIError {
+            return .failure(error)
         } catch {
+            return .failure(.networkError(error))
+        }
+    }
+
+    func fetchUsage() async -> ClaudeAIUsage? {
+        switch await fetchUsageResult() {
+        case .success(let usage):
+            return usage
+        case .failure(let error):
             ErrorLogger.shared.log("ClaudeAI fetchUsage failed: \(error)", level: "WARN")
             return nil
         }
-        return ClaudeAIUsage(
-            messagesRemaining: response.messageLimit.remaining,
-            messagesUsed: response.messageLimit.used ?? 0
-        )
     }
 
     func fetchRemainingUsage() async throws -> ClaudeAIUsageResponse {

@@ -261,15 +261,33 @@ struct HotkeyConfig: Codable, Equatable {
 }
 
 struct ClaudeAIConfig: Codable, Equatable {
+    var notifyOnLowMessages: Bool
+    var lowMessagesThreshold: Int
+
+    private enum CodingKeys: String, CodingKey {
+        case notifyOnLowMessages
+        case lowMessagesThreshold
+    }
+
     private enum LegacyCodingKeys: String, CodingKey {
         case sessionCookie
     }
 
-    init() {}
+    init(
+        notifyOnLowMessages: Bool = true,
+        lowMessagesThreshold: Int = 10
+    ) {
+        self.notifyOnLowMessages = notifyOnLowMessages
+        self.lowMessagesThreshold = Self.sanitizedThreshold(lowMessagesThreshold)
+    }
 
     init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: LegacyCodingKeys.self)
-        if let cookie = try c.decodeIfPresent(String.self, forKey: .sessionCookie),
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        notifyOnLowMessages = try c.decodeIfPresent(Bool.self, forKey: .notifyOnLowMessages) ?? true
+        lowMessagesThreshold = Self.sanitizedThreshold(try c.decodeIfPresent(Int.self, forKey: .lowMessagesThreshold) ?? 10)
+
+        let legacy = try decoder.container(keyedBy: LegacyCodingKeys.self)
+        if let cookie = try legacy.decodeIfPresent(String.self, forKey: .sessionCookie),
            !cookie.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             ErrorLogger.shared.log(
                 "Ignoring deprecated claudeAI.sessionCookie in config; use keychain-backed session tokens instead",
@@ -279,11 +297,16 @@ struct ClaudeAIConfig: Codable, Equatable {
     }
 
     func encode(to encoder: Encoder) throws {
-        // deprecated and intentionally omitted to avoid persisting sensitive cookie fields
-        _ = encoder.container(keyedBy: LegacyCodingKeys.self)
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(notifyOnLowMessages, forKey: .notifyOnLowMessages)
+        try container.encode(lowMessagesThreshold, forKey: .lowMessagesThreshold)
     }
 
     static var `default`: ClaudeAIConfig { ClaudeAIConfig() }
+
+    private static func sanitizedThreshold(_ value: Int) -> Int {
+        value > 0 ? value : 10
+    }
 }
 
 struct AutomationRule: Codable, Identifiable, Equatable {
@@ -291,19 +314,99 @@ struct AutomationRule: Codable, Identifiable, Equatable {
     var name: String
     var triggerType: String // "cost_gt" | "tokens_gt"
     var threshold: Double
+    var actionKind: String
+    var actionPayload: String?
+    var accountIDs: [UUID]
+    var groupLabels: [String]
     var shellCommand: String
     var lastFiredAt: Date?
     var enabled: Bool
     var allowedEnvKeys: [String] // restrict env vars injected into process
 
-    init(name: String, triggerType: String, threshold: Double, shellCommand: String) {
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case triggerType
+        case threshold
+        case actionKind
+        case actionPayload
+        case accountIDs
+        case groupLabels
+        case shellCommand
+        case lastFiredAt
+        case enabled
+        case allowedEnvKeys
+    }
+
+    init(
+        name: String,
+        triggerType: String,
+        threshold: Double,
+        shellCommand: String,
+        actionKind: String = "shell",
+        actionPayload: String? = nil,
+        accountIDs: [UUID] = [],
+        groupLabels: [String] = []
+    ) {
         self.id = UUID()
         self.name = name
         self.triggerType = triggerType
         self.threshold = threshold
+        self.actionKind = actionKind
+        self.actionPayload = actionPayload ?? (actionKind == "shell" ? shellCommand : nil)
+        self.accountIDs = accountIDs
+        self.groupLabels = Self.normalizedGroupLabels(groupLabels)
         self.shellCommand = shellCommand
         self.lastFiredAt = nil
         self.enabled = true
         self.allowedEnvKeys = ["CLAUDE_COST", "CLAUDE_TOKENS", "CLAUDE_ACCOUNT"]
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        name = try c.decode(String.self, forKey: .name)
+        triggerType = try c.decode(String.self, forKey: .triggerType)
+        threshold = try c.decode(Double.self, forKey: .threshold)
+        actionKind = try c.decodeIfPresent(String.self, forKey: .actionKind) ?? "shell"
+        actionPayload = try c.decodeIfPresent(String.self, forKey: .actionPayload)
+        accountIDs = try c.decodeIfPresent([UUID].self, forKey: .accountIDs) ?? []
+        groupLabels = Self.normalizedGroupLabels(
+            try c.decodeIfPresent([String].self, forKey: .groupLabels) ?? []
+        )
+        shellCommand = try c.decodeIfPresent(String.self, forKey: .shellCommand) ?? ""
+        lastFiredAt = try c.decodeIfPresent(Date.self, forKey: .lastFiredAt)
+        enabled = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
+        allowedEnvKeys = try c.decodeIfPresent([String].self, forKey: .allowedEnvKeys)
+            ?? ["CLAUDE_COST", "CLAUDE_TOKENS", "CLAUDE_ACCOUNT"]
+        if actionKind == "shell", actionPayload == nil, !shellCommand.isEmpty {
+            actionPayload = shellCommand
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(name, forKey: .name)
+        try c.encode(triggerType, forKey: .triggerType)
+        try c.encode(threshold, forKey: .threshold)
+        try c.encode(actionKind, forKey: .actionKind)
+        try c.encodeIfPresent(actionPayload, forKey: .actionPayload)
+        try c.encode(accountIDs, forKey: .accountIDs)
+        try c.encode(groupLabels, forKey: .groupLabels)
+        try c.encode(shellCommand, forKey: .shellCommand)
+        try c.encodeIfPresent(lastFiredAt, forKey: .lastFiredAt)
+        try c.encode(enabled, forKey: .enabled)
+        try c.encode(allowedEnvKeys, forKey: .allowedEnvKeys)
+    }
+
+    private static func normalizedGroupLabels(_ labels: [String]) -> [String] {
+        Array(
+            Set(
+                labels
+                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { !$0.isEmpty }
+            )
+        ).sorted()
     }
 }

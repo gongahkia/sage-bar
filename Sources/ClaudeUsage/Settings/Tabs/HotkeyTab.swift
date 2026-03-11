@@ -30,9 +30,12 @@ struct HotkeyTab: View {
         .onAppear { hasAccessibility = AXIsProcessTrusted() }
         .onChange(of: config.hotkey) { _ in
             ConfigManager.shared.save(config)
-            HotkeyManager.shared.register(config: config.hotkey)
+            HotkeyManager.shared.register(config: config.hotkey, advancedConfig: config.hotkeyConfig)
         }
-        .onChange(of: config.hotkeyConfig) { _ in ConfigManager.shared.save(config) }
+        .onChange(of: config.hotkeyConfig) { _ in
+            ConfigManager.shared.save(config)
+            HotkeyManager.shared.register(config: config.hotkey, advancedConfig: config.hotkeyConfig)
+        }
         .padding()
     }
 }
@@ -41,10 +44,15 @@ struct HotkeyTab: View {
 
 struct HotkeyRecorderControl: View {
     @Binding var config: HotkeyConfig
-    @State private var isRecording = false
+    @State private var recordingMode: RecordingMode?
     @State private var pendingKeyCode: Int?
     @State private var pendingModifiers: [String] = []
     @State private var monitor: Any?
+
+    private enum RecordingMode {
+        case primary
+        case chordSecondary
+    }
 
     private var bindingLabel: String {
         let mods = config.primaryModifiers.map {
@@ -60,35 +68,71 @@ struct HotkeyRecorderControl: View {
         return "\(mods)\(keyName)"
     }
 
+    private var chordLabel: String {
+        keyName(for: config.chordSecondaryKeyCode)
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("Binding:").foregroundColor(.secondary)
-                Text(isRecording ? "Press a key…" : bindingLabel)
+                Text("Primary:").foregroundColor(.secondary)
+                Text(recordingMode == .primary ? "Press a key…" : bindingLabel)
                     .fontWeight(.medium)
                     .padding(.horizontal, 8).padding(.vertical, 4)
-                    .background(isRecording ? Color.accentColor.opacity(0.15) : Color.secondary.opacity(0.1))
+                    .background(recordingMode == .primary ? Color.accentColor.opacity(0.15) : Color.secondary.opacity(0.1))
                     .cornerRadius(6)
                 Spacer()
-                Button(isRecording ? "Cancel" : "Record") {
-                    if isRecording { stopRecording() } else { startRecording() }
+                Button(recordingMode == .primary ? "Cancel" : "Record") {
+                    toggleRecording(.primary)
                 }
-                if isRecording, let kc = pendingKeyCode {
+                if recordingMode == .primary, let kc = pendingKeyCode {
                     Button("Confirm") {
                         config.primaryKeyCode = kc
                         config.primaryModifiers = pendingModifiers
                         stopRecording()
-                        ConfigManager.shared.save(ConfigManager.shared.load())
                     }
                 }
             }
-            Toggle("Chord enabled", isOn: $config.chordEnabled)
+            Toggle("Enable account-cycle chord", isOn: $config.chordEnabled)
+            if config.chordEnabled {
+                HStack {
+                    Text("Cycle chord:").foregroundColor(.secondary)
+                    Text("\(bindingLabel), then \(recordingMode == .chordSecondary ? "Press a key…" : chordLabel)")
+                        .fontWeight(.medium)
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(recordingMode == .chordSecondary ? Color.accentColor.opacity(0.15) : Color.secondary.opacity(0.1))
+                        .cornerRadius(6)
+                    Spacer()
+                    Button(recordingMode == .chordSecondary ? "Cancel" : "Record") {
+                        toggleRecording(.chordSecondary)
+                    }
+                    if recordingMode == .chordSecondary, let kc = pendingKeyCode {
+                        Button("Confirm") {
+                            config.chordSecondaryKeyCode = kc
+                            stopRecording()
+                        }
+                    }
+                }
+                Text("The chord uses the recorded primary binding as the first key and cycles to the next active account.")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
         }
     }
 
-    private func startRecording() {
-        isRecording = true
-        pendingKeyCode = nil; pendingModifiers = []
+    private func toggleRecording(_ mode: RecordingMode) {
+        if recordingMode == mode {
+            stopRecording()
+        } else {
+            startRecording(mode)
+        }
+    }
+
+    private func startRecording(_ mode: RecordingMode) {
+        stopRecording()
+        recordingMode = mode
+        pendingKeyCode = nil
+        pendingModifiers = []
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             pendingKeyCode = Int(event.keyCode)
             var mods: [String] = []
@@ -97,13 +141,16 @@ struct HotkeyRecorderControl: View {
             if event.modifierFlags.contains(.option) { mods.append("option") }
             if event.modifierFlags.contains(.control) { mods.append("control") }
             pendingModifiers = mods
-            return nil // consume event
+            return nil
         }
     }
 
     private func stopRecording() {
-        isRecording = false
-        if let m = monitor { NSEvent.removeMonitor(m); monitor = nil }
+        recordingMode = nil
+        if let monitor {
+            NSEvent.removeMonitor(monitor)
+            self.monitor = nil
+        }
     }
 
     private func keyName(for keyCode: Int) -> String {
@@ -129,11 +176,16 @@ struct MultiPicker: View {
                 ForEach(options, id: \.self) { opt in
                     Toggle(opt, isOn: Binding(
                         get: { selection.contains(opt) },
-                        set: { v in if v { selection.append(opt) } else { selection.removeAll { $0 == opt } } }
+                        set: { value in
+                            if value {
+                                selection.append(opt)
+                            } else {
+                                selection.removeAll { $0 == opt }
+                            }
+                        }
                     )).toggleStyle(.checkbox)
                 }
             }
         }
     }
 }
-

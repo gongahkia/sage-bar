@@ -35,7 +35,10 @@ struct DisplayTab: View {
             }
         }.onChange(of: config.display) { _ in ConfigManager.shared.save(config) }
          .onChange(of: config.sparkline) { _ in ConfigManager.shared.save(config) }
-         .onChange(of: config.hotkey) { _ in ConfigManager.shared.save(config) }
+         .onChange(of: config.hotkey) { _ in
+             ConfigManager.shared.save(config)
+             HotkeyManager.shared.register(config: config.hotkey, advancedConfig: config.hotkeyConfig)
+         }
          .padding()
     }
 
@@ -44,4 +47,3 @@ struct DisplayTab: View {
         return "\(mods)\(config.hotkey.key.uppercased())"
     }
 }
-

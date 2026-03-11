@@ -46,6 +46,59 @@ final class AutomationEngineEvaluateTests: XCTestCase {
         XCTAssertTrue(triggered.isEmpty)
     }
 
+    func testScopedRuleOnlyMatchesConfiguredAccountIDs() {
+        var scoped = rule(type: "cost_gt", threshold: 1.0)
+        scoped.accountIDs = [accountId]
+        let otherSnapshot = UsageSnapshot(
+            accountId: UUID(),
+            timestamp: Date(),
+            inputTokens: 0,
+            outputTokens: 0,
+            cacheCreationTokens: 0,
+            cacheReadTokens: 0,
+            totalCostUSD: 10,
+            modelBreakdown: []
+        )
+        XCTAssertEqual(AutomationEngine.evaluate(rules: [scoped], snapshot: snap(cost: 10, tokens: 0)).count, 1)
+        XCTAssertTrue(AutomationEngine.evaluate(rules: [scoped], snapshot: otherSnapshot).isEmpty)
+    }
+
+    func testGroupScopedRuleOnlyMatchesConfiguredGroupLabels() {
+        let original = ConfigManager.shared.load()
+        defer { _ = ConfigManager.shared.save(original) }
+
+        var config = original
+        config.accounts = [
+            Account(
+                name: "Client Local",
+                type: .claudeCode,
+                isActive: true,
+                groupLabel: "Client A",
+                order: 0
+            )
+        ]
+        let scopedAccount = config.accounts[0]
+        _ = ConfigManager.shared.save(config)
+
+        var scoped = rule(type: "cost_gt", threshold: 1.0)
+        scoped.groupLabels = ["Client A"]
+
+        let matchingSnapshot = UsageSnapshot(
+            accountId: scopedAccount.id,
+            timestamp: Date(),
+            inputTokens: 0,
+            outputTokens: 0,
+            cacheCreationTokens: 0,
+            cacheReadTokens: 0,
+            totalCostUSD: 10,
+            modelBreakdown: []
+        )
+        XCTAssertEqual(AutomationEngine.evaluate(rules: [scoped], snapshot: matchingSnapshot).count, 1)
+
+        scoped.groupLabels = ["Client B"]
+        XCTAssertTrue(AutomationEngine.evaluate(rules: [scoped], snapshot: matchingSnapshot).isEmpty)
+    }
+
     // MARK: - Task 31: metacharacter injection rejected by parse()
 
     func testShellMetacharactersReturnNilFromParse() {

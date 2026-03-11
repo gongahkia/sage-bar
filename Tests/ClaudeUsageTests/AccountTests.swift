@@ -115,6 +115,59 @@ final class AccountTests: XCTestCase {
         XCTAssertEqual(acct.order, 0)
     }
 
+    func testAccountDecodingMissingPinnedAndGroupDefaults() throws {
+        let json = """
+        {"id":"\(UUID().uuidString)","name":"NoPin","type":"claudeCode","isActive":true,"createdAt":"2025-01-01T00:00:00Z"}
+        """
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let acct = try decoder.decode(Account.self, from: Data(json.utf8))
+        XCTAssertFalse(acct.isPinned)
+        XCTAssertNil(acct.groupLabel)
+    }
+
+    func testAccountInitTrimsGroupLabel() {
+        let acct = Account(name: "Grouped", type: .claudeCode, groupLabel: "  Client A  ")
+        XCTAssertEqual(acct.groupLabel, "Client A")
+    }
+
+    func testSortedForDisplayPrefersPinnedThenOrderThenCreatedAt() {
+        var oldestPinned = Account(name: "Pinned Old", type: .claudeCode, isPinned: true, order: 2)
+        oldestPinned.createdAt = Date(timeIntervalSince1970: 10)
+        var newestPinned = Account(name: "Pinned New", type: .claudeCode, isPinned: true, order: 2)
+        newestPinned.createdAt = Date(timeIntervalSince1970: 20)
+        var unpinnedLowOrder = Account(name: "Unpinned First", type: .claudeCode, isPinned: false, order: 1)
+        unpinnedLowOrder.createdAt = Date(timeIntervalSince1970: 5)
+
+        let sorted = Account.sortedForDisplay([newestPinned, unpinnedLowOrder, oldestPinned])
+        XCTAssertEqual(sorted.map(\.name), ["Pinned Old", "Pinned New", "Unpinned First"])
+    }
+
+    func testDisplayLabelIncludesGroupWhenPresent() {
+        let acct = Account(name: "Consulting", type: .anthropicAPI, groupLabel: "Client X")
+        XCTAssertEqual(acct.displayLabel(among: [acct]), "Consulting • Client X")
+    }
+
+    func testLocalProvidersSupportWorkstreamAttribution() {
+        XCTAssertTrue(AccountType.claudeCode.supportsWorkstreamAttribution)
+        XCTAssertTrue(AccountType.codex.supportsWorkstreamAttribution)
+        XCTAssertTrue(AccountType.gemini.supportsWorkstreamAttribution)
+        XCTAssertFalse(AccountType.anthropicAPI.supportsWorkstreamAttribution)
+    }
+
+    func testResolvedWorkstreamLabelPrefersConfiguredRule() {
+        let rule = WorkstreamRule(name: "Client A", pathPattern: "client-a")
+        let account = Account(name: "Local", type: .claudeCode, workstreamRules: [rule])
+        let label = account.resolvedWorkstreamLabel(for: "/Users/test/.claude/projects/client-a/session.jsonl")
+        XCTAssertEqual(label, "Client A")
+    }
+
+    func testResolvedWorkstreamLabelFallsBackToPathInference() {
+        let account = Account(name: "Local", type: .claudeCode)
+        let label = account.resolvedWorkstreamLabel(for: "/Users/test/.claude/projects/agency-site/session.jsonl")
+        XCTAssertEqual(label, "agency site")
+    }
+
     // MARK: - AccountType Codable round-trip
 
     func testAccountTypeCodingRoundTrip() throws {
@@ -122,23 +175,6 @@ final class AccountTests: XCTestCase {
             let data = try JSONEncoder().encode(t)
             let decoded = try JSONDecoder().decode(AccountType.self, from: data)
             XCTAssertEqual(decoded, t, "\(t.rawValue) round-trip failed")
-        }
-    }
-}
-
-// ProviderCredentialMode is not Equatable by default; conform for test assertions
-extension ProviderCredentialMode: @retroactive Equatable {
-    public static func == (lhs: ProviderCredentialMode, rhs: ProviderCredentialMode) -> Bool {
-        switch (lhs, rhs) {
-        case (.none, .none),
-             (.anthropicAPIKey, .anthropicAPIKey),
-             (.openAIAdminKey, .openAIAdminKey),
-             (.windsurfServiceKey, .windsurfServiceKey),
-             (.githubTokenAndOrg, .githubTokenAndOrg),
-             (.claudeAISessionToken, .claudeAISessionToken):
-            return true
-        default:
-            return false
         }
     }
 }

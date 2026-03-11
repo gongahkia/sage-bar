@@ -18,6 +18,8 @@
     <true/>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
+    <key>NSScriptingDefinition</key>
+    <string>ClaudeUsage.sdef</string>
     <key>SUFeedURL</key>
     <string>https://gongahkia.github.io/claude-usage-tracker/appcast.xml</string>
     <key>NSHumanReadableCopyright</key>

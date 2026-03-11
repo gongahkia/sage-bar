@@ -7,11 +7,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var updateTimer: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        if let url = Bundle.module.url(forResource: "AppIcon", withExtension: "icns"),
-           let icon = NSImage(contentsOf: url) {
-            NSApp.applicationIconImage = icon
-        } else if let url = Bundle.module.url(forResource: "AppIcon", withExtension: "png"),
-                  let icon = NSImage(contentsOf: url) {
+        if let icon = dockIconImage() {
             NSApp.applicationIconImage = icon
         } else {
             ErrorLogger.shared.log("Failed to load app icon from bundle", level: "WARN")
@@ -49,7 +45,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // register global hotkey
         let config = ConfigManager.shared.load()
         if config.hotkey.enabled {
-            HotkeyManager.shared.register(config: config.hotkey)
+            HotkeyManager.shared.register(config: config.hotkey, advancedConfig: config.hotkeyConfig)
         }
 
         // start log watcher
@@ -85,5 +81,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return false
         }
         return true
+    }
+
+    private func dockIconImage() -> NSImage? {
+        let candidates = [
+            ("WizardDockIcon", "png"),
+            ("AppIcon", "icns"),
+            ("AppIcon", "png"),
+        ]
+        for (name, ext) in candidates {
+            if let url = Bundle.module.url(forResource: name, withExtension: ext),
+               let image = NSImage(contentsOf: url) {
+                return image
+            }
+        }
+        return nil
     }
 }

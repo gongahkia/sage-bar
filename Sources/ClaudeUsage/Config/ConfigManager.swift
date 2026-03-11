@@ -41,7 +41,7 @@ class ConfigManager {
     static let shared = ConfigManager()
     private let configDir: URL
     private let configFile: URL
-    private let latestConfigSchemaVersion = 3
+    private let latestConfigSchemaVersion = 5
     private(set) var lastLoadError: ConfigLoadError?
 
     init(configDir: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".config/claude-usage")) {
@@ -171,17 +171,43 @@ class ConfigManager {
             }
             migrated.schemaVersion = 3
         }
+        if migrated.schemaVersion < 4 {
+            migrated.claudeAI.notifyOnLowMessages = true
+            if migrated.claudeAI.lowMessagesThreshold <= 0 {
+                migrated.claudeAI.lowMessagesThreshold = ClaudeAIConfig.default.lowMessagesThreshold
+            }
+            migrated.schemaVersion = 4
+        }
+        if migrated.schemaVersion < 5 {
+            migrated.accounts = migrated.accounts.map { account in
+                var draft = account
+                draft.workstreamRules = account.workstreamRules
+                return draft
+            }
+            migrated.automations = migrated.automations.map { rule in
+                var draft = rule
+                draft.groupLabels = rule.groupLabels
+                return draft
+            }
+            migrated.schemaVersion = 5
+        }
         return migrated
     }
 
     private func normalize(_ config: Config) -> Config {
         var normalized = config
         normalized.schemaVersion = latestConfigSchemaVersion
-        normalized.accounts.sort {
-            if $0.order == $1.order {
-                return $0.createdAt < $1.createdAt
-            }
-            return $0.order < $1.order
+        normalized.accounts = Account.sortedForDisplay(normalized.accounts).map { account in
+            var normalizedAccount = account
+            normalizedAccount.name = account.trimmedName.isEmpty ? account.name : account.trimmedName
+            normalizedAccount.groupLabel = account.trimmedGroupLabel
+            normalizedAccount.workstreamRules = account.workstreamRules
+            return normalizedAccount
+        }
+        normalized.automations = normalized.automations.map { rule in
+            var normalizedRule = rule
+            normalizedRule.groupLabels = rule.groupLabels
+            return normalizedRule
         }
         return normalized
     }
