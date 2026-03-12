@@ -2,6 +2,23 @@ import AppKit
 import Foundation
 
 enum AppleScriptUsageBridge {
+    private final class BlockingBox<T>: @unchecked Sendable {
+        private let lock = NSLock()
+        private var value: T?
+
+        func store(_ value: T) {
+            lock.lock()
+            self.value = value
+            lock.unlock()
+        }
+
+        func load() -> T? {
+            lock.lock()
+            defer { lock.unlock() }
+            return value
+        }
+    }
+
     static func getTodayUsageRecords(config: Config = ConfigManager.shared.load()) -> [[String: Any]] {
         blocking {
             var rows: [[String: Any]] = []
@@ -91,13 +108,13 @@ enum AppleScriptUsageBridge {
 
     private static func blocking<T>(_ operation: @escaping @Sendable () async -> T) -> T {
         let semaphore = DispatchSemaphore(value: 0)
-        var result: T?
+        let result = BlockingBox<T>()
         Task {
-            result = await operation()
+            result.store(await operation())
             semaphore.signal()
         }
         semaphore.wait()
-        return result!
+        return result.load()!
     }
 }
 

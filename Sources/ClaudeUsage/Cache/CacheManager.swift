@@ -573,6 +573,23 @@ class CacheManager {
     static let shared = CacheManager()
     private let store: CacheStore
 
+    private final class BlockingBox<T>: @unchecked Sendable {
+        private let lock = NSLock()
+        private var value: T?
+
+        func store(_ value: T) {
+            lock.lock()
+            self.value = value
+            lock.unlock()
+        }
+
+        func load() -> T? {
+            lock.lock()
+            defer { lock.unlock() }
+            return value
+        }
+    }
+
     init(baseURL: URL = AppConstants.sharedContainerURL) {
         try? FileManager.default.createDirectory(at: baseURL, withIntermediateDirectories: true)
         self.store = CacheStore(baseURL: baseURL)
@@ -586,13 +603,13 @@ class CacheManager {
             )
         }
         let semaphore = DispatchSemaphore(value: 0)
-        var output: T! = nil
-        Task.detached {
-            output = await operation()
+        let output = BlockingBox<T>()
+        Task {
+            output.store(await operation())
             semaphore.signal()
         }
         semaphore.wait()
-        return output
+        return output.load()!
     }
 
     func load() -> [UsageSnapshot] {

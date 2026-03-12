@@ -479,7 +479,9 @@ private struct SetupWizardView: View {
                 subtitle: "Sage Bar lives in the top-right menu bar area and opens from its status item.",
                 buttonTitle: "Open Sage Bar"
             ) {
-                MenuBarManager.shared.presentPopover()
+                Task { @MainActor in
+                    MenuBarManager.shared.presentPopover()
+                }
             }
 
             Spacer()

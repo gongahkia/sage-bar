@@ -316,7 +316,9 @@ struct AnalyticsTab: View {
         case .openSettings, .openAccountsSettings, .reconnectSettings:
             SettingsWindowController.shared.showWindow()
         case .refreshNow:
-            PollingService.shared.forceRefresh()
+            Task { @MainActor in
+                PollingService.shared.forceRefresh()
+            }
         case .resetDateRange:
             reportStartDate = Calendar.current.date(byAdding: .day, value: -6, to: Date()) ?? Date()
             reportEndDate = Date()
