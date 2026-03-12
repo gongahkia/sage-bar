@@ -10,7 +10,7 @@ jobs:
   build-and-test:
     strategy:
       matrix:
-        os: [macos-14, macos-13]
+        os: [macos-14]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -53,7 +53,10 @@ jobs:
             BASE_SHA="${{ github.event.before }}"
           fi
 
-          mapfile -t SWIFT_FILES < <(./scripts/changed_swift_files.sh "$BASE_SHA" HEAD)
+          SWIFT_FILES=()
+          while IFS= read -r file; do
+            SWIFT_FILES+=("$file")
+          done < <(./scripts/changed_swift_files.sh "$BASE_SHA" HEAD)
           if [[ ${#SWIFT_FILES[@]} -eq 0 ]]; then
             echo "No changed Swift files to lint."
             exit 0
@@ -74,7 +77,10 @@ jobs:
             BASE_SHA="${{ github.event.before }}"
           fi
 
-          mapfile -t SWIFT_FILES < <(./scripts/changed_swift_files.sh "$BASE_SHA" HEAD)
+          SWIFT_FILES=()
+          while IFS= read -r file; do
+            SWIFT_FILES+=("$file")
+          done < <(./scripts/changed_swift_files.sh "$BASE_SHA" HEAD)
           if [[ ${#SWIFT_FILES[@]} -eq 0 ]]; then
             echo "No changed Swift files to format-check."
             exit 0
