@@ -78,9 +78,21 @@ final class ClaudeCodeLogParserTests: XCTestCase {
     }
 
     func testAggregatePeriodSortedAscending() {
-        let snaps = parser.aggregatePeriod(days: 30)
-        for i in 1..<snaps.count {
-            XCTAssertLessThanOrEqual(snaps[i-1].timestamp, snaps[i].timestamp)
+        let projectsDir = tmpDir.appendingPathComponent("projects")
+        try? FileManager.default.createDirectory(at: projectsDir, withIntermediateDirectories: true)
+        let file = projectsDir.appendingPathComponent("session.jsonl")
+        let formatter = ISO8601DateFormatter()
+        let older = formatter.string(from: Calendar.current.date(byAdding: .day, value: -5, to: Date()) ?? Date())
+        let newer = formatter.string(from: Calendar.current.date(byAdding: .day, value: -2, to: Date()) ?? Date())
+        try? """
+        {"type":"message","timestamp":"\(newer)","usage":{"input_tokens":4,"output_tokens":2}}
+        {"type":"message","timestamp":"\(older)","usage":{"input_tokens":2,"output_tokens":1}}
+        """.write(to: file, atomically: true, encoding: .utf8)
+
+        let snaps = ClaudeCodeLogParser(claudeDir: tmpDir).aggregatePeriod(days: 30)
+        XCTAssertEqual(snaps.count, 2)
+        for (previous, current) in zip(snaps, snaps.dropFirst()) {
+            XCTAssertLessThanOrEqual(previous.timestamp, current.timestamp)
         }
     }
 
