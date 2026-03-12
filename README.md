@@ -53,12 +53,6 @@ $ make archive-release #create a release-style local archive
 
 ![Sage Bar architecture diagram](./asset/reference/architecture.png)
 
-The execution path is centered on `ClaudeUsageApp` and `AppDelegate`. On launch, the app initializes the menu bar shell, onboarding, notifications, hotkeys, local parser watchers, optional iCloud metadata queries, and then starts `PollingService`.
-
-From there the runtime splits into two ingestion paths: local parsers incrementally watch `~/.claude/projects`, `~/.codex/sessions`, and `~/.gemini/tmp/**/chats`, while remote clients poll Anthropic, OpenAI, GitHub Copilot, Windsurf, and `claude.ai` on provider-specific cadences. `PollingService` writes snapshots through `CacheManager`, computes forecasts/burn-rate state/model hints, and then fans that state back out to the menu bar UI, exports, App Intents, AppleScript, notifications, webhooks, automations, and optional iCloud replication.
-
-The architecture diagram above is generated from `./scripts/generate_architecture_diagram.py`.
-
 ## Support
 
 `Sage Bar` currently supports the following [local](#local-providers) and [remote](#remote-providers) AI providers.
