@@ -1,6 +1,5 @@
 [![](https://img.shields.io/badge/sage_bar_v1.0.0-passing-green)](https://github.com/gongahkia/sage-bar/releases/tag/1.0.0)
 ![](https://github.com/gongahkia/sage-bar/actions/workflows/ci.yml/badge.svg)
-![](https://github.com/gongahkia/sage-bar/actions/workflows/release.yml/badge.svg)
 
 # `Sage Bar`
 
