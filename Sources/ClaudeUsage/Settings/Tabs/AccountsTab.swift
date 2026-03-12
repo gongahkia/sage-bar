@@ -12,6 +12,7 @@ struct AccountsTab: View {
     @State private var connectionTesting: Set<UUID> = []
     @State private var connectionTasks: [UUID: Task<Void, Never>] = [:]
     @ObservedObject private var polling = PollingService.shared
+    @ObservedObject private var setupExperience = SetupExperienceStore.shared
 
     private var displayedAccounts: [Account] {
         Account.sortedForDisplay(config.accounts)
@@ -23,6 +24,13 @@ struct AccountsTab: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            if let setupCard = ProductStateResolver.setupCTA(config: config) {
+                ProductStateCardView(card: setupCard) { action in
+                    handleProductStateAction(action)
+                }
+                .padding()
+                Divider()
+            }
             if displayedAccounts.count > virtualizationThreshold {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 8) {
@@ -43,6 +51,10 @@ struct AccountsTab: View {
                 }
             }
             HStack {
+                Button("Run Setup Wizard") {
+                    OnboardingWindowController.shared.showWindow(force: true)
+                }
+                .font(.caption)
                 Button("Enable All") {
                     for index in config.accounts.indices {
                         config.accounts[index].isActive = true
@@ -97,16 +109,13 @@ struct AccountsTab: View {
             }
         }
         .sheet(isPresented: $showAddSheet) {
-            AddAccountSheet(showExperimentalProviders: config.display.showExperimentalProviders) { newAccount, key in
-                config.accounts.append(newAccount)
-                if let key, !key.isEmpty {
-                    do {
-                        try KeychainManager.store(key: key, service: AppConstants.keychainService, account: newAccount.id.uuidString)
-                    } catch {
-                        ErrorLogger.shared.log("Keychain store failed for \(newAccount.name): \(error.localizedDescription)")
-                    }
+            AddAccountSheet(showExperimentalProviders: config.display.showExperimentalProviders) { result in
+                switch AccountProvisioningService.persist(result, config: &config) {
+                case .success:
+                    return nil
+                case .failure(let error):
+                    return error.message
                 }
-                ConfigManager.shared.save(config)
             }
         }
         .alert("Delete \"\(deleteTarget?.name ?? "")\"?", isPresented: $showDeleteAlert) {
@@ -182,6 +191,13 @@ struct AccountsTab: View {
                     .foregroundColor(status.hasPrefix("✓") ? .green : .red)
                     .padding(.leading, 4)
             }
+            if account.type.supportsWorkstreamAttribution,
+               let localStatus = LocalProviderLocator.status(for: account) {
+                Text(localStatus.isAvailable ? "Source: \(localStatus.displayPath)" : "Missing source: \(localStatus.displayPath)")
+                    .font(.caption2)
+                    .foregroundColor(localStatus.isAvailable ? .secondary : .orange)
+                    .padding(.leading, 4)
+            }
             if let health = polling.providerHealthScore(for: account.id) {
                 Text("Provider health: \(Int((health * 100).rounded()))%")
                     .font(.caption2)
@@ -207,6 +223,27 @@ struct AccountsTab: View {
                 ))
                 .textFieldStyle(.roundedBorder)
                 .font(.caption)
+            }
+            if account.type.supportsWorkstreamAttribution {
+                HStack {
+                    TextField("Local data path override", text: Binding(
+                        get: { account.localDataPath ?? "" },
+                        set: { newValue in
+                            updateAccount(account.id) { draft in
+                                let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                                draft.localDataPath = trimmed.isEmpty ? nil : trimmed
+                            }
+                        }
+                    ))
+                    .textFieldStyle(.roundedBorder)
+                    .font(.caption)
+                    Button("Browse…") {
+                        if let path = LocalProviderLocator.browseForDirectory(initialPath: account.localDataPath) {
+                            updateAccount(account.id) { $0.localDataPath = path }
+                        }
+                    }
+                    .font(.caption)
+                }
             }
             if let index = config.accounts.firstIndex(where: { $0.id == account.id }) {
                 Stepper(
@@ -320,55 +357,19 @@ struct AccountsTab: View {
         guard account.type.capabilities.supportsConnectionTest else {
             return "✗ Test connection unsupported for this provider type"
         }
-        switch account.type {
-        case .claudeCode:
-            return "✓ OK (local logs, no API)"
-        case .codex:
-            return "✓ OK (local Codex logs, no API)"
-        case .gemini:
-            return "✓ OK (local Gemini CLI logs, no API)"
-        case .openAIOrg:
-            guard let raw = try? KeychainManager.retrieve(service: AppConstants.keychainService, account: account.id.uuidString),
-                  let adminKey = ProviderCredentialCodec.openAIAdminKey(from: raw) else {
-                return "✗ No OpenAI admin key stored"
-            }
-            let client = OpenAIOrgUsageClient(adminAPIKey: adminKey)
-            return await client.validateAccess() ? "✓ OK" : "✗ Fetch failed (check admin key/org permissions)"
-        case .windsurfEnterprise:
-            guard let raw = try? KeychainManager.retrieve(service: AppConstants.keychainService, account: account.id.uuidString),
-                  let payload = ProviderCredentialCodec.windsurf(from: raw) else {
-                return "✗ Missing Windsurf service key payload"
-            }
-            let client = WindsurfEnterpriseClient(serviceKey: payload.serviceKey, groupName: payload.groupName)
-            return await client.validateAccess() ? "✓ OK" : "✗ Fetch failed (check service key/group)"
-        case .githubCopilot:
-            guard let raw = try? KeychainManager.retrieve(service: AppConstants.keychainService, account: account.id.uuidString),
-                  let payload = ProviderCredentialCodec.copilot(from: raw) else {
-                return "✗ Missing GitHub Copilot token/org payload"
-            }
-            let client = GitHubCopilotMetricsClient(token: payload.token, organization: payload.organization)
-            return await client.validateAccess() ? "✓ OK" : "✗ Fetch failed (check token scope/org access)"
-        case .anthropicAPI:
-            guard let key = try? KeychainManager.retrieve(service: AppConstants.keychainService, account: account.id.uuidString) else {
-                return "✗ No API key stored"
-            }
-            let client = AnthropicAPIClient(apiKey: key)
-            do {
-                let end = Date()
-                let start = Calendar.current.date(byAdding: .day, value: -1, to: end) ?? end
-                _ = try await client.fetchUsage(startDate: start, endDate: end)
-                return "✓ OK"
-            } catch {
-                return "✗ \(error.localizedDescription)"
-            }
-        case .claudeAI:
-            guard let token = try? KeychainManager.retrieve(service: AppConstants.keychainSessionTokenService, account: account.id.uuidString) else {
-                return "✗ No session token stored"
-            }
-            let client = ClaudeAIClient(sessionToken: token)
-            let result = await client.fetchUsage()
-            return result != nil ? "✓ OK" : "✗ Fetch failed (check session token)"
+        return await AccountProvisioningService.testConnection(account: account)
+    }
+
+    private func handleProductStateAction(_ action: ProductStateActionKind) {
+        switch action {
+        case .runSetupWizard:
+            OnboardingWindowController.shared.showWindow(force: true)
+        case .disableDemoMode:
+            SetupExperienceStore.shared.disableDemoMode()
+        case .openSettings, .openAccountsSettings, .reconnectSettings, .refreshNow, .resetDateRange, .exportAllTime:
+            break
         }
+        config = ConfigManager.shared.load()
     }
 
     private func withTimeout<T>(seconds: Double, operation: @escaping () async -> T) async -> T? {
@@ -387,62 +388,59 @@ struct AccountsTab: View {
 
 struct AddAccountSheet: View {
     var showExperimentalProviders: Bool
-    var onSave: (Account, String?) -> Void
+    var onSave: (AccountProvisioningResult) -> String?
 
     @Environment(\.dismiss) private var dismiss
-    @State private var name = ""
-    @State private var type: AccountType = .claudeCode
-    @State private var groupLabel = ""
-    @State private var isPinned = false
-    @State private var apiKey = ""
-    @State private var sessionToken = ""
-    @State private var openAIAdminKey = ""
-    @State private var windsurfServiceKey = ""
-    @State private var windsurfGroupName = ""
-    @State private var githubToken = ""
-    @State private var githubOrganization = ""
+    @State private var draft = AccountSetupDraft(name: "Claude Code", type: .claudeCode)
     @State private var validating = false
     @State private var validationError: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Add Account").font(.headline)
-            TextField("Name", text: $name)
-            TextField("Group Label (optional)", text: $groupLabel)
-            Toggle("Pin account", isOn: $isPinned)
-            Picker("Type", selection: $type) {
+            TextField("Name", text: $draft.name)
+            TextField("Group Label (optional)", text: $draft.groupLabel)
+            Toggle("Pin account", isOn: $draft.isPinned)
+            Picker("Type", selection: $draft.type) {
                 ForEach(providerOptions, id: \.self) { providerType in
                     Text(providerType.displayName).tag(providerType)
                 }
             }
-            if type == .anthropicAPI {
-                SecureField("API Key", text: $apiKey)
-                if let validationError {
-                    Text(validationError).foregroundColor(.red).font(.caption)
+            if draft.type.supportsWorkstreamAttribution,
+               let localStatus = draft.localSourceStatus {
+                Text(localStatus.isAvailable ? "Detected: \(localStatus.displayPath)" : "Missing: \(localStatus.displayPath)")
+                    .font(.caption)
+                    .foregroundColor(localStatus.isAvailable ? .secondary : .orange)
+                if !localStatus.isAvailable || localStatus.isUsingOverride {
+                    HStack {
+                        TextField("Manual override path", text: $draft.localDataPath)
+                        Button("Browse…") {
+                            if let path = LocalProviderLocator.browseForDirectory(initialPath: localStatus.displayPath) {
+                                draft.localDataPath = path
+                            }
+                        }
+                    }
                 }
             }
-            if type == .openAIOrg {
-                SecureField("OpenAI Admin Key", text: $openAIAdminKey)
+            if draft.type == .anthropicAPI {
+                SecureField("API Key", text: $draft.apiKey)
+            }
+            if draft.type == .openAIOrg {
+                SecureField("OpenAI Admin Key", text: $draft.openAIAdminKey)
                 Text("Requires an OpenAI admin key with organization usage/cost API access.")
                     .font(.caption)
                     .foregroundColor(.secondary)
-                if let validationError {
-                    Text(validationError).foregroundColor(.red).font(.caption)
-                }
             }
-            if type == .windsurfEnterprise {
-                SecureField("Windsurf Service Key", text: $windsurfServiceKey)
-                TextField("Group Name (optional)", text: $windsurfGroupName)
+            if draft.type == .windsurfEnterprise {
+                SecureField("Windsurf Service Key", text: $draft.windsurfServiceKey)
+                TextField("Group Name (optional)", text: $draft.windsurfGroupName)
                 Text("Uses Windsurf enterprise analytics + team credit balance APIs.")
                     .font(.caption)
                     .foregroundColor(.secondary)
-                if let validationError {
-                    Text(validationError).foregroundColor(.red).font(.caption)
-                }
             }
-            if type == .githubCopilot {
-                SecureField("GitHub Token", text: $githubToken)
-                TextField("GitHub Organization", text: $githubOrganization)
+            if draft.type == .githubCopilot {
+                SecureField("GitHub Token", text: $draft.githubToken)
+                TextField("GitHub Organization", text: $draft.githubOrganization)
                 Text("Token needs org Copilot metrics access (`read:org` or `read:enterprise`).")
                     .font(.caption)
                     .foregroundColor(.secondary)
@@ -450,21 +448,34 @@ struct AddAccountSheet: View {
                     Text(validationError).foregroundColor(.red).font(.caption)
                 }
             }
-            if type == .claudeAI {
-                SecureField("Session Token (from claude.ai cookie)", text: $sessionToken)
+            if draft.type == .claudeAI {
+                SecureField("Session Token (from claude.ai cookie)", text: $draft.sessionToken)
                 Text("To get your session token: open claude.ai in browser → DevTools (⌥⌘I) → Application → Cookies → copy the value of 'sessionKey'.")
                     .font(.caption)
                     .foregroundColor(.secondary)
+            }
+            if let validationError {
+                Text(validationError)
+                    .foregroundColor(.red)
+                    .font(.caption)
             }
             HStack {
                 Spacer()
                 Button("Cancel") { dismiss() }
                 Button("Save") { save() }
-                    .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !canSave || validating)
+                    .disabled(!AccountProvisioningService.canSave(draft) || validating)
             }
         }
         .padding()
         .frame(width: 380)
+        .onChange(of: draft.type) { newValue in
+            let defaultNames = AccountType.allCases.map(AccountProvisioningService.defaultName(for:))
+            if draft.trimmedName.isEmpty || defaultNames.contains(draft.name) {
+                draft.name = AccountProvisioningService.defaultName(for: newValue)
+            }
+            draft.localDataPath = ""
+            validationError = nil
+        }
     }
 
     private var providerOptions: [AccountType] {
@@ -473,125 +484,22 @@ struct AddAccountSheet: View {
 
     private func save() {
         validationError = nil
-        let account = Account(
-            name: name,
-            type: type,
-            groupLabel: groupLabel,
-            isPinned: isPinned
-        )
-        if type == .claudeAI {
-            if !sessionToken.isEmpty {
-                do {
-                    try KeychainManager.store(key: sessionToken, service: AppConstants.keychainSessionTokenService, account: account.id.uuidString)
-                } catch {
-                    ErrorLogger.shared.log("Keychain session token store failed: \(error.localizedDescription)")
-                }
-            }
-            onSave(account, nil)
-            dismiss()
-            return
-        }
-        if type == .openAIOrg {
-            validating = true
-            Task {
-                let client = OpenAIOrgUsageClient(adminAPIKey: openAIAdminKey)
-                let valid = await client.validateAccess()
-                await MainActor.run {
-                    validating = false
-                    if valid {
-                        let payload = ProviderCredentialCodec.encodeOpenAI(OpenAIOrgCredentialPayload(adminKey: openAIAdminKey))
-                        onSave(account, payload)
-                        dismiss()
+        validating = true
+        Task {
+            let result = await AccountProvisioningService.provision(draft)
+            await MainActor.run {
+                validating = false
+                switch result {
+                case .success(let provisioned):
+                    if let error = onSave(provisioned) {
+                        validationError = error
                     } else {
-                        validationError = "Invalid OpenAI admin key or insufficient org permissions"
-                    }
-                }
-            }
-            return
-        }
-        if type == .windsurfEnterprise {
-            validating = true
-            Task {
-                let client = WindsurfEnterpriseClient(serviceKey: windsurfServiceKey, groupName: windsurfGroupName)
-                let valid = await client.validateAccess()
-                await MainActor.run {
-                    validating = false
-                    if valid {
-                        let payload = ProviderCredentialCodec.encodeWindsurf(
-                            WindsurfEnterpriseCredentialPayload(
-                                serviceKey: windsurfServiceKey,
-                                groupName: windsurfGroupName
-                            )
-                        )
-                        onSave(account, payload)
                         dismiss()
-                    } else {
-                        validationError = "Invalid Windsurf service key or group access"
                     }
+                case .failure(let error):
+                    validationError = error.message
                 }
             }
-            return
-        }
-        if type == .githubCopilot {
-            validating = true
-            Task {
-                let client = GitHubCopilotMetricsClient(token: githubToken, organization: githubOrganization)
-                let valid = await client.validateAccess()
-                await MainActor.run {
-                    validating = false
-                    if valid {
-                        let payload = ProviderCredentialCodec.encodeCopilot(
-                            GitHubCopilotCredentialPayload(token: githubToken, organization: githubOrganization)
-                        )
-                        onSave(account, payload)
-                        dismiss()
-                    } else {
-                        validationError = "Invalid GitHub token/org, or Copilot metrics access not enabled"
-                    }
-                }
-            }
-            return
-        }
-        if type == .anthropicAPI {
-            validating = true
-            Task {
-                let client = AnthropicAPIClient(apiKey: apiKey)
-                let valid = await client.validateKey()
-                await MainActor.run {
-                    validating = false
-                    if valid {
-                        onSave(account, apiKey)
-                        dismiss()
-                    } else {
-                        validationError = "Invalid API key"
-                    }
-                }
-            }
-            return
-        }
-        onSave(account, nil)
-        dismiss()
-    }
-
-    private var canSave: Bool {
-        let capabilityMode = type.capabilities.credentialMode
-        if capabilityMode == .none {
-            return true
-        }
-        switch type {
-        case .claudeCode, .codex, .gemini:
-            return true
-        case .anthropicAPI:
-            return !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        case .openAIOrg:
-            return !openAIAdminKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        case .windsurfEnterprise:
-            return !windsurfServiceKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        case .githubCopilot:
-            return !githubToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                && !githubOrganization.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        case .claudeAI:
-            return !sessionToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
     }
 }

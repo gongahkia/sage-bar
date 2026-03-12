@@ -122,7 +122,8 @@ class ClaudeCodeLogParser {
 
     private var missingDirLogged = false
     func discoverSessionFiles() -> [URL] {
-        let projectsDir = claudeDir.appendingPathComponent("projects")
+        let projectsDir = LocalProviderLocator.overrideDirectory(for: .claudeCode)
+            ?? claudeDir.appendingPathComponent("projects")
         var isDir: ObjCBool = false
         guard FileManager.default.fileExists(atPath: projectsDir.path, isDirectory: &isDir), isDir.boolValue else {
             if !missingDirLogged {
@@ -453,7 +454,8 @@ class ClaudeCodeLogParser {
 
     func startWatching() {
         stopWatching()
-        let projectsDir = claudeDir.appendingPathComponent("projects")
+        let projectsDir = LocalProviderLocator.overrideDirectory(for: .claudeCode)
+            ?? claudeDir.appendingPathComponent("projects")
         var watchPaths = [projectsDir.path]
         if let subs = try? FileManager.default.contentsOfDirectory(
             at: projectsDir, includingPropertiesForKeys: [.isDirectoryKey], options: .skipsHiddenFiles

@@ -14,6 +14,17 @@ class NotificationManager {
         }
     }
 
+    func authorizationStatus() async -> UNAuthorizationStatus? {
+        guard let center = userNotificationCenterIfAvailable() else {
+            return nil
+        }
+        return await withCheckedContinuation { continuation in
+            center.getNotificationSettings { settings in
+                continuation.resume(returning: settings.authorizationStatus)
+            }
+        }
+    }
+
     /// posts local notification if snapshot.totalCostUSD > limitUSD; throttled once per day per account
     func checkThreshold(snapshot: UsageSnapshot, account: Account, limitUSD: Double, webhookConfig: WebhookConfig) {
         guard snapshot.totalCostUSD > limitUSD else { return }

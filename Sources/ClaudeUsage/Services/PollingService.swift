@@ -1183,6 +1183,16 @@ class PollingService: ObservableObject {
         return Double(successCount) / Double(outcomes.count)
     }
 
+    @MainActor
+    func fetchErrorMessage(for accountId: UUID) -> String? {
+        fetchErrorsByAccount[accountId]
+    }
+
+    @MainActor
+    func fetchErrorUpdatedAt(for accountId: UUID) -> Date? {
+        fetchErrorUpdatedAtByAccount[accountId]
+    }
+
     private func isCircuitBreakerOpen(for accountId: UUID, accountType: AccountType) async -> Bool {
         guard isCircuitBreakerEnabled(for: accountType) else { return false }
         return await MainActor.run {

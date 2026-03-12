@@ -4,6 +4,7 @@ import SwiftUI
 
 struct PollingTab: View {
     @State private var config = ConfigManager.shared.load()
+    @ObservedObject private var setupExperience = SetupExperienceStore.shared
 
     private var activeTypes: [AccountType] {
         let seen = NSMutableOrderedSet()
@@ -15,6 +16,20 @@ struct PollingTab: View {
 
     var body: some View {
         Form {
+            if let globalState = ProductStateResolver.popoverGlobalState(config: config, setupExperience: setupExperience) {
+                Section {
+                    ProductStateCardView(card: globalState) { action in
+                        handleProductStateAction(action)
+                    }
+                }
+            }
+            if let setupCard = ProductStateResolver.setupCTA(config: config, setupExperience: setupExperience) {
+                Section {
+                    ProductStateCardView(card: setupCard) { action in
+                        handleProductStateAction(action)
+                    }
+                }
+            }
             Section("Global Fallback Interval") {
                 Slider(value: Binding(
                     get: { Double(config.pollIntervalSeconds) },
@@ -60,5 +75,18 @@ struct PollingTab: View {
         }
         let mins = seconds / 60
         return "Every \(mins) min\(mins == 1 ? "" : "")"
+    }
+
+    private func handleProductStateAction(_ action: ProductStateActionKind) {
+        switch action {
+        case .runSetupWizard:
+            OnboardingWindowController.shared.showWindow(force: true)
+        case .refreshNow:
+            Task { @MainActor in PollingService.shared.forceRefresh() }
+        case .disableDemoMode:
+            SetupExperienceStore.shared.disableDemoMode()
+        case .openSettings, .openAccountsSettings, .reconnectSettings, .resetDateRange, .exportAllTime:
+            break
+        }
     }
 }

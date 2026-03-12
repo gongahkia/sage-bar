@@ -167,7 +167,8 @@ class CodexLogParser {
     private var missingDirLogged = false
 
     func discoverSessionFiles() -> [URL] {
-        let sessionsDir = codexDir.appendingPathComponent("sessions")
+        let sessionsDir = LocalProviderLocator.overrideDirectory(for: .codex)
+            ?? codexDir.appendingPathComponent("sessions")
         var isDir: ObjCBool = false
         guard FileManager.default.fileExists(atPath: sessionsDir.path, isDirectory: &isDir), isDir.boolValue else {
             if !missingDirLogged {
@@ -441,7 +442,8 @@ class CodexLogParser {
 
     func startWatching() {
         stopWatching()
-        let sessionsDir = codexDir.appendingPathComponent("sessions")
+        let sessionsDir = LocalProviderLocator.overrideDirectory(for: .codex)
+            ?? codexDir.appendingPathComponent("sessions")
         var isDir: ObjCBool = false
         guard FileManager.default.fileExists(atPath: sessionsDir.path, isDirectory: &isDir), isDir.boolValue else {
             return

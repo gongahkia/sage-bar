@@ -118,6 +118,7 @@ struct Account: Codable, Identifiable {
     var type: AccountType
     var isActive: Bool
     var groupLabel: String?
+    var localDataPath: String?
     var isPinned: Bool
     var workstreamRules: [WorkstreamRule]
     var order: Int
@@ -130,6 +131,7 @@ struct Account: Codable, Identifiable {
         case type
         case isActive
         case groupLabel
+        case localDataPath
         case isPinned
         case workstreamRules
         case order
@@ -142,6 +144,7 @@ struct Account: Codable, Identifiable {
         type: AccountType,
         isActive: Bool = true,
         groupLabel: String? = nil,
+        localDataPath: String? = nil,
         isPinned: Bool = false,
         workstreamRules: [WorkstreamRule] = [],
         order: Int = 0,
@@ -153,6 +156,8 @@ struct Account: Codable, Identifiable {
         self.isActive = isActive
         let trimmedGroupLabel = groupLabel?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         self.groupLabel = trimmedGroupLabel.isEmpty ? nil : trimmedGroupLabel
+        let trimmedLocalDataPath = localDataPath?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        self.localDataPath = trimmedLocalDataPath.isEmpty ? nil : trimmedLocalDataPath
         self.isPinned = isPinned
         self.workstreamRules = Account.normalizedWorkstreamRules(workstreamRules)
         self.order = order
@@ -174,6 +179,9 @@ struct Account: Codable, Identifiable {
         let decodedGroupLabel = try c.decodeIfPresent(String.self, forKey: .groupLabel)?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         groupLabel = decodedGroupLabel.isEmpty ? nil : decodedGroupLabel
+        let decodedLocalDataPath = try c.decodeIfPresent(String.self, forKey: .localDataPath)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        localDataPath = decodedLocalDataPath.isEmpty ? nil : decodedLocalDataPath
         isPinned = try c.decodeIfPresent(Bool.self, forKey: .isPinned) ?? false
         workstreamRules = Account.normalizedWorkstreamRules(
             try c.decodeIfPresent([WorkstreamRule].self, forKey: .workstreamRules) ?? []
@@ -221,6 +229,11 @@ extension Account {
 
     var trimmedGroupLabel: String? {
         let trimmed = groupLabel?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    var trimmedLocalDataPath: String? {
+        let trimmed = localDataPath?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return trimmed.isEmpty ? nil : trimmed
     }
 

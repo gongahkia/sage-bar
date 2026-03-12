@@ -12,6 +12,20 @@ struct AnalyticsTab: View {
 
     var body: some View {
         Form {
+            if let globalState = ProductStateResolver.analyticsGlobalState(config: config) {
+                Section {
+                    ProductStateCardView(card: globalState) { action in
+                        handleProductStateAction(action)
+                    }
+                }
+            }
+            if let setupCard = ProductStateResolver.setupCTA(config: config) {
+                Section {
+                    ProductStateCardView(card: setupCard) { action in
+                        handleProductStateAction(action)
+                    }
+                }
+            }
             Section("Forecast") {
                 Toggle("Show spend forecasts", isOn: $config.forecast.enabled)
                 Toggle("Show in popover", isOn: $config.forecast.showInPopover)
@@ -65,6 +79,11 @@ struct AnalyticsTab: View {
                 Text("Range: \(UsageReportingService.intervalLabel(for: reportInterval))")
                     .font(.caption)
                     .foregroundColor(.secondary)
+                if let rangeState = ProductStateResolver.reportingRangeState(accounts: activeAccounts, interval: reportInterval) {
+                    ProductStateCardView(card: rangeState) { action in
+                        handleProductStateAction(action)
+                    }
+                }
                 HStack {
                     Button("Copy Active Summary") {
                         let didCopy = UsageReportingService.copySummaryToPasteboard(
@@ -287,6 +306,34 @@ struct AnalyticsTab: View {
             if actionFeedback == text {
                 actionFeedback = ""
             }
+        }
+    }
+
+    private func handleProductStateAction(_ action: ProductStateActionKind) {
+        switch action {
+        case .runSetupWizard:
+            OnboardingWindowController.shared.showWindow(force: true)
+        case .openSettings, .openAccountsSettings, .reconnectSettings:
+            SettingsWindowController.shared.showWindow()
+        case .refreshNow:
+            PollingService.shared.forceRefresh()
+        case .resetDateRange:
+            reportStartDate = Calendar.current.date(byAdding: .day, value: -6, to: Date()) ?? Date()
+            reportEndDate = Date()
+        case .exportAllTime:
+            do {
+                _ = try UsageReportingService.exportCSV(
+                    for: activeAccounts,
+                    in: nil,
+                    filenamePrefix: "sage-bar-active-accounts"
+                )
+                setFeedback("Exported all-time account CSV")
+            } catch {
+                setFeedback("Export failed")
+            }
+        case .disableDemoMode:
+            SetupExperienceStore.shared.disableDemoMode()
+            config = ConfigManager.shared.load()
         }
     }
 }

@@ -14,11 +14,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         NSApp.setActivationPolicy(.accessory)
 
-        // onboarding on first launch
-        if !OnboardingWindowController.hasOnboarded {
-            OnboardingWindowController.shared.showWindow()
-        }
-
         if shouldEnableSparkleUpdater {
             updaterController = SPUStandardUpdaterController(
                 startingUpdater: true,
@@ -38,6 +33,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // setup menu bar
         MenuBarManager.shared.setup(updaterController: updaterController)
+
+        // setup wizard on first run or after setup-state upgrades
+        OnboardingWindowController.shared.showWindow()
 
         // request notification permission once
         NotificationManager.shared.requestPermission()

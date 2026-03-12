@@ -118,7 +118,8 @@ class GeminiLogParser {
     }
 
     func discoverSessionFiles() -> [URL] {
-        let sessionsRoot = geminiDir.appendingPathComponent("tmp")
+        let sessionsRoot = LocalProviderLocator.overrideDirectory(for: .gemini)
+            ?? geminiDir.appendingPathComponent("tmp")
         var isDir: ObjCBool = false
         guard FileManager.default.fileExists(atPath: sessionsRoot.path, isDirectory: &isDir), isDir.boolValue else {
             if !missingDirLogged {
@@ -346,7 +347,8 @@ class GeminiLogParser {
 
     func startWatching() {
         stopWatching()
-        let sessionsDir = geminiDir.appendingPathComponent("tmp")
+        let sessionsDir = LocalProviderLocator.overrideDirectory(for: .gemini)
+            ?? geminiDir.appendingPathComponent("tmp")
         var isDir: ObjCBool = false
         guard FileManager.default.fileExists(atPath: sessionsDir.path, isDirectory: &isDir), isDir.boolValue else {
             return

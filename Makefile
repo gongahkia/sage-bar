@@ -1,26 +1,38 @@
-.PHONY: build test clean run bundle
+.PHONY: build build-release test clean run bundle bundle-release verify-bundle archive-release
 
 build:
 	swift build
+
+build-release:
+	swift build -c release
 
 test:
 	swift test
 
 clean:
-	rm -rf .build/ "Sage Bar.app"
+	rm -rf .build/ "Sage Bar.app" "Sage-Bar-local.zip"
 
 run:
 	swift run SageBar
 
 bundle: build
-	@echo "Bundling Sage Bar.app..."
-	@rm -rf "Sage Bar.app"
-	@mkdir -p "Sage Bar.app/Contents/MacOS"
-	@mkdir -p "Sage Bar.app/Contents/Resources"
-	@cp .build/debug/SageBar "Sage Bar.app/Contents/MacOS/SageBar"
-	@cp -R .build/debug/SageBar_SageBar.bundle "Sage Bar.app/Contents/Resources/"
-	@cp Sources/ClaudeUsage/Resources/Info.plist "Sage Bar.app/Contents/"
-	@if [ -f .build/debug/SageBar_SageBar.bundle/AppIcon.icns ]; then \
-		cp .build/debug/SageBar_SageBar.bundle/AppIcon.icns "Sage Bar.app/Contents/Resources/AppIcon.icns"; \
-	fi
-	@echo "Created Sage Bar.app"
+	@./scripts/bundle_app.sh \
+		--binary .build/debug/SageBar \
+		--resources-bundle .build/debug/SageBar_SageBar.bundle \
+		--sparkle-framework .build/debug/Sparkle.framework \
+		--output "Sage Bar.app" \
+		--codesign-identity -
+
+bundle-release: build-release
+	@./scripts/bundle_app.sh \
+		--binary .build/release/SageBar \
+		--resources-bundle .build/release/SageBar_SageBar.bundle \
+		--sparkle-framework .build/release/Sparkle.framework \
+		--output "Sage Bar.app" \
+		--codesign-identity -
+
+verify-bundle: bundle
+	@./scripts/verify_app_bundle.sh --app "Sage Bar.app" --skip-spctl --smoke-launch
+
+archive-release: bundle-release
+	@ditto -c -k --sequesterRsrc --keepParent "Sage Bar.app" "Sage-Bar-local.zip"

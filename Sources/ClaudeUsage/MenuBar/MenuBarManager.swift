@@ -62,6 +62,9 @@ class MenuBarManager {
 
     private func buildContextMenu() -> NSMenu {
         let menu = NSMenu()
+        let setupItem = NSMenuItem(title: "Run Setup Wizard", action: #selector(runSetupWizard), keyEquivalent: "")
+        setupItem.target = self
+        menu.addItem(setupItem)
         let checkItem = NSMenuItem(title: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "")
         checkItem.target = self
         menu.addItem(checkItem)
@@ -123,13 +126,18 @@ class MenuBarManager {
     }
 
     @objc func togglePopover() {
-        guard let btn = statusItem.button else { return }
+        guard statusItem.button != nil else { return }
         if popover.isShown {
             popover.performClose(nil)
         } else {
-            popover.show(relativeTo: btn.bounds, of: btn, preferredEdge: .minY)
-            NSApp.activate(ignoringOtherApps: true)
+            presentPopover()
         }
+    }
+
+    @objc func presentPopover() {
+        guard let btn = statusItem.button else { return }
+        popover.show(relativeTo: btn.bounds, of: btn, preferredEdge: .minY)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     @objc private func handleStatusItemClick(_ sender: NSStatusBarButton) {
@@ -205,6 +213,9 @@ class MenuBarManager {
         }
         mainMenu.addItem(.separator())
         // actions
+        let setupItem = NSMenuItem(title: "Run Setup Wizard", action: #selector(runSetupWizard), keyEquivalent: "")
+        setupItem.target = self
+        mainMenu.addItem(setupItem)
         let nextAccountItem = NSMenuItem(title: "Next Account", action: #selector(selectNextAccountFromMenu), keyEquivalent: "]")
         nextAccountItem.target = self
         mainMenu.addItem(nextAccountItem)
@@ -232,6 +243,7 @@ class MenuBarManager {
 
     @objc private func refreshNow() { PollingService.shared.forceRefresh() }
     @objc private func openSageBar() { SettingsWindowController.shared.showWindow() }
+    @objc private func runSetupWizard() { OnboardingWindowController.shared.showWindow(force: true) }
     @objc private func openAccountFromMenu(_ sender: NSMenuItem) {
         guard let rawID = sender.representedObject as? String,
               let accountID = UUID(uuidString: rawID) else { return }

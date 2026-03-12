@@ -201,6 +201,7 @@ class ConfigManager {
             var normalizedAccount = account
             normalizedAccount.name = account.trimmedName.isEmpty ? account.name : account.trimmedName
             normalizedAccount.groupLabel = account.trimmedGroupLabel
+            normalizedAccount.localDataPath = account.trimmedLocalDataPath
             normalizedAccount.workstreamRules = account.workstreamRules
             return normalizedAccount
         }

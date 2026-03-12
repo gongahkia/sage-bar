@@ -12,6 +12,7 @@ struct MenuBarPopoverView: View {
     @StateObject private var viewModel = ViewModel()
     @ObservedObject private var polling = PollingService.shared
     @ObservedObject private var errorLogger = ErrorLogger.shared
+    @ObservedObject private var setupExperience = SetupExperienceStore.shared
 
     private struct AccountMetrics {
         let latestSnapshot: UsageSnapshot?
@@ -106,6 +107,12 @@ struct MenuBarPopoverView: View {
         activeAccounts.filter(\.isPinned)
     }
     private var currentAccount: Account? { activeAccounts.indices.contains(selectedAccountIndex) ? activeAccounts[selectedAccountIndex] : activeAccounts.first }
+    private var globalProductState: ProductStateCard? {
+        ProductStateResolver.popoverGlobalState(config: config)
+    }
+    private var setupCTAState: ProductStateCard? {
+        activeAccounts.isEmpty ? nil : ProductStateResolver.setupCTA(config: config)
+    }
     private var filteredAccounts: [Account] {
         guard !accountSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return activeAccounts
@@ -122,42 +129,69 @@ struct MenuBarPopoverView: View {
         VStack(spacing: 0) {
             header
             Divider()
-            if activeAccounts.count > 1 {
-                accountPicker
-                if !pinnedAccounts.isEmpty {
-                    pinnedAccountsRow
+            if let globalProductState {
+                ProductStateCardView(card: globalProductState) { action in
+                    handleProductStateAction(action)
                 }
-            }
-            if let account = currentAccount {
-                let metrics = viewModel.metrics(for: account.id)
-                accountFetchLabel(account: account, metrics: metrics) // task 78: per-account relative last-fetch
-                if (needsReAuth || metrics?.claudeAIStatus?.sessionHealth == .reauthRequired) && account.type == .claudeAI {
-                    reAuthBanner
+                .padding(12)
+            } else {
+                if activeAccounts.count > 1 {
+                    accountPicker
+                    if !pinnedAccounts.isEmpty {
+                        pinnedAccountsRow
+                    }
                 }
-                ScrollView {
-                    LazyVStack(spacing: 0) {
-                        if account.type == .claudeAI {
-                            claudeAIStatsSection(account: account, metrics: metrics)
-                        } else {
-                            todayStatsSection(account: account, metrics: metrics)
-                            modelBreakdownSection(metrics: metrics) // task 77
+                if let setupCTAState {
+                    ProductStateCardView(card: setupCTAState) { action in
+                        handleProductStateAction(action)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.top, 12)
+                }
+                if let account = currentAccount {
+                    let metrics = viewModel.metrics(for: account.id)
+                    let accountState = productState(for: account, metrics: metrics)
+                    accountFetchLabel(account: account, metrics: metrics) // task 78: per-account relative last-fetch
+                    if let accountState {
+                        ProductStateCardView(card: accountState) { action in
+                            handleProductStateAction(action)
                         }
-                        if account.type != .claudeAI && config.forecast.showInPopover && config.forecast.enabled {
-                            forecastSection(metrics: metrics)
+                        .padding(.horizontal, 12)
+                        .padding(.top, 8)
+                    }
+                    if (needsReAuth || metrics?.claudeAIStatus?.sessionHealth == .reauthRequired) && account.type == .claudeAI && accountState == nil {
+                        reAuthBanner
+                    }
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            if account.type == .claudeAI {
+                                claudeAIStatsSection(account: account, metrics: metrics)
+                            } else {
+                                todayStatsSection(account: account, metrics: metrics)
+                                modelBreakdownSection(metrics: metrics) // task 77
+                            }
+                            if account.type != .claudeAI && config.forecast.showInPopover && config.forecast.enabled {
+                                forecastSection(metrics: metrics)
+                            }
+                            if account.type != .claudeAI {
+                                chartSection(metrics: metrics)
+                            }
+                            if let hint = metrics?.modelHint,
+                               config.modelOptimizer.enabled && config.modelOptimizer.showInPopover {
+                                modelHintBanner(hint: hint, account: account)
+                            }
+                            pollHealthRow(metrics: metrics)
                         }
-                        if account.type != .claudeAI {
-                            chartSection(metrics: metrics)
-                        }
-                        if let hint = metrics?.modelHint,
-                           config.modelOptimizer.enabled && config.modelOptimizer.showInPopover {
-                            modelHintBanner(hint: hint, account: account)
-                        }
-                        pollHealthRow(metrics: metrics)
                     }
                 }
             }
             Divider()
-            if let err = errorLogger.lastError { lastErrorBanner(err) }
+            if globalProductState == nil,
+               let account = currentAccount,
+               productState(for: account, metrics: viewModel.metrics(for: account.id)) == nil,
+               let err = errorLogger.lastError {
+                lastErrorBanner(err)
+            }
             footer
         }
         .frame(width: 340)
@@ -738,6 +772,34 @@ struct MenuBarPopoverView: View {
                 }
             }
             .padding(.top, 4)
+        }
+    }
+
+    private func productState(for account: Account, metrics: AccountMetrics?) -> ProductStateCard? {
+        ProductStateResolver.accountState(
+            for: account,
+            latestSnapshot: metrics?.latestSnapshot,
+            lastSuccess: metrics?.lastSuccess,
+            claudeAIStatus: metrics?.claudeAIStatus,
+            fetchErrorMessage: polling.fetchErrorMessage(for: account.id),
+            fetchErrorUpdatedAt: polling.fetchErrorUpdatedAt(for: account.id),
+            pollIntervalSeconds: config.pollIntervalSeconds
+        )
+    }
+
+    private func handleProductStateAction(_ action: ProductStateActionKind) {
+        switch action {
+        case .runSetupWizard:
+            OnboardingWindowController.shared.showWindow(force: true)
+        case .openAccountsSettings, .reconnectSettings, .openSettings:
+            SettingsWindowController.shared.showWindow()
+        case .refreshNow:
+            PollingService.shared.forceRefresh()
+        case .disableDemoMode:
+            SetupExperienceStore.shared.disableDemoMode()
+            config = ConfigManager.shared.load()
+        case .resetDateRange, .exportAllTime:
+            break
         }
     }
 }
