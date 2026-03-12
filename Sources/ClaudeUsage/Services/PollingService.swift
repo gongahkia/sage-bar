@@ -77,10 +77,10 @@ class PollingService: ObservableObject {
     private let localActivityBurstWindowSeconds: TimeInterval = 120
 
     private init() {
-        pathMonitor.pathUpdateHandler = { [weak service = self] path in
+        pathMonitor.pathUpdateHandler = { path in
             let available = path.status == .satisfied
             Task { @MainActor in
-                guard let service else { return }
+                let service = PollingService.shared
                 let wasAvailable = service.networkAvailable
                 service.networkAvailable = available
                 if available && !wasAvailable {
