@@ -60,13 +60,13 @@ $ make archive-release #create a release-style local archive
 ### Remote providers
 
 * [Anthropic API](https://docs.anthropic.com/en/api/data-usage-cost-api)
-* [OpenAI organization usage](https://platform.openai.com/docs/overview)
+* [OpenAI organization usage](https://help.openai.com/en/articles/10478918-api-usage-dashboard)
 * [GitHub Copilot organization metrics](https://docs.github.com/en/rest/copilot/copilot-usage)
 * [Windsurf Enterprise analytics](https://docs.windsurf.com/plugins/accounts/api-reference/analytics-api-introduction)
-* [Claude AI session-based usage](https://claude.ai/)
+* [Claude AI session-based usage](https://www.anthropic.com/claude)
 
 ### Local providers
 
 * [Claude Code local session logs](https://docs.anthropic.com/en/docs/claude-code/overview)
-* [Codex local session logs](https://openai.com/codex/)
+* [Codex local session logs](https://developers.openai.com/codex/)
 * [Gemini CLI local session logs](https://github.com/google-gemini/gemini-cli)
