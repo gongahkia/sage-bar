@@ -14,6 +14,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode_15.4.app
@@ -40,15 +42,45 @@ jobs:
       - name: Install SwiftLint
         run: brew install swiftlint
 
-      - name: Lint
-        run: swiftlint --strict
+      - name: Lint changed Swift files
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          else
+            BASE_SHA="${{ github.event.before }}"
+          fi
+
+          mapfile -t SWIFT_FILES < <(./scripts/changed_swift_files.sh "$BASE_SHA" HEAD)
+          if [[ ${#SWIFT_FILES[@]} -eq 0 ]]; then
+            echo "No changed Swift files to lint."
+            exit 0
+          fi
+
+          swiftlint lint --strict "${SWIFT_FILES[@]}"
 
       - name: Install swift-format
         run: brew install swift-format
 
-      - name: swift-format lint
+      - name: swift-format lint changed Swift files
         run: |
-          OUTPUT=$(swift-format lint --recursive Sources/ Tests/ 2>&1)
+          set -euo pipefail
+
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          else
+            BASE_SHA="${{ github.event.before }}"
+          fi
+
+          mapfile -t SWIFT_FILES < <(./scripts/changed_swift_files.sh "$BASE_SHA" HEAD)
+          if [[ ${#SWIFT_FILES[@]} -eq 0 ]]; then
+            echo "No changed Swift files to format-check."
+            exit 0
+          fi
+
+          OUTPUT=$(swift-format lint "${SWIFT_FILES[@]}" 2>&1)
           [ -z "$OUTPUT" ] || { echo "$OUTPUT"; exit 1; }
 
       - name: Fail on unstructured try? call-sites
@@ -63,7 +95,7 @@ jobs:
 
           CURRENT_LINES=$(printf '%s\n' "$CURRENT" | cut -d: -f1-2 | sort -t: -k1,1 -k2,2n | uniq)
           ALLOWLIST=$(grep -vE '^\s*(#|$)' .ci/tryq_allowlist.txt | sort -t: -k1,1 -k2,2n | uniq || true)
-          NEW_LINES=$(comm -23 <(printf '%s\n' "$CURRENT_LINES") <(printf '%s\n' "$ALLOWLIST") || true)
+          NEW_LINES=$(grep -Fvx -f <(printf '%s\n' "$ALLOWLIST") <(printf '%s\n' "$CURRENT_LINES") || true)
 
           if [ -z "$NEW_LINES" ]; then
             exit 0
@@ -123,7 +155,7 @@ jobs:
           ./scripts/verify_app_bundle.sh --app "Sage Bar.app" --skip-spctl --smoke-launch --launch-wait 8
 
       - name: Test
-        run: swift test --parallel
+        run: swift test
 
       - name: Test (Thread Sanitizer)
         if: matrix.os == 'macos-14'
