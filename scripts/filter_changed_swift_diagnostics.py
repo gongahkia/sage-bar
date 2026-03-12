@@ -99,6 +99,8 @@ def filter_swift_format(raw: str, line_map: dict[str, set[int]], root: Path) -> 
         line_number = int(match.group(2))
         if line_number not in line_map.get(file_path, set()):
             continue
+        if "[Indentation]" in match.group(5):
+            continue
         filtered.append(
             f"{file_path}:{line_number}:{match.group(3)}: {match.group(4)}: {match.group(5)}"
         )
