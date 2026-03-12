@@ -131,6 +131,11 @@ final class AccountTests: XCTestCase {
         XCTAssertEqual(acct.groupLabel, "Client A")
     }
 
+    func testAccountInitTrimsLocalDataPath() {
+        let acct = Account(name: "Local", type: .claudeCode, localDataPath: "  /tmp/sage-bar  ")
+        XCTAssertEqual(acct.localDataPath, "/tmp/sage-bar")
+    }
+
     func testSortedForDisplayPrefersPinnedThenOrderThenCreatedAt() {
         var oldestPinned = Account(name: "Pinned Old", type: .claudeCode, isPinned: true, order: 2)
         oldestPinned.createdAt = Date(timeIntervalSince1970: 10)

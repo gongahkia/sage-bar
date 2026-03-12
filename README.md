@@ -79,7 +79,7 @@ Development install path:
 - Run `make bundle`.
 - Open `Sage Bar.app`.
 
-Detailed install, upgrade, and reset instructions live in [docs/INSTALL.md](/Users/gongahkia/Desktop/coding/projects/sage-bar/docs/INSTALL.md).
+Detailed install, upgrade, and reset instructions live in [docs/INSTALL.md](./docs/INSTALL.md).
 
 ## First Run
 
@@ -118,4 +118,4 @@ Bundled app does not launch:
 
 ## Release Notes
 
-Local `make bundle` and release CI both use the same bundle script in [scripts/bundle_app.sh](/Users/gongahkia/Desktop/coding/projects/sage-bar/scripts/bundle_app.sh). Bundle verification and smoke launch checks use [scripts/verify_app_bundle.sh](/Users/gongahkia/Desktop/coding/projects/sage-bar/scripts/verify_app_bundle.sh).
+Local `make bundle` and release CI both use the same bundle script in [scripts/bundle_app.sh](./scripts/bundle_app.sh). Bundle verification and smoke launch checks use [scripts/verify_app_bundle.sh](./scripts/verify_app_bundle.sh).

@@ -43,6 +43,7 @@ final class ConfigManagerTests: XCTestCase {
             type: .anthropicAPI,
             isActive: true,
             groupLabel: "Client A",
+            localDataPath: "  /tmp/client-a  ",
             isPinned: true,
             workstreamRules: [WorkstreamRule(name: "Client A", pathPattern: "client-a")]
         )
@@ -51,6 +52,7 @@ final class ConfigManagerTests: XCTestCase {
         let reloaded = cm.load()
         XCTAssertEqual(reloaded.accounts.first?.name, "TestAccount")
         XCTAssertEqual(reloaded.accounts.first?.groupLabel, "Client A")
+        XCTAssertEqual(reloaded.accounts.first?.localDataPath, "/tmp/client-a")
         XCTAssertEqual(reloaded.accounts.first?.isPinned, true)
         XCTAssertEqual(reloaded.accounts.first?.workstreamRules.first?.name, "Client A")
     }

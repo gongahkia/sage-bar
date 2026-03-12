@@ -1,4 +1,4 @@
-name: Sage Bar Release on push
+name: Sage Bar Release
 
 on:
   push:
@@ -15,6 +15,7 @@ jobs:
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
+
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode_15.4.app
 
@@ -27,69 +28,105 @@ jobs:
       - name: Test
         run: swift test
 
-      - name: Build x86_64
-        run: swift build -c release --arch x86_64
+      - name: Build arm64 app (release)
+        run: swift build --product SageBar -c release --arch arm64
 
-      - name: Build arm64
-        run: swift build -c release --arch arm64
+      - name: Build x86_64 app (release)
+        run: swift build --product SageBar -c release --arch x86_64
 
-      - name: Create universal binary (ClaudeUsage)
+      - name: Create universal app inputs
+        shell: bash
         run: |
-          lipo -create \
-            .build/x86_64-apple-macosx/release/ClaudeUsage \
-            .build/arm64-apple-macosx/release/ClaudeUsage \
-            -output ClaudeUsage-universal
+          set -euo pipefail
 
-      - name: Create universal binary (claude-usage CLI)
-        run: |
-          lipo -create \
-            .build/x86_64-apple-macosx/release/claude-usage \
-            .build/arm64-apple-macosx/release/claude-usage \
-            -output claude-usage-universal
+          ARM_DIR=".build/arm64-apple-macosx/release"
+          X86_DIR=".build/x86_64-apple-macosx/release"
+          DIST_DIR="dist"
 
-      - name: Export architecture-specific CLI binaries
-        run: |
-          cp .build/arm64-apple-macosx/release/claude-usage claude-usage-arm64
-          cp .build/x86_64-apple-macosx/release/claude-usage claude-usage-x86_64
-          chmod +x claude-usage-arm64 claude-usage-x86_64
+          mkdir -p "$DIST_DIR"
+          lipo -create "$ARM_DIR/SageBar" "$X86_DIR/SageBar" -output "$DIST_DIR/SageBar"
 
-      - name: Bundle .app
-        run: |
-          APP=ClaudeUsage.app
-          mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-          cp ClaudeUsage-universal "$APP/Contents/MacOS/ClaudeUsage"
-          cp Sources/ClaudeUsage/Resources/Info.plist "$APP/Contents/"
-          cp Sources/ClaudeUsage/Resources/prices.json "$APP/Contents/Resources/"
-          cp Sources/ClaudeUsage/Scriptable/ClaudeUsage.sdef "$APP/Contents/Resources/"
+          cp -R "$ARM_DIR/SageBar_SageBar.bundle" "$DIST_DIR/SageBar_SageBar.bundle"
+          cp -R "$ARM_DIR/Sparkle.framework" "$DIST_DIR/Sparkle.framework"
 
-      - name: Code sign app
+          merge_binary() {
+            local arm_path="$1"
+            local x86_path="$2"
+            local output_path="$3"
+            lipo -create "$arm_path" "$x86_path" -output "$output_path"
+            chmod +x "$output_path"
+          }
+
+          merge_binary \
+            "$ARM_DIR/Sparkle.framework/Versions/B/Sparkle" \
+            "$X86_DIR/Sparkle.framework/Versions/B/Sparkle" \
+            "$DIST_DIR/Sparkle.framework/Versions/B/Sparkle"
+
+          merge_binary \
+            "$ARM_DIR/Sparkle.framework/Versions/B/Autoupdate" \
+            "$X86_DIR/Sparkle.framework/Versions/B/Autoupdate" \
+            "$DIST_DIR/Sparkle.framework/Versions/B/Autoupdate"
+
+          merge_binary \
+            "$ARM_DIR/Sparkle.framework/Versions/B/Updater.app/Contents/MacOS/Updater" \
+            "$X86_DIR/Sparkle.framework/Versions/B/Updater.app/Contents/MacOS/Updater" \
+            "$DIST_DIR/Sparkle.framework/Versions/B/Updater.app/Contents/MacOS/Updater"
+
+          merge_binary \
+            "$ARM_DIR/Sparkle.framework/Versions/B/XPCServices/Downloader.xpc/Contents/MacOS/Downloader" \
+            "$X86_DIR/Sparkle.framework/Versions/B/XPCServices/Downloader.xpc/Contents/MacOS/Downloader" \
+            "$DIST_DIR/Sparkle.framework/Versions/B/XPCServices/Downloader.xpc/Contents/MacOS/Downloader"
+
+          merge_binary \
+            "$ARM_DIR/Sparkle.framework/Versions/B/XPCServices/Installer.xpc/Contents/MacOS/Installer" \
+            "$X86_DIR/Sparkle.framework/Versions/B/XPCServices/Installer.xpc/Contents/MacOS/Installer" \
+            "$DIST_DIR/Sparkle.framework/Versions/B/XPCServices/Installer.xpc/Contents/MacOS/Installer"
+
+      - name: Bundle app
         env:
           DEVELOPER_ID_APPLICATION: ${{ secrets.DEVELOPER_ID_APPLICATION }}
         run: |
-          xcrun codesign --force --deep --sign "$DEVELOPER_ID_APPLICATION" \
-            --options runtime \
-            --entitlements ClaudeUsage.entitlements \
-            ClaudeUsage.app
+          ./scripts/bundle_app.sh \
+            --binary dist/SageBar \
+            --resources-bundle dist/SageBar_SageBar.bundle \
+            --sparkle-framework dist/Sparkle.framework \
+            --output "Sage Bar.app" \
+            --codesign-identity "$DEVELOPER_ID_APPLICATION" \
+            --entitlements ClaudeUsage.entitlements
 
-      - name: Verify signed app
+      - name: Verify signed app bundle
+        run: ./scripts/verify_app_bundle.sh --app "Sage Bar.app" --smoke-launch --launch-wait 8
+
+      - name: Create release zip
+        run: ditto -c -k --sequesterRsrc --keepParent "Sage Bar.app" "Sage-Bar-${{ github.ref_name }}.zip"
+
+      - name: Notarize release zip
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
         run: |
-          spctl --assess --type execute --verbose=4 ClaudeUsage.app
+          xcrun notarytool submit "Sage-Bar-${{ github.ref_name }}.zip" \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_PASSWORD" \
+            --wait
 
       - name: Create DMG
         run: |
-          hdiutil create -volname ClaudeUsage -srcfolder ClaudeUsage.app \
-            -ov -format UDZO ClaudeUsage-${{ github.ref_name }}.dmg
+          hdiutil create -volname "Sage Bar" -srcfolder "Sage Bar.app" \
+            -ov -format UDZO "Sage-Bar-${{ github.ref_name }}.dmg"
 
       - name: Code sign DMG
         env:
           DEVELOPER_ID_APPLICATION: ${{ secrets.DEVELOPER_ID_APPLICATION }}
         run: |
           xcrun codesign --force --sign "$DEVELOPER_ID_APPLICATION" \
-            ClaudeUsage-${{ github.ref_name }}.dmg
+            "Sage-Bar-${{ github.ref_name }}.dmg"
 
       - name: Verify signed DMG
         run: |
-          spctl --assess --type open --verbose=4 ClaudeUsage-${{ github.ref_name }}.dmg
+          spctl --assess --type open --verbose=4 "Sage-Bar-${{ github.ref_name }}.dmg"
 
       - name: Notarize DMG
         env:
@@ -97,16 +134,15 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
         run: |
-          xcrun notarytool submit ClaudeUsage-${{ github.ref_name }}.dmg \
+          xcrun notarytool submit "Sage-Bar-${{ github.ref_name }}.dmg" \
             --apple-id "$APPLE_ID" \
             --team-id "$APPLE_TEAM_ID" \
             --password "$APPLE_APP_PASSWORD" \
             --wait
-          xcrun stapler staple ClaudeUsage-${{ github.ref_name }}.dmg
+          xcrun stapler staple "Sage-Bar-${{ github.ref_name }}.dmg"
 
       - name: Generate Sparkle appcast
         run: |
-          # download generate_appcast from Sparkle release
           curl -L https://github.com/sparkle-project/Sparkle/releases/latest/download/Sparkle-for-Swift-Package-Manager.zip \
             -o sparkle_tools.zip
           unzip -j sparkle_tools.zip '*/generate_appcast' -d sparkle_bin/
@@ -115,34 +151,19 @@ jobs:
           ./sparkle_bin/generate_appcast --link "https://github.com/${{ github.repository }}/releases" \
             --download-url-prefix "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/" \
             --output-path docs/appcast.xml \
-            ClaudeUsage-${{ github.ref_name }}.dmg
+            "Sage-Bar-${{ github.ref_name }}.dmg"
 
       - name: Upload appcast to GitHub Pages
         uses: actions/upload-pages-artifact@v3
         with:
           path: docs/
 
-      - name: Patch Homebrew SHA256 values
-        run: |
-          DMG_SHA=$(shasum -a 256 "ClaudeUsage-${{ github.ref_name }}.dmg" | awk '{print $1}')
-          ARM_SHA=$(shasum -a 256 claude-usage-arm64 | awk '{print $1}')
-          X86_SHA=$(shasum -a 256 claude-usage-x86_64 | awk '{print $1}')
-
-          sed -i '' "s/PLACEHOLDER_SHA256/${DMG_SHA}/g" homebrew/Casks/claude-usage.rb
-          sed -i '' "s/PLACEHOLDER_SHA256/${DMG_SHA}/g" homebrew/Formula/claude-usage-cli.rb
-          sed -i '' "s/PLACEHOLDER_ARM64_SHA256/${ARM_SHA}/g" homebrew/Formula/claude-usage-cli.rb
-          sed -i '' "s/PLACEHOLDER_X86_SHA256/${X86_SHA}/g" homebrew/Formula/claude-usage-cli.rb
-
-      - name: Upload DMG to release
+      - name: Upload release artifacts
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            ClaudeUsage-${{ github.ref_name }}.dmg
-            claude-usage-universal
-            claude-usage-arm64
-            claude-usage-x86_64
-            homebrew/Casks/claude-usage.rb
-            homebrew/Formula/claude-usage-cli.rb
+            Sage-Bar-${{ github.ref_name }}.zip
+            Sage-Bar-${{ github.ref_name }}.dmg
 
   deploy-pages:
     needs: release
