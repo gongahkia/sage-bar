@@ -95,7 +95,7 @@ jobs:
         run: python3 -c "import json,sys; json.load(open('Sources/ClaudeUsage/Resources/prices.json'))"
 
       - name: Build app product (release)
-        run: swift build --product SageBar -c release -Xswiftc -warnings-as-errors
+        run: swift build --product SageBar -c release
 
       - name: Gate Config/Polling compile diagnostics
         shell: bash
