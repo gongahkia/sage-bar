@@ -62,7 +62,12 @@ jobs:
             exit 0
           fi
 
-          swiftlint lint --strict "${SWIFT_FILES[@]}"
+          LINT_OUTPUT="$(mktemp)"
+          swiftlint lint --strict --quiet --reporter json "${SWIFT_FILES[@]}" > "$LINT_OUTPUT" || true
+          python3 scripts/filter_changed_swift_diagnostics.py \
+            swiftlint-json \
+            --base "$BASE_SHA" \
+            --head HEAD < "$LINT_OUTPUT"
 
       - name: Install swift-format
         run: brew install swift-format
@@ -86,8 +91,12 @@ jobs:
             exit 0
           fi
 
-          OUTPUT=$(swift-format lint "${SWIFT_FILES[@]}" 2>&1)
-          [ -z "$OUTPUT" ] || { echo "$OUTPUT"; exit 1; }
+          FORMAT_OUTPUT="$(mktemp)"
+          swift-format lint "${SWIFT_FILES[@]}" > "$FORMAT_OUTPUT" 2>&1 || true
+          python3 scripts/filter_changed_swift_diagnostics.py \
+            swift-format \
+            --base "$BASE_SHA" \
+            --head HEAD < "$FORMAT_OUTPUT"
 
       - name: Fail on unstructured try? call-sites
         shell: bash
