@@ -50,7 +50,7 @@ private actor CacheStore {
         let e = JSONEncoder()
         e.dateEncodingStrategy = .custom { date, encoder in
             var container = encoder.singleValueContainer()
-            try container.encode(Self.fractionalISO8601Formatter.string(from: date))
+            try container.encode(Self.plainISO8601Formatter.string(from: date))
         }
         return e
     }
