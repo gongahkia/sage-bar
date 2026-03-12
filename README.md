@@ -51,7 +51,7 @@ $ make archive-release #create a release-style local archive
 
 ## Architecture
 
-![Sage Bar architecture diagram](./asset/reference/architecture.png)
+![](./asset/reference/architecture.png)
 
 ## Support
 
