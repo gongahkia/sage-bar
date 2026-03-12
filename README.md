@@ -10,11 +10,11 @@ MacOS [menu bar](https://support.apple.com/en-sg/guide/mac-help/mchlp1446/mac) a
 
 ## Stack
 
-* *Script*: [Swift](), [Swift Package Manager]()
-* *UI*: [SwiftUI](), [Apple AppKit](), [NSStatusItem](), [NSPopover]()
-* *Configuration*: [TOMLKit]()
-* *Package*: [Sparkle](), [Homebrew]()
-* *CI/CD*: [GitHub Actions]()
+* *Script*: [Swift](https://www.swift.org/), [Swift Package Manager](https://docs.swift.org/package-manager/)
+* *UI*: [SwiftUI](https://developer.apple.com/swiftui/), [Apple AppKit](https://developer.apple.com/documentation/appkit), [NSStatusItem](https://developer.apple.com/documentation/appkit/nsstatusitem), [NSPopover](https://developer.apple.com/documentation/appkit/nspopover)
+* *Configuration*: [TOMLKit](https://github.com/LebJe/TOMLKit)
+* *Package*: [Sparkle](https://sparkle-project.org/), [Homebrew](https://brew.sh/)
+* *CI/CD*: [GitHub Actions](https://github.com/features/actions)
 
 ## Screenshots
 
@@ -59,14 +59,14 @@ $ make archive-release #create a release-style local archive
 
 ### Remote providers
 
-* [Anthropic API]()
-* [OpenAI organization usage]()
-* [GitHub Copilot organization metrics]()
-* [Windsurf Enterprise analytics]()
-* [Claude AI session-based usage]()
+* [Anthropic API](https://docs.anthropic.com/en/api/data-usage-cost-api)
+* [OpenAI organization usage](https://platform.openai.com/docs/overview)
+* [GitHub Copilot organization metrics](https://docs.github.com/en/rest/copilot/copilot-usage)
+* [Windsurf Enterprise analytics](https://docs.windsurf.com/plugins/accounts/api-reference/analytics-api-introduction)
+* [Claude AI session-based usage](https://claude.ai/)
 
 ### Local providers
 
-* [Claude Code local session logs]()
-* [Codex local session logs]()
-* [Gemini CLI local session logs]()
+* [Claude Code local session logs](https://docs.anthropic.com/en/docs/claude-code/overview)
+* [Codex local session logs](https://openai.com/codex/)
+* [Gemini CLI local session logs](https://github.com/google-gemini/gemini-cli)
