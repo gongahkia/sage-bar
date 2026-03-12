@@ -1,22 +1,26 @@
-
+[![](https://img.shields.io/badge/sage_bar_v1.0.0-passing-green)](https://github.com/gongahkia/sage-bar/releases/tag/1.0.0)
 
 # `Sage Bar`
+
+MacOS [menu bar](https://support.apple.com/en-sg/guide/mac-help/mchlp1446/mac) app for tracking [AI token usage and spend](https://blogs.nvidia.com/blog/ai-tokens-explained/) across [providers](#support).
 
 <div align="center">
     <img src="./asset/logo/wizard.png">
 </div>
 
-Sage Bar is a macOS menu bar app for tracking AI usage, spend, quotas, and account health across local agents and connected provider accounts.
-
-It is built around one always-available workflow: open the menu bar icon, see the current state of your accounts, and take action before usage or quota problems become expensive.
-
 ## Stack
 
-...
+* *Frontend*: ...
+* *Backend*: ...
+* *Script*: ...
+* *API*: ...
 
 ## Screenshots
 
-...
+<div align="center">
+    <img src="./asset/reference/1.png" width="40%">
+    <img src="./asset/reference/2.png" width="59%">
+</div>
 
 ## Usage
 
@@ -44,6 +48,9 @@ $ make verify-bundle # smoke-test the bundled app locally
 $ make archive-release #create a release-style local archive
 ```
 
+## Architecture
+
+![](./asset/reference/architecture.png)
 
 ## Support
 
@@ -51,14 +58,14 @@ $ make archive-release #create a release-style local archive
 
 ### Remote providers
 
-* Anthropic API
-* OpenAI organization usage
-* GitHub Copilot organization metrics
-* Windsurf Enterprise analytics
-* Claude AI session-based usage
+* [Anthropic API]()
+* [OpenAI organization usage]()
+* [GitHub Copilot organization metrics]()
+* [Windsurf Enterprise analytics]()
+* [Claude AI session-based usage]()
 
 ### Local providers
 
-* Claude Code local session logs
-* Codex local session logs
-* Gemini CLI local session logs
+* [Claude Code local session logs]()
+* [Codex local session logs]()
+* [Gemini CLI local session logs]()
