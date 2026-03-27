@@ -2,7 +2,7 @@ import AppKit
 import Foundation
 import Sparkle
 
-class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate {
     private var updaterController: SPUStandardUpdaterController?
     private var updateTimer: Timer?
 

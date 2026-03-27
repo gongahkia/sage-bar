@@ -132,7 +132,7 @@ final class WebhookServiceTests: XCTestCase {
         do { try await svc.send(event: .dailyDigest, snapshot: snap(), config: whConfig) } catch {}
         let exp = expectation(description: "ErrorLogger set after timeout")
         DispatchQueue.global().asyncAfter(deadline: .now() + 0.2) { exp.fulfill() }
-        wait(for: [exp], timeout: 1)
+        await fulfillment(of: [exp], timeout: 1)
         XCTAssertNotNil(ErrorLogger.shared.lastError, "timeout should log via ErrorLogger")
     }
 

@@ -1,18 +1,22 @@
 import AppKit
 import SwiftUI
 
-class SettingsWindowController: NSWindowController {
+final class SettingsWindowController: NSWindowController {
     static let shared = SettingsWindowController()
 
     private init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 860, height: 560),
+            contentRect: NSRect(x: 0, y: 0, width: 960, height: 620),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
         window.title = "Sage Bar Settings"
-        window.minSize = NSSize(width: 760, height: 520)
+        window.minSize = NSSize(width: 820, height: 560)
+        window.toolbarStyle = .unified
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        window.isReleasedWhenClosed = false
         window.center()
         super.init(window: window)
         window.contentView = NSHostingView(rootView: SettingsView())

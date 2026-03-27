@@ -32,7 +32,7 @@ class MenuBarManager {
             contextMenu.addItem(item)
         }
         popover = NSPopover()
-        popover.contentSize = NSSize(width: 340, height: 480)
+        popover.contentSize = NSSize(width: 360, height: 560)
         popover.behavior = .transient
         popover.contentViewController = NSHostingController(rootView: MenuBarPopoverView())
 
