@@ -127,13 +127,15 @@ class OpenAIOrgUsageClient {
             }
         }
 
+        var skippedNonUSD = false
         for bucket in costBuckets {
             for result in bucket.results ?? [] {
                 let currency = (result.amount?.currency ?? "usd").lowercased()
                 guard currency == "usd" else {
                     let lineItem = result.line_item ?? "unknown"
-                    ErrorLogger.shared.log("OpenAI costs API returned unsupported currency '\(currency)' for line_item '\(lineItem)'", level: "WARN")
-                    throw APIError.unsupported
+                    ErrorLogger.shared.log("OpenAI costs API returned unsupported currency '\(currency)' for line_item '\(lineItem)' — skipping cost entry", level: "WARN")
+                    skippedNonUSD = true
+                    continue
                 }
                 let cost = max(0, result.amount?.value ?? 0)
                 totalsCost += cost
@@ -176,7 +178,7 @@ class OpenAIOrgUsageClient {
             cacheReadTokens: totalsCacheRead,
             totalCostUSD: totalsCost,
             modelBreakdown: breakdown,
-            costConfidence: .billingGrade
+            costConfidence: skippedNonUSD ? .estimated : .billingGrade
         )
     }
 
