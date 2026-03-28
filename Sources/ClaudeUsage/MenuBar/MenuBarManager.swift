@@ -241,7 +241,7 @@ class MenuBarManager {
     }
 
     @objc private func refreshNow() { PollingService.shared.forceRefresh() }
-    @objc private func openSageBar() { SettingsWindowController.shared.showWindow() }
+    @objc private func openSageBar() { DashboardWindowController.shared.showWindow() }
     @objc private func runSetupWizard() { OnboardingWindowController.shared.showWindow(force: true) }
     @objc private func openAccountFromMenu(_ sender: NSMenuItem) {
         guard let rawID = sender.representedObject as? String,
