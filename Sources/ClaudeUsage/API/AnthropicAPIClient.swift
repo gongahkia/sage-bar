@@ -33,8 +33,8 @@ struct AnthropicUsagePeriod: Codable {
 // MARK: – Client
 
 private struct PriceEntry: Decodable {
-    let inputPer1M: Double
-    let outputPer1M: Double
+    let inputPer1M: Double?
+    let outputPer1M: Double?
 }
 
 class AnthropicAPIClient {
@@ -52,10 +52,11 @@ class AnthropicAPIClient {
         }
         var result: [String: (Double, Double)] = [:]
         for (model, entry) in raw where !model.hasPrefix("_") {
-            if entry.inputPer1M <= 0 || entry.outputPer1M <= 0 {
-                ErrorLogger.shared.log("Invalid price entry for '\(model)': inputPer1M=\(entry.inputPer1M) outputPer1M=\(entry.outputPer1M)", level: "WARN")
+            guard let inputPrice = entry.inputPer1M, let outputPrice = entry.outputPer1M else { continue }
+            if inputPrice <= 0 || outputPrice <= 0 {
+                ErrorLogger.shared.log("Invalid price entry for '\(model)': inputPer1M=\(inputPrice) outputPer1M=\(outputPrice)", level: "WARN")
             } else {
-                result[model] = (entry.inputPer1M, entry.outputPer1M)
+                result[model] = (inputPrice, outputPrice)
             }
         }
         return result
