@@ -21,8 +21,7 @@ class MenuBarManager {
         self.updaterController = updaterController
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let btn = statusItem.button {
-            btn.image = NSImage(systemSymbolName: "chart.bar.fill", accessibilityDescription: "Sage Bar")
-            btn.image?.isTemplate = true
+            btn.image = MenuBarIconRenderer.renderFromSnapshot(nil, health: .healthy)
             btn.action = #selector(handleStatusItemClick(_:))
             btn.target = self
             btn.sendAction(on: [.leftMouseUp, .rightMouseUp])
@@ -284,23 +283,30 @@ class MenuBarManager {
         guard let btn = statusItem.button else { return }
         var baseTitle = ""
         var baseImage: NSImage?
+        let snap = await firstActiveSnapshot(config: config)
         switch config.display.menubarStyle {
         case "cost":
-            if let snap = await firstActiveSnapshot(config: config) {
-                baseTitle = String(format: "$%.2f", snap.totalCostUSD)
-            }
+            if let snap { baseTitle = String(format: "$%.2f", snap.totalCostUSD) }
         case "tokens":
-            if let snap = await firstActiveSnapshot(config: config) {
+            if let snap {
                 let total = snap.inputTokens + snap.outputTokens
                 baseTitle = total >= 1000 ? "\(total / 1000)k" : "\(total)"
             }
         default: // "icon"
-            baseImage = NSImage(systemSymbolName: "chart.bar.fill", accessibilityDescription: nil)
-            baseImage?.isTemplate = true
+            let health = await currentHealth(config: config)
+            baseImage = MenuBarIconRenderer.renderFromSnapshot(snap, health: health)
         }
         btn.title = baseTitle
         btn.image = baseImage
         await applyClaudeAIStatusBadge(config: config, button: btn)
+    }
+
+    private func currentHealth(config: Config) async -> HealthDot {
+        guard let snap = await firstActiveSnapshot(config: config) else { return .error }
+        let age = Date().timeIntervalSince(snap.timestamp)
+        if age > TimeInterval(config.pollIntervalSeconds * 2) { return .error }
+        if snap.costConfidence == .estimated { return .estimated }
+        return .healthy
     }
 
     private func firstActiveSnapshot(config: Config) async -> UsageSnapshot? {
