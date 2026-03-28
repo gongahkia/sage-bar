@@ -75,11 +75,12 @@ class WindsurfEnterpriseClient {
     private let groupName: String?
     private let session: URLSession
     private let baseURL = URL(string: "https://server.codeium.com")!
-    private let addOnCreditPricePer1KUSD = 40.0
+    private let addOnCreditPricePer1KUSD: Double
 
-    init(serviceKey: String, groupName: String? = nil, session: URLSession? = nil) {
+    init(serviceKey: String, groupName: String? = nil, addOnCreditPricePer1KUSD: Double = 40.0, session: URLSession? = nil) {
         self.serviceKey = serviceKey
         self.groupName = groupName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.addOnCreditPricePer1KUSD = addOnCreditPricePer1KUSD
         self.session = session ?? Self.makeDefaultSession()
     }
 
