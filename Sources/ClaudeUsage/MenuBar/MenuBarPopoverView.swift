@@ -669,10 +669,15 @@ struct MenuBarPopoverView: View {
       Button("Refresh") { PollingService.shared.forceRefresh() }
         .keyboardShortcut("r", modifiers: .command)
         .controlSize(.small)
-      Button(copyFeedback ? "Copied" : "Copy Totals") {
+      Button {
         copyActiveAccountDailyTotals()
-        copyFeedback = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { copyFeedback = false }
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { copyFeedback = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+          withAnimation { copyFeedback = false }
+        }
+      } label: {
+        Label(copyFeedback ? "Copied" : "Copy Totals",
+              systemImage: copyFeedback ? "checkmark.circle.fill" : "doc.on.doc")
       }
       .controlSize(.small)
       Spacer()
@@ -680,6 +685,10 @@ struct MenuBarPopoverView: View {
         Button("History") { showHistory = true }
           .controlSize(.small)
       }
+      Button("Dashboard") {
+        DashboardWindowController.shared.showWindow()
+      }
+      .controlSize(.small)
       Menu("More") {
         Button("Export CSV") {
           exportAllActiveAccountsCSV()
@@ -746,12 +755,14 @@ struct MenuBarPopoverView: View {
                 Text(String(format: "$%.4f", row.cost)).font(.caption2).monospacedDigit()
               }
               .padding(.horizontal, 4)
+              .transition(.move(edge: .top).combined(with: .opacity))
             }
           } label: {
             Text(showModelBreakdown ? "Hide per-model totals" : "Show per-model totals")
               .font(.caption)
               .foregroundColor(.secondary)
           }
+          .animation(.spring(response: 0.35, dampingFraction: 0.85), value: showModelBreakdown)
         }
       }
     }
@@ -1097,7 +1108,8 @@ private struct PopoverAccountSummaryCard: View {
               .font(.caption2)
               .foregroundColor(.secondary)
             Text(accessoryValue)
-              .font(.system(size: 20, weight: .semibold, design: .rounded))
+              .font(.system(size: 28, weight: .bold, design: .rounded))
+              .animation(.spring(response: 0.4, dampingFraction: 0.8), value: accessoryValue)
           }
 
           Spacer()
