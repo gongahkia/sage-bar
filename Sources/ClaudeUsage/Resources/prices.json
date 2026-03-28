@@ -1,4 +1,5 @@
 {
+  "_meta": { "lastUpdated": "2026-03-28" },
   "claude-code-local": { "inputPer1M": 3.00,  "outputPer1M": 15.00 },
   "claude-3-5-sonnet":  { "inputPer1M": 3.00,  "outputPer1M": 15.00 },
   "claude-3-5-haiku":   { "inputPer1M": 1.00,  "outputPer1M": 5.00  },
@@ -10,13 +11,18 @@
   "claude-haiku-4-5":   { "inputPer1M": 1.00,  "outputPer1M": 5.00  },
   "claude-opus-4-5":    { "inputPer1M": 5.00,  "outputPer1M": 25.00 },
   "claude-sonnet-4-5":  { "inputPer1M": 3.00,  "outputPer1M": 15.00 },
+  "claude-sonnet-4-20250514": { "inputPer1M": 3.00, "outputPer1M": 15.00 },
   "codex-local":        { "inputPer1M": 2.00,  "outputPer1M": 8.00  },
   "gpt-4.1":            { "inputPer1M": 2.00,  "outputPer1M": 8.00  },
+  "gpt-4.1-mini":       { "inputPer1M": 0.40,  "outputPer1M": 1.60  },
+  "gpt-4.1-nano":       { "inputPer1M": 0.10,  "outputPer1M": 0.40  },
   "gpt-4o-mini":        { "inputPer1M": 0.15,  "outputPer1M": 0.60  },
   "o1":                 { "inputPer1M": 15.00, "outputPer1M": 60.00 },
   "o3":                 { "inputPer1M": 5.00,  "outputPer1M": 20.00 },
+  "o4-mini":            { "inputPer1M": 1.10,  "outputPer1M": 4.40  },
   "gemini-local":       { "inputPer1M": 1.25,  "outputPer1M": 5.00  },
   "gemini-2.5-pro":     { "inputPer1M": 1.25,  "outputPer1M": 5.00  },
+  "gemini-2.5-flash":   { "inputPer1M": 0.15,  "outputPer1M": 0.60  },
   "gemini-1.5-pro":     { "inputPer1M": 1.25,  "outputPer1M": 5.00  },
   "gemini-2.0-flash":   { "inputPer1M": 0.10,  "outputPer1M": 0.40  }
 }

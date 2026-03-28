@@ -51,7 +51,7 @@ class AnthropicAPIClient {
             return [:]
         }
         var result: [String: (Double, Double)] = [:]
-        for (model, entry) in raw {
+        for (model, entry) in raw where !model.hasPrefix("_") {
             if entry.inputPer1M <= 0 || entry.outputPer1M <= 0 {
                 ErrorLogger.shared.log("Invalid price entry for '\(model)': inputPer1M=\(entry.inputPer1M) outputPer1M=\(entry.outputPer1M)", level: "WARN")
             } else {
