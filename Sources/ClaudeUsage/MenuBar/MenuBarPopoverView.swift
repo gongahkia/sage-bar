@@ -392,10 +392,12 @@ struct MenuBarPopoverView: View {
       )
     let confidence = currentCostConfidence(
       account: account, latestSnapshot: metrics?.latestSnapshot)
+    let inputLabel = account.type == .githubCopilot ? "Suggestions / Chats" : "Input Tokens"
+    let outputLabel = account.type == .githubCopilot ? "Acceptances / Actions" : "Output Tokens"
     return PopoverSurfaceCard(title: "Today", systemImage: "calendar") {
       VStack(alignment: .leading, spacing: 6) {
-        statRow("Input Tokens", value: "\(agg.totalInputTokens.formatted())")
-        statRow("Output Tokens", value: "\(agg.totalOutputTokens.formatted())")
+        statRow(inputLabel, value: "\(agg.totalInputTokens.formatted())")
+        statRow(outputLabel, value: "\(agg.totalOutputTokens.formatted())")
         statRow(
           "Cache Tokens",
           value:
