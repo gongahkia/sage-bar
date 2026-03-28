@@ -181,7 +181,7 @@ struct MenuBarPopoverView: View {
                 && account.type == .claudeAI && currentAccountState == nil
               {
                 // swiftlint:disable:previous opening_brace
-                reAuthBanner
+                reAuthBanner(account: account)
               }
               if account.type == .claudeAI {
                 claudeAIStatsSection(account: account, metrics: currentMetrics)
@@ -574,25 +574,56 @@ struct MenuBarPopoverView: View {
   }
 
   // MARK: – Re-auth banner
-  private var reAuthBanner: some View {
+  @State private var inlineSessionToken = ""
+  @State private var inlineTokenSaving = false
+  @State private var inlineTokenSaved = false
+  private func reAuthBanner(account: Account) -> some View {
     PopoverSurfaceCard(accentColor: .orange) {
-      HStack(spacing: 8) {
-        Image(systemName: "key.fill").foregroundColor(.orange)
-        Text("claude.ai session needs attention. Update your session token in Settings.")
-          .font(.caption)
-          .lineLimit(2)
-        Spacer()
-        Button("Settings") {
-          SettingsWindowController.shared.showWindow()
+      VStack(alignment: .leading, spacing: 6) {
+        HStack(spacing: 8) {
+          Image(systemName: "key.fill").foregroundColor(.orange)
+          Text("claude.ai session needs attention.")
+            .font(.caption)
+            .lineLimit(1)
+          Spacer()
+          Button("Settings") {
+            SettingsWindowController.shared.showWindow()
+          }
+          .buttonStyle(.borderless)
+          .font(.caption2)
+          Button {
+            needsReAuth = false
+          } label: {
+            Image(systemName: "xmark").font(.caption2)
+          }
+          .buttonStyle(.plain)
         }
-        .buttonStyle(.borderless)
-        .font(.caption2)
-        Button {
-          needsReAuth = false
-        } label: {
-          Image(systemName: "xmark").font(.caption2)
+        HStack(spacing: 6) {
+          SecureField("Paste session token", text: $inlineSessionToken)
+            .textFieldStyle(.roundedBorder)
+            .font(.caption)
+          Button(inlineTokenSaved ? "Saved" : "Save") {
+            guard !inlineSessionToken.isEmpty else { return }
+            inlineTokenSaving = true
+            do {
+              try KeychainManager.store(
+                key: inlineSessionToken,
+                service: AppConstants.keychainSessionTokenService,
+                account: account.id.uuidString
+              )
+              inlineTokenSaved = true
+              inlineSessionToken = ""
+              needsReAuth = false
+              DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { inlineTokenSaved = false }
+            } catch {
+              ErrorLogger.shared.log("Failed to save session token: \(error.localizedDescription)", level: "ERROR")
+            }
+            inlineTokenSaving = false
+          }
+          .buttonStyle(.borderless)
+          .font(.caption2)
+          .disabled(inlineSessionToken.isEmpty || inlineTokenSaving)
         }
-        .buttonStyle(.plain)
       }
     }
   }
