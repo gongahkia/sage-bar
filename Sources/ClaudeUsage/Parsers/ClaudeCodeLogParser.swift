@@ -243,6 +243,9 @@ class ClaudeCodeLogParser {
             _ = processRecord(recordBuffer)
         }
 
+        if !allResults.isEmpty, allResults.allSatisfy({ ($0.usage ?? $0.message?.usage) == nil }) {
+            ErrorLogger.shared.log("All \(allResults.count) entries in \(url.lastPathComponent) had no usage fields — log schema may have changed", level: "WARN")
+        }
         var results = incremental ? incrementalResults : allResults
         if incremental {
             let prev = startIndex

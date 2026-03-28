@@ -262,6 +262,9 @@ class CodexLogParser {
             _ = processLine(lineBuffer)
         }
 
+        if !allResults.isEmpty, allResults.allSatisfy({ tokenTotals(from: $0) == nil }) {
+            ErrorLogger.shared.log("All \(allResults.count) entries in \(url.lastPathComponent) had no token data — log schema may have changed", level: "WARN")
+        }
         var results = incremental ? incrementalResults : allResults
         if incremental {
             let prev = startIndex

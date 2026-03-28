@@ -149,6 +149,9 @@ class GeminiLogParser {
         do {
             let data = try Data(contentsOf: url)
             let record = try JSONDecoder().decode(GeminiConversationRecord.self, from: data)
+            if !record.messages.isEmpty, record.messages.allSatisfy({ $0.tokens == nil }) {
+                ErrorLogger.shared.log("All \(record.messages.count) messages in \(url.lastPathComponent) had no token fields — log schema may have changed", level: "WARN")
+            }
             ParserMetricsStore.shared.record(
                 parser: "gemini",
                 filesScanned: 1,
