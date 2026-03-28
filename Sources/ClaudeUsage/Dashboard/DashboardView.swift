@@ -201,22 +201,67 @@ struct DashboardView: View {
 
     private func forecastCard(account: Account) -> some View {
         let forecast = CacheManager.shared.latestForecast(forAccount: account.id)
+        let snaps = weekSnapshots[account.id] ?? []
+        let byDay = groupedByDay(snaps)
         return DashCard {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Forecast").font(.headline)
-                if let f = forecast {
+                if let f = forecast, !byDay.isEmpty {
+                    forecastChart(historical: byDay, forecast: f)
                     HStack(spacing: 20) {
                         forecastStat("EOD", value: f.projectedEODCostUSD)
                         forecastStat("EOW", value: f.projectedEOWCostUSD)
                         forecastStat("EOM", value: f.projectedEOMCostUSD)
                     }
+                    HStack(spacing: 4) {
+                        Image(systemName: "flame")
+                            .font(.caption2)
+                            .foregroundColor(.orange)
+                        Text(String(format: "Burn rate: $%.4f/hr", f.burnRatePerHour))
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
                 } else {
-                    Text("Not enough data yet")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                    VStack(spacing: 6) {
+                        Image(systemName: "chart.line.uptrend.xyaxis")
+                            .font(.system(size: 28))
+                            .foregroundColor(.secondary)
+                        Text("Not enough data for forecast")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
                 }
             }
         }
+    }
+
+    private func forecastChart(historical: [(Date, Double)], forecast: ForecastSnapshot) -> some View {
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        let eow = cal.nextDate(after: today, matching: DateComponents(weekday: 2), matchingPolicy: .nextTime) ?? cal.date(byAdding: .day, value: 7, to: today)!
+        let projected: [(Date, Double)] = [
+            (today, historical.last?.1 ?? 0),
+            (cal.date(byAdding: .day, value: 1, to: today)!, forecast.projectedEODCostUSD),
+            (eow, forecast.projectedEOWCostUSD),
+        ]
+        return Chart {
+            ForEach(historical, id: \.0) { item in
+                LineMark(x: .value("Day", item.0), y: .value("Cost", item.1))
+                    .foregroundStyle(Color.accentColor)
+                    .lineStyle(StrokeStyle(lineWidth: 2))
+                AreaMark(x: .value("Day", item.0), y: .value("Cost", item.1))
+                    .foregroundStyle(.linearGradient(colors: [Color.accentColor.opacity(0.2), .clear], startPoint: .top, endPoint: .bottom))
+            }
+            ForEach(projected, id: \.0) { item in
+                LineMark(x: .value("Day", item.0), y: .value("Cost", item.1))
+                    .foregroundStyle(Color.orange.opacity(0.7))
+                    .lineStyle(StrokeStyle(lineWidth: 2, dash: [6, 4]))
+            }
+        }
+        .chartYAxis { AxisMarks(format: .currency(code: "USD")) }
+        .frame(height: 140)
     }
 
     // MARK: - live tab
