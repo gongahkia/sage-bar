@@ -321,11 +321,8 @@ class MenuBarManager {
         let age = Date().timeIntervalSince(snap.timestamp)
         let threshold = TimeInterval(config.pollIntervalSeconds * 2)
         if age > threshold && config.display.showBadge {
-            // orange dot badge via attributed string overlay
-            let img = NSImage(systemSymbolName: "chart.bar.fill", accessibilityDescription: nil)
-            img?.isTemplate = true
-            btn.image = img
-            btn.appearsDisabled = true // visual cue
+            btn.image = MenuBarIconRenderer.renderFromSnapshot(snap, health: .error)
+            btn.appearsDisabled = true
         } else {
             btn.appearsDisabled = false
         }
@@ -384,7 +381,8 @@ class MenuBarManager {
                 let t = snap.inputTokens + snap.outputTokens
                 secondStatusItem?.button?.title = t >= 1000 ? "\(t / 1000)k" : "\(t)"
             default:
-                secondStatusItem?.button?.image = NSImage(systemSymbolName: "chart.bar.fill", accessibilityDescription: nil)
+                let health = snap.costConfidence == .estimated ? HealthDot.estimated : .healthy
+                secondStatusItem?.button?.image = MenuBarIconRenderer.renderFromSnapshot(snap, health: health)
             }
         }
     }
