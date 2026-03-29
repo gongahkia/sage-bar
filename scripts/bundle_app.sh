@@ -10,6 +10,8 @@ Options:
   --resources-bundle PATH    SwiftPM resource bundle directory
   --sparkle-framework PATH   Sparkle.framework directory to embed
   --info-plist PATH          Info.plist to copy into the bundle
+  --widget-binary PATH       Compiled SageBarWidget executable
+  --widget-info-plist PATH   Widget extension Info.plist
   --output PATH              Output .app path (default: Sage Bar.app)
   --codesign-identity ID     Codesign identity (default: "-" for ad hoc)
   --entitlements PATH        Entitlements plist for non-ad-hoc signing
@@ -21,6 +23,8 @@ binary_path=""
 resources_bundle=""
 sparkle_framework=""
 info_plist="Sources/ClaudeUsage/Resources/Info.plist"
+widget_binary=""
+widget_info_plist="Sources/SageBarWidget/Info.plist"
 output_app="Sage Bar.app"
 codesign_identity="${CODESIGN_IDENTITY:--}"
 entitlements_path=""
@@ -50,6 +54,14 @@ while [[ $# -gt 0 ]]; do
       ;;
     --codesign-identity)
       codesign_identity="$2"
+      shift 2
+      ;;
+    --widget-binary)
+      widget_binary="$2"
+      shift 2
+      ;;
+    --widget-info-plist)
+      widget_info_plist="$2"
       shift 2
       ;;
     --entitlements)
@@ -103,6 +115,20 @@ if [[ -f "$resources_bundle/ClaudeUsage.sdef" ]]; then
 fi
 if [[ -n "$sparkle_framework" ]]; then
   cp -R "$sparkle_framework" "$frameworks_dir/"
+fi
+
+# embed widget extension
+if [[ -n "$widget_binary" && -f "$widget_binary" ]]; then
+  plugins_dir="$output_app/Contents/PlugIns"
+  widget_appex="$plugins_dir/SageBarWidget.appex"
+  widget_macos="$widget_appex/Contents/MacOS"
+  mkdir -p "$widget_macos"
+  cp "$widget_binary" "$widget_macos/SageBarWidget"
+  chmod +x "$widget_macos/SageBarWidget"
+  if [[ -f "$widget_info_plist" ]]; then
+    cp "$widget_info_plist" "$widget_appex/Contents/Info.plist"
+  fi
+  printf 'BNDL????' > "$widget_appex/Contents/PkgInfo"
 fi
 
 if command -v otool >/dev/null 2>&1; then

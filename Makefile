@@ -20,6 +20,7 @@ bundle: build
 		--binary .build/debug/SageBar \
 		--resources-bundle .build/debug/SageBar_SageBar.bundle \
 		--sparkle-framework .build/debug/Sparkle.framework \
+		--widget-binary .build/debug/SageBarWidget \
 		--output "Sage Bar.app" \
 		--codesign-identity -
 
@@ -28,6 +29,7 @@ bundle-release: build-release
 		--binary .build/release/SageBar \
 		--resources-bundle .build/release/SageBar_SageBar.bundle \
 		--sparkle-framework .build/release/Sparkle.framework \
+		--widget-binary .build/release/SageBarWidget \
 		--output "Sage Bar.app" \
 		--codesign-identity -
 

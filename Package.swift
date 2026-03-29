@@ -6,6 +6,7 @@ let package = Package(
     platforms: [.macOS(.v13)],
     products: [
         .executable(name: "SageBar", targets: ["SageBar"]),
+        .executable(name: "SageBarWidget", targets: ["SageBarWidget"]),
     ],
     dependencies: [
         .package(url: "https://github.com/LebJe/TOMLKit.git", from: "0.5.0"),
@@ -24,6 +25,11 @@ let package = Package(
                 .process("Resources"),
                 .copy("Scriptable/ClaudeUsage.sdef"),
             ]
+        ),
+        .executableTarget(
+            name: "SageBarWidget",
+            path: "Sources/SageBarWidget",
+            exclude: ["Info.plist"]
         ),
         .testTarget(
             name: "SageBarTests",
