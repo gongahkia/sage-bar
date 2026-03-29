@@ -20,7 +20,15 @@ private func loadWidgetData() -> WidgetUsageData {
         return WidgetUsageData(totalCostToday: 0, totalTokensToday: 0, accountCount: 0, lastUpdated: nil)
     }
     let decoder = JSONDecoder()
-    decoder.dateDecodingStrategy = .secondsSince1970
+    let fractionalFmt = ISO8601DateFormatter()
+    fractionalFmt.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    let plainFmt = ISO8601DateFormatter()
+    plainFmt.formatOptions = [.withInternetDateTime]
+    decoder.dateDecodingStrategy = .custom { dec in
+        let raw = try dec.singleValueContainer().decode(String.self)
+        if let d = fractionalFmt.date(from: raw) ?? plainFmt.date(from: raw) { return d }
+        throw DecodingError.dataCorruptedError(in: try dec.singleValueContainer(), debugDescription: "Invalid date: \(raw)")
+    }
     guard let payload = try? decoder.decode(WidgetCachePayload.self, from: data) else {
         return WidgetUsageData(totalCostToday: 0, totalTokensToday: 0, accountCount: 0, lastUpdated: nil)
     }
