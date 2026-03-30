@@ -93,6 +93,18 @@ enum AppleScriptUsageBridge {
         return UsageReportingService.summaryText(for: UsageAccessService.activeAccounts(config: config))
     }
 
+    static func getDiagnosticsSnapshot(
+        config: Config = ConfigManager.shared.load(),
+        maxErrorLines: Int = 120
+    ) -> String {
+        blocking {
+            await UsageAccessService.diagnosticsSnapshotJSON(
+                config: config,
+                maxErrorLines: maxErrorLines
+            )
+        }
+    }
+
     static func triggerPoll() -> Bool {
         blocking {
             await PollingService.shared.pollOnce()
@@ -143,6 +155,13 @@ final class GetForecastScriptCommand: NSScriptCommand {
 final class GetUsageSummaryScriptCommand: NSScriptCommand {
     override func performDefaultImplementation() -> Any? {
         AppleScriptUsageBridge.getUsageSummary(accountIdentifierOrName: evaluatedArguments?["account"] as? String)
+    }
+}
+
+@objc(GetDiagnosticsSnapshotScriptCommand)
+final class GetDiagnosticsSnapshotScriptCommand: NSScriptCommand {
+    override func performDefaultImplementation() -> Any? {
+        AppleScriptUsageBridge.getDiagnosticsSnapshot()
     }
 }
 
