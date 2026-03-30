@@ -35,5 +35,9 @@
             <parameter name="account" code="acct" type="text" optional="yes" description="Account UUID or display name"/>
             <result type="text" description="Formatted usage summary"/>
         </command>
+        <command name="get diagnostics snapshot" code="CLUHgdia" description="Get runtime diagnostics as JSON">
+            <cocoa class="GetDiagnosticsSnapshotScriptCommand"/>
+            <result type="text" description="Machine-readable diagnostics JSON payload"/>
+        </command>
     </suite>
 </dictionary>
