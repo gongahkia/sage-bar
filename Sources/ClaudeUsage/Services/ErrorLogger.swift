@@ -20,8 +20,12 @@ final class ErrorLogger: ObservableObject {
 
     private init() {
         let dir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude-usage")
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         self.logFile = dir.appendingPathComponent("errors.log")
+        do {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        } catch {
+            log.error("Failed to create error log directory: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     internal init(logFile: URL) { // test injection only
@@ -76,7 +80,15 @@ final class ErrorLogger: ObservableObject {
 
     func readLast(_ n: Int = 500) -> [String] {
         queue.sync {
-            guard let text = try? String(contentsOf: logFile, encoding: .utf8) else { return [] }
+            let text: String
+            do {
+                text = try String(contentsOf: logFile, encoding: .utf8)
+            } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
+                return []
+            } catch {
+                log.warning("Failed to read error log file: \(error.localizedDescription, privacy: .public)")
+                return []
+            }
             let lines = text.components(separatedBy: "\n").filter { !$0.isEmpty }
             return Array(lines.suffix(n))
         }
@@ -85,26 +97,49 @@ final class ErrorLogger: ObservableObject {
     func clearLog() { // task 84: truncate errors.log to 0 bytes
         queue.async { [weak self] in
             guard let self else { return }
-            try? "".write(to: self.logFile, atomically: true, encoding: .utf8)
+            do {
+                try "".write(to: self.logFile, atomically: true, encoding: .utf8)
+            } catch {
+                log.warning("Failed to clear error log file: \(error.localizedDescription, privacy: .public)")
+            }
         }
     }
 
     // MARK: – private
 
     private func append(_ entry: String) {
+        let data = Data(entry.utf8)
         if let handle = FileHandle(forWritingAtPath: logFile.path) {
             handle.seekToEndOfFile()
-            handle.write(Data(entry.utf8))
+            handle.write(data)
             handle.closeFile()
         } else {
-            try? Data(entry.utf8).write(to: logFile, options: .atomic)
+            do {
+                try data.write(to: logFile, options: .atomic)
+            } catch {
+                log.error("Failed to create error log file: \(error.localizedDescription, privacy: .public)")
+            }
         }
     }
 
     private func rotateIfNeeded() {
-        guard let text = try? String(contentsOf: logFile, encoding: .utf8) else { return }
+        let text: String
+        do {
+            text = try String(contentsOf: logFile, encoding: .utf8)
+        } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
+            return
+        } catch {
+            log.warning("Failed to read error log for rotation: \(error.localizedDescription, privacy: .public)")
+            return
+        }
         let lines = text.components(separatedBy: "\n").filter { !$0.isEmpty }
-        let size = (try? FileManager.default.attributesOfItem(atPath: logFile.path))?[.size] as? Int ?? 0
+        let size: Int
+        do {
+            size = (try FileManager.default.attributesOfItem(atPath: logFile.path))[.size] as? Int ?? 0
+        } catch {
+            log.warning("Failed to read error log size for rotation: \(error.localizedDescription, privacy: .public)")
+            size = text.utf8.count
+        }
         let exceedsSize = size > maxBytes
         let exceedsLineLimit = lines.count > (retainLines + 1)
         guard exceedsSize || exceedsLineLimit else { return }
@@ -112,7 +147,11 @@ final class ErrorLogger: ObservableObject {
         var kept = Array(lines.suffix(retainLines))
         kept.append("[\(isoTimestamp())] [INFO] ErrorLogger:0 - Log rotated (kept last \(retainLines) lines)")
         let rotated = kept.joined(separator: "\n") + "\n"
-        try? rotated.write(to: logFile, atomically: true, encoding: .utf8)
+        do {
+            try rotated.write(to: logFile, atomically: true, encoding: .utf8)
+        } catch {
+            log.warning("Failed to write rotated error log: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     private func isoTimestamp() -> String {
