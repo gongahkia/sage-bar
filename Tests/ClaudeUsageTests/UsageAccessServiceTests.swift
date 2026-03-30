@@ -76,4 +76,41 @@ final class UsageAccessServiceTests: XCTestCase {
         XCTAssertTrue(summary.contains("Account: Studio • Client Y"))
         XCTAssertTrue(summary.contains("Provider: Claude AI"))
     }
+
+    func testDiagnosticsSnapshotJSONIncludesAccountAndTotals() async {
+        let account = Account(name: "Telemetry", type: .codex, isActive: true, groupLabel: "Ops")
+        var config = Config.default
+        config.accounts = [account]
+
+        let payload = await UsageAccessService.diagnosticsSnapshotJSON(config: config, maxErrorLines: 5)
+        guard let data = payload.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let totals = object["totals"] as? [String: Any],
+              let accounts = object["accounts"] as? [[String: Any]] else {
+            XCTFail("expected diagnostics payload to be valid JSON")
+            return
+        }
+
+        XCTAssertEqual(totals["accountCount"] as? Int, 1)
+        XCTAssertEqual(totals["activeAccountCount"] as? Int, 1)
+        XCTAssertEqual(accounts.first?["name"] as? String, "Telemetry")
+        XCTAssertEqual(accounts.first?["providerType"] as? String, AccountType.codex.rawValue)
+    }
+
+    func testAppleScriptBridgeDiagnosticsSnapshotReturnsJSON() {
+        let account = Account(name: "Scripting", type: .claudeCode, isActive: true)
+        var config = Config.default
+        config.accounts = [account]
+
+        let payload = AppleScriptUsageBridge.getDiagnosticsSnapshot(config: config, maxErrorLines: 3)
+        guard let data = payload.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            XCTFail("expected diagnostics payload to be valid JSON")
+            return
+        }
+
+        XCTAssertNotNil(object["generatedAt"])
+        XCTAssertNotNil(object["polling"])
+        XCTAssertNotNil(object["recentErrors"])
+    }
 }
