@@ -12,14 +12,7 @@ private actor ModelHintsMemoStore {
     {
       // swiftlint:disable:previous opening_brace
       let url = AppConstants.sharedContainerURL.appendingPathComponent("model_hints.json")
-      if let data = try? Data(contentsOf: url),
-        let hints = try? JSONDecoder().decode([ModelHint].self, from: data)
-      {
-        // swiftlint:disable:previous opening_brace
-        cachedHints = hints
-      } else {
-        cachedHints = []
-      }
+      cachedHints = loadHints(from: url)
       cachedAt = Date()
     }
     return cachedHints?.first(where: { $0.accountId == accountId && $0.cheaperAlternativeExists })
@@ -28,6 +21,24 @@ private actor ModelHintsMemoStore {
   func invalidate() {
     cachedHints = nil
     cachedAt = nil
+  }
+
+  private func loadHints(from url: URL) -> [ModelHint] {
+    do {
+      let data = try Data(contentsOf: url)
+      if data.isEmpty {
+        return []
+      }
+      return try JSONDecoder().decode([ModelHint].self, from: data)
+    } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
+      return []
+    } catch {
+      ErrorLogger.shared.log(
+        "Failed to read model hints cache '\(url.lastPathComponent)': \(error.localizedDescription)",
+        level: "WARN"
+      )
+      return []
+    }
   }
 }
 
