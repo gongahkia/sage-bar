@@ -1,7 +1,7 @@
 import Foundation
 import OSLog
 
-private let log = Logger(subsystem: "dev.claudeusage", category: "ErrorLogger")
+private let logger = Logger(subsystem: "dev.claudeusage", category: "ErrorLogger")
 
 struct AppError {
     let timestamp: Date
@@ -24,7 +24,7 @@ final class ErrorLogger: ObservableObject {
         do {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         } catch {
-            log.error("Failed to create error log directory: \(error.localizedDescription, privacy: .public)")
+            logger.error("Failed to create error log directory: \(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -79,14 +79,14 @@ final class ErrorLogger: ObservableObject {
     }
 
     func readLast(_ n: Int = 500) -> [String] {
-        queue.sync {
+        queue.sync { () -> [String] in
             let text: String
             do {
                 text = try String(contentsOf: logFile, encoding: .utf8)
             } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
                 return []
             } catch {
-                log.warning("Failed to read error log file: \(error.localizedDescription, privacy: .public)")
+                logger.warning("Failed to read error log file: \(error.localizedDescription, privacy: .public)")
                 return []
             }
             let lines = text.components(separatedBy: "\n").filter { !$0.isEmpty }
@@ -100,7 +100,7 @@ final class ErrorLogger: ObservableObject {
             do {
                 try "".write(to: self.logFile, atomically: true, encoding: .utf8)
             } catch {
-                log.warning("Failed to clear error log file: \(error.localizedDescription, privacy: .public)")
+                logger.warning("Failed to clear error log file: \(error.localizedDescription, privacy: .public)")
             }
         }
     }
@@ -117,7 +117,7 @@ final class ErrorLogger: ObservableObject {
             do {
                 try data.write(to: logFile, options: .atomic)
             } catch {
-                log.error("Failed to create error log file: \(error.localizedDescription, privacy: .public)")
+                logger.error("Failed to create error log file: \(error.localizedDescription, privacy: .public)")
             }
         }
     }
@@ -129,7 +129,7 @@ final class ErrorLogger: ObservableObject {
         } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
             return
         } catch {
-            log.warning("Failed to read error log for rotation: \(error.localizedDescription, privacy: .public)")
+            logger.warning("Failed to read error log for rotation: \(error.localizedDescription, privacy: .public)")
             return
         }
         let lines = text.components(separatedBy: "\n").filter { !$0.isEmpty }
@@ -137,7 +137,7 @@ final class ErrorLogger: ObservableObject {
         do {
             size = (try FileManager.default.attributesOfItem(atPath: logFile.path))[.size] as? Int ?? 0
         } catch {
-            log.warning("Failed to read error log size for rotation: \(error.localizedDescription, privacy: .public)")
+            logger.warning("Failed to read error log size for rotation: \(error.localizedDescription, privacy: .public)")
             size = text.utf8.count
         }
         let exceedsSize = size > maxBytes
@@ -150,7 +150,7 @@ final class ErrorLogger: ObservableObject {
         do {
             try rotated.write(to: logFile, atomically: true, encoding: .utf8)
         } catch {
-            log.warning("Failed to write rotated error log: \(error.localizedDescription, privacy: .public)")
+            logger.warning("Failed to write rotated error log: \(error.localizedDescription, privacy: .public)")
         }
     }
 

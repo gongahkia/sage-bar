@@ -121,11 +121,17 @@ enum AppleScriptUsageBridge {
     private static func blocking<T>(_ operation: @escaping @Sendable () async -> T) -> T {
         let semaphore = DispatchSemaphore(value: 0)
         let result = BlockingBox<T>()
-        Task {
+        Task.detached {
             result.store(await operation())
             semaphore.signal()
         }
-        semaphore.wait()
+        if Thread.isMainThread {
+            while semaphore.wait(timeout: .now()) != .success {
+                _ = RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: 0.01))
+            }
+        } else {
+            semaphore.wait()
+        }
         return result.load()!
     }
 }
