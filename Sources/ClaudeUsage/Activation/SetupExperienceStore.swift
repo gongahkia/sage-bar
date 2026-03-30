@@ -103,7 +103,15 @@ final class SetupExperienceStore: ObservableObject {
     private static func loadState(defaults: UserDefaults, key: String) -> SetupExperienceState {
         guard let data = defaults.data(forKey: key) else { return .default }
         let decoder = JSONDecoder()
-        return (try? decoder.decode(SetupExperienceState.self, from: data)) ?? .default
+        do {
+            return try decoder.decode(SetupExperienceState.self, from: data)
+        } catch {
+            ErrorLogger.shared.log(
+                "Failed to decode setup experience state; using defaults: \(error.localizedDescription)",
+                level: "WARN"
+            )
+            return .default
+        }
     }
 
     private static func defaultAccountValidator(account: Account) -> Bool {
