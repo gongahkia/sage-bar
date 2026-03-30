@@ -121,4 +121,24 @@ enum UsageAccessService {
         }
         return try UsageReportingService.exportCSV(for: activeAccounts(), in: interval, filenamePrefix: "sage-bar-shortcuts")
     }
+
+    static func diagnosticsSnapshot(
+        config: Config = ConfigManager.shared.load(),
+        maxErrorLines: Int = 120
+    ) async -> DiagnosticsSnapshot {
+        await DiagnosticsSnapshotService.snapshot(
+            config: config,
+            maxErrorLines: maxErrorLines
+        )
+    }
+
+    static func diagnosticsSnapshotJSON(
+        config: Config = ConfigManager.shared.load(),
+        maxErrorLines: Int = 120
+    ) async -> String {
+        await DiagnosticsSnapshotService.snapshotJSONString(
+            config: config,
+            maxErrorLines: maxErrorLines
+        )
+    }
 }
