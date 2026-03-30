@@ -24,7 +24,9 @@ final class ErrorLogger: ObservableObject {
         do {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         } catch {
-            logger.error("Failed to create error log directory: \(error.localizedDescription, privacy: .public)")
+            logger.error(
+                "Failed to create error log directory: \(error.localizedDescription, privacy: .public)"
+            )
         }
     }
 
@@ -86,7 +88,9 @@ final class ErrorLogger: ObservableObject {
             } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
                 return []
             } catch {
-                logger.warning("Failed to read error log file: \(error.localizedDescription, privacy: .public)")
+                logger.warning(
+                    "Failed to read error log file: \(error.localizedDescription, privacy: .public)"
+                )
                 return []
             }
             let lines = text.components(separatedBy: "\n").filter { !$0.isEmpty }
@@ -100,7 +104,9 @@ final class ErrorLogger: ObservableObject {
             do {
                 try "".write(to: self.logFile, atomically: true, encoding: .utf8)
             } catch {
-                logger.warning("Failed to clear error log file: \(error.localizedDescription, privacy: .public)")
+                logger.warning(
+                    "Failed to clear error log file: \(error.localizedDescription, privacy: .public)"
+                )
             }
         }
     }
@@ -117,7 +123,9 @@ final class ErrorLogger: ObservableObject {
             do {
                 try data.write(to: logFile, options: .atomic)
             } catch {
-                logger.error("Failed to create error log file: \(error.localizedDescription, privacy: .public)")
+                logger.error(
+                    "Failed to create error log file: \(error.localizedDescription, privacy: .public)"
+                )
             }
         }
     }
@@ -129,7 +137,9 @@ final class ErrorLogger: ObservableObject {
         } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
             return
         } catch {
-            logger.warning("Failed to read error log for rotation: \(error.localizedDescription, privacy: .public)")
+            logger.warning(
+                "Failed to read error log for rotation: \(error.localizedDescription, privacy: .public)"
+            )
             return
         }
         let lines = text.components(separatedBy: "\n").filter { !$0.isEmpty }
@@ -137,7 +147,9 @@ final class ErrorLogger: ObservableObject {
         do {
             size = (try FileManager.default.attributesOfItem(atPath: logFile.path))[.size] as? Int ?? 0
         } catch {
-            logger.warning("Failed to read error log size for rotation: \(error.localizedDescription, privacy: .public)")
+            logger.warning(
+                "Failed to read error log size for rotation: \(error.localizedDescription, privacy: .public)"
+            )
             size = text.utf8.count
         }
         let exceedsSize = size > maxBytes

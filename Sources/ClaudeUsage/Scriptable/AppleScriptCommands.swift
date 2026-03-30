@@ -127,7 +127,10 @@ enum AppleScriptUsageBridge {
         }
         if Thread.isMainThread {
             while semaphore.wait(timeout: .now()) != .success {
-                _ = RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: 0.01))
+                _ = RunLoop.current.run(
+                    mode: .default,
+                    before: Date(timeIntervalSinceNow: 0.01)
+                )
             }
         } else {
             semaphore.wait()
