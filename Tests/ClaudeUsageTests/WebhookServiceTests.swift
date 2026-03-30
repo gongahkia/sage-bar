@@ -16,7 +16,14 @@ final class WebhookServiceTests: XCTestCase {
         let tpl = """
         {"event":"{{event}}","cost":"{{cost}}","tokens":"{{tokens}}","acct":"{{account}}"}
         """
-        let data = service.buildPayload(event: .thresholdBreached(limitUSD: 10), snapshot: snap(), template: tpl)
+        guard let data = try? service.buildPayload(
+            event: .thresholdBreached(limitUSD: 10),
+            snapshot: snap(),
+            template: tpl
+        ) else {
+            XCTFail("expected template substitution payload")
+            return
+        }
         let str = String(data: data, encoding: .utf8)!
         XCTAssertTrue(str.contains("\"threshold\""))
         XCTAssertTrue(str.contains("3.1400"))
@@ -25,7 +32,10 @@ final class WebhookServiceTests: XCTestCase {
     }
 
     func testNilTemplateFallsBackToJSONPayload() {
-        let data = service.buildPayload(event: .dailyDigest, snapshot: snap(), template: nil)
+        guard let data = try? service.buildPayload(event: .dailyDigest, snapshot: snap(), template: nil) else {
+            XCTFail("expected fallback payload for nil template")
+            return
+        }
         let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         XCTAssertNotNil(obj)
         XCTAssertEqual(obj?["event"] as? String, "daily_digest")
@@ -33,18 +43,24 @@ final class WebhookServiceTests: XCTestCase {
     }
 
     func testEmptyTemplateFallsBackToJSONPayload() {
-        let data = service.buildPayload(event: .weeklyDigest, snapshot: snap(), template: "")
+        guard let data = try? service.buildPayload(event: .weeklyDigest, snapshot: snap(), template: "") else {
+            XCTFail("expected fallback payload for empty template")
+            return
+        }
         let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         XCTAssertNotNil(obj)
         XCTAssertEqual(obj?["event"] as? String, "weekly_summary")
     }
 
     func testBurnRateEventAddsBurnRateFieldsToPayload() {
-        let data = service.buildPayload(
+        guard let data = try? service.buildPayload(
             event: .burnRateBreached(thresholdUSDPerHour: 10, burnRateUSDPerHour: 12.5),
             snapshot: snap(cost: 12.5),
             template: nil
-        )
+        ) else {
+            XCTFail("expected burn-rate payload")
+            return
+        }
         let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         XCTAssertEqual(obj?["event"] as? String, "burn_rate")
         XCTAssertEqual(obj?["threshold_usd_per_hour"] as? Double ?? 0, 10, accuracy: 0.001)
