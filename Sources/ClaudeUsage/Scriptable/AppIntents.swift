@@ -238,6 +238,15 @@ struct ExportUsageCSVIntent: AppIntent {
     }
 }
 
+struct GetDiagnosticsSnapshotIntent: AppIntent {
+    static let title: LocalizedStringResource = "Get Diagnostics Snapshot"
+    static let description = IntentDescription("Returns machine-readable runtime diagnostics for Sage Bar.")
+
+    func perform() async throws -> some ReturnsValue<String> {
+        .result(value: await UsageAccessService.diagnosticsSnapshotJSON())
+    }
+}
+
 struct SageBarShortcutsProvider: AppShortcutsProvider {
     static var shortcutTileColor: ShortcutTileColor = .orange
 
@@ -277,6 +286,15 @@ struct SageBarShortcutsProvider: AppShortcutsProvider {
             ],
             shortTitle: "Export CSV",
             systemImageName: "square.and.arrow.up"
+        )
+        AppShortcut(
+            intent: GetDiagnosticsSnapshotIntent(),
+            phrases: [
+                "Get Sage Bar diagnostics in \(.applicationName)",
+                "Show diagnostics snapshot in \(.applicationName)",
+            ],
+            shortTitle: "Diagnostics",
+            systemImageName: "stethoscope"
         )
     }
 }
