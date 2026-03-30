@@ -88,8 +88,9 @@ final class ErrorLogger: ObservableObject {
             } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
                 return []
             } catch {
+                let reason = error.localizedDescription
                 logger.warning(
-                    "Failed to read error log file: \(error.localizedDescription, privacy: .public)"
+                    "Failed to read error log file: \(reason, privacy: .public)"
                 )
                 return []
             }
@@ -162,7 +163,10 @@ final class ErrorLogger: ObservableObject {
         do {
             try rotated.write(to: logFile, atomically: true, encoding: .utf8)
         } catch {
-            logger.warning("Failed to write rotated error log: \(error.localizedDescription, privacy: .public)")
+            let reason = error.localizedDescription
+            logger.warning(
+                "Failed to write rotated error log: \(reason, privacy: .public)"
+            )
         }
     }
 

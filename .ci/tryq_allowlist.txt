@@ -191,6 +191,7 @@ Sources/ClaudeUsage/Parsers/ParserMetricsStore.swift:120
 Sources/ClaudeUsage/Services/ErrorLogger.swift:23
 Sources/ClaudeUsage/Services/ErrorLogger.swift:60
 Sources/ClaudeUsage/Services/ErrorLogger.swift:64
+Sources/ClaudeUsage/Services/ErrorLogger.swift:66
 Sources/ClaudeUsage/Services/ErrorLogger.swift:79
 Sources/ClaudeUsage/Services/ErrorLogger.swift:88
 Sources/ClaudeUsage/Services/ErrorLogger.swift:100
