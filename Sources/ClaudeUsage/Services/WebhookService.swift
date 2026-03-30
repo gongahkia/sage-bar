@@ -39,7 +39,7 @@ class WebhookService {
             ErrorLogger.shared.log(msg, level: "WARN")
             throw APIError.networkError(URLError(.badURL))
         }
-        let data = buildPayload(event: event, snapshot: snapshot, template: config.payloadTemplate)
+        let data = try buildPayload(event: event, snapshot: snapshot, template: config.payloadTemplate)
         guard data.count <= maxPayloadBytes else {
             let msg = "Webhook payload too large (\(data.count) bytes); max allowed is \(maxPayloadBytes)"
             ErrorLogger.shared.log(msg, level: "WARN")
@@ -93,7 +93,7 @@ class WebhookService {
         if let e = lastError { throw e }
     }
 
-    func buildPayload(event: WebhookEvent, snapshot: UsageSnapshot, template: String?) -> Data {
+    func buildPayload(event: WebhookEvent, snapshot: UsageSnapshot, template: String?) throws -> Data {
         if let tpl = template, !tpl.isEmpty {
             var s = tpl
             let burnRate: Double
@@ -113,7 +113,11 @@ class WebhookService {
             s = s.replacingOccurrences(of: "{{date}}", with: SharedDateFormatters.iso8601InternetDateTime.string(from: snapshot.timestamp))
             s = s.replacingOccurrences(of: "{{burn_rate_usd_per_hour}}", with: String(format: "%.4f", burnRate))
             s = s.replacingOccurrences(of: "{{threshold_usd_per_hour}}", with: String(format: "%.4f", burnRateThreshold))
-            return s.data(using: .utf8) ?? Data()
+            guard let encoded = s.data(using: .utf8) else {
+                ErrorLogger.shared.log("Webhook payload template produced non-UTF8 output", level: "WARN")
+                throw APIError.decodingFailed
+            }
+            return encoded
         }
         var obj: [String: Any] = [
             "event": event.name,
@@ -133,7 +137,7 @@ class WebhookService {
         do { return try JSONSerialization.data(withJSONObject: obj) }
         catch {
             ErrorLogger.shared.log("Webhook payload serialization failed: \(error.localizedDescription)", level: "WARN")
-            return Data()
+            throw APIError.decodingFailed
         }
     }
 
@@ -159,11 +163,19 @@ class WebhookService {
         }
         do {
             let (_, resp) = try await session.data(for: req)
-            guard (resp as? HTTPURLResponse).map({ (200...299).contains($0.statusCode) }) == true else {
+            guard let http = resp as? HTTPURLResponse else {
+                ErrorLogger.shared.log("Webhook test received non-HTTP response", level: "WARN")
                 return .failure(APIError.serverError(0))
             }
+            guard (200...299).contains(http.statusCode) else {
+                ErrorLogger.shared.log("Webhook test failed with HTTP \(http.statusCode)", level: "WARN")
+                return .failure(APIError.serverError(http.statusCode))
+            }
             return .success(())
-        } catch { return .failure(error) }
+        } catch {
+            ErrorLogger.shared.log("Webhook sendTest failed: \(error.localizedDescription)", level: "WARN")
+            return .failure(error)
+        }
     }
 
     private func isRetryableStatus(_ statusCode: Int) -> Bool {
