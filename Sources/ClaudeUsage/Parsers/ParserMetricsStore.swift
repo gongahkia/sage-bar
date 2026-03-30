@@ -83,10 +83,7 @@ final class ParserMetricsStore {
         wallTimeMs: Int
     ) {
         queue.async {
-            var all: [String: ParserMetrics] = [:]
-            if let data = try? Data(contentsOf: self.fileURL) {
-                all = (try? JSONDecoder().decode([String: ParserMetrics].self, from: data)) ?? [:]
-            }
+            var all = self.loadMetrics(context: "record")
             let prev = all[parser] ?? ParserMetrics(
                 runs: 0,
                 filesScanned: 0,
@@ -116,8 +113,8 @@ final class ParserMetricsStore {
 
     func snapshot() -> [ParserMetricsSnapshot] {
         queue.sync {
-            guard let data = try? Data(contentsOf: self.fileURL),
-                  let all = try? JSONDecoder().decode([String: ParserMetrics].self, from: data) else { return [] }
+            let all = self.loadMetrics(context: "snapshot")
+            guard !all.isEmpty else { return [] }
             return all.map { parser, metrics in
                 ParserMetricsSnapshot(
                     parser: parser,
@@ -131,6 +128,24 @@ final class ParserMetricsStore {
                 )
             }
             .sorted { $0.parser < $1.parser }
+        }
+    }
+
+    private func loadMetrics(context: String) -> [String: ParserMetrics] {
+        do {
+            let data = try Data(contentsOf: self.fileURL)
+            if data.isEmpty {
+                return [:]
+            }
+            return try JSONDecoder().decode([String: ParserMetrics].self, from: data)
+        } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
+            return [:]
+        } catch {
+            ErrorLogger.shared.log(
+                "Parser metrics \(context) decode failed: \(error.localizedDescription)",
+                level: "WARN"
+            )
+            return [:]
         }
     }
 }
