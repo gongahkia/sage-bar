@@ -152,10 +152,14 @@ class MenuBarManager {
         let config = ConfigManager.shared.load()
         let active = Account.activeAccounts(in: config)
         let selected = AccountSelectionService.currentAccount(in: active)
+        let aggregate = aggregateToday(for: active)
 
         mainMenu.addItem(disabledMenuItem("Sage Bar", isHeader: true))
-        mainMenu.addItem(disabledMenuItem(currentAccountTitle(selected, active: active)))
-        mainMenu.addItem(disabledMenuItem(todaySummaryTitle(for: selected)))
+        mainMenu.addItem(disabledMenuItem(accountsOverviewTitle(active: active)))
+        mainMenu.addItem(disabledMenuItem(todaySummaryTitle(aggregate: aggregate)))
+        if active.count > 1 {
+            mainMenu.addItem(disabledMenuItem(selectedAccountTitle(selected, active: active)))
+        }
         mainMenu.addItem(disabledMenuItem(lastSyncTitle()))
         mainMenu.addItem(.separator())
 
@@ -498,16 +502,24 @@ class MenuBarManager {
         )
     }
 
-    private func currentAccountTitle(_ selected: Account?, active: [Account]) -> String {
-        guard let selected else { return "Current Account: None" }
-        return "Current: \(selected.displayLabel(among: active))"
+    private func accountsOverviewTitle(active: [Account]) -> String {
+        switch active.count {
+        case 0:
+            return "No active accounts"
+        case 1:
+            return "1 active account"
+        default:
+            return "\(active.count) active accounts"
+        }
     }
 
-    private func todaySummaryTitle(for account: Account?) -> String {
-        guard let account else { return "Today: No data" }
-        let aggregate = CacheManager.shared.todayAggregate(forAccount: account.id)
-        let tokens = aggregate.totalInputTokens + aggregate.totalOutputTokens
-        return "\(String(format: "$%.4f", aggregate.totalCostUSD)) today, \(formatCount(tokens)) tokens"
+    private func selectedAccountTitle(_ selected: Account?, active: [Account]) -> String {
+        guard let selected else { return "Current Account: None" }
+        return "Selected: \(selected.displayLabel(among: active))"
+    }
+
+    private func todaySummaryTitle(aggregate: MenuBarUsageAggregate) -> String {
+        "\(String(format: "$%.4f", aggregate.totalCostUSD)) today, \(formatCount(aggregate.totalTokens)) tokens"
     }
 
     private func lastSyncTitle() -> String {
@@ -624,17 +636,16 @@ class MenuBarManager {
         guard let btn = statusItem.button else { return }
         var baseTitle = ""
         var baseImage: NSImage?
-        let snap = await firstActiveSnapshot(config: config)
+        let activeAccounts = Account.activeAccounts(in: config)
+        let aggregate = await aggregateTodayAsync(for: activeAccounts)
+        let snap = aggregate.snapshot()
         switch config.display.menubarStyle {
         case "cost":
-            if let snap { baseTitle = String(format: "$%.2f", snap.totalCostUSD) }
+            baseTitle = String(format: "$%.2f", aggregate.totalCostUSD)
         case "tokens":
-            if let snap {
-                let total = snap.inputTokens + snap.outputTokens
-                baseTitle = total >= 1000 ? "\(total / 1000)k" : "\(total)"
-            }
+            baseTitle = formatCount(aggregate.totalTokens)
         default: // "icon"
-            let health = await currentHealth(config: config)
+            let health = currentHealth(config: config, aggregate: aggregate)
             baseImage = MenuBarIconRenderer.renderFromSnapshot(snap, health: health)
         }
         btn.title = baseTitle
@@ -642,23 +653,22 @@ class MenuBarManager {
         await applyClaudeAIStatusBadge(config: config, button: btn)
     }
 
-    private func currentHealth(config: Config) async -> HealthDot {
-        guard let snap = await firstActiveSnapshot(config: config) else { return .error }
-        let age = Date().timeIntervalSince(snap.timestamp)
+    private func currentHealth(config: Config, aggregate: MenuBarUsageAggregate) -> HealthDot {
+        guard let latestTimestamp = aggregate.latestTimestamp else { return .error }
+        let age = Date().timeIntervalSince(latestTimestamp)
         if age > TimeInterval(config.pollIntervalSeconds * 2) { return .error }
-        if snap.costConfidence == .estimated { return .estimated }
+        if aggregate.costConfidence == .estimated { return .estimated }
         return .healthy
     }
 
-    private func firstActiveSnapshot(config: Config) async -> UsageSnapshot? {
-        let activeAccounts = Account.activeAccounts(in: config)
-        guard let account = AccountSelectionService.currentAccount(in: activeAccounts) ?? activeAccounts.first else { return nil }
-        return await CacheManager.shared.latestAsync(forAccount: account.id)
-    }
-
     private func checkStaleness(config: Config) async {
-        guard let snap = await firstActiveSnapshot(config: config),
-              let btn = statusItem.button else { return }
+        guard let btn = statusItem.button else { return }
+        let activeAccounts = Account.activeAccounts(in: config)
+        let aggregate = await aggregateTodayAsync(for: activeAccounts)
+        guard let snap = aggregate.snapshot() else {
+            btn.appearsDisabled = config.display.showBadge
+            return
+        }
         let age = Date().timeIntervalSince(snap.timestamp)
         let threshold = TimeInterval(config.pollIntervalSeconds * 2)
         if age > threshold && config.display.showBadge {
@@ -682,12 +692,17 @@ class MenuBarManager {
 
     private func redrawSparkline(config: Config) async {
         let activeAccounts = Account.activeAccounts(in: config)
-        guard let account = AccountSelectionService.currentAccount(in: activeAccounts) ?? activeAccounts.first else { return }
-        let snaps = await CacheManager.shared.historyAsync(
-            forAccount: account.id,
-            days: config.sparkline.windowHours / 24 + 1
-        )
-        updateSparklineIcon(snapshots: snaps, config: config.sparkline)
+        guard !activeAccounts.isEmpty else { return }
+        var snapshots: [UsageSnapshot] = []
+        snapshots.reserveCapacity(activeAccounts.count * 24)
+        for account in activeAccounts {
+            let history = await CacheManager.shared.historyAsync(
+                forAccount: account.id,
+                days: config.sparkline.windowHours / 24 + 1
+            )
+            snapshots.append(contentsOf: history)
+        }
+        updateSparklineIcon(snapshots: snapshots.sorted { $0.timestamp < $1.timestamp }, config: config.sparkline)
     }
 
     // MARK: – Dual icon
