@@ -22,16 +22,17 @@ struct MenuBarIconRenderer {
         let barBottom: CGFloat = 2
         let maxBarHeight: CGFloat = 14
         let barX: CGFloat = 4
+        let barColor = adaptiveMenuBarGlyphColor()
         let bars: [(ratio: Double, alpha: CGFloat)] = [
-            (inputRatio, 1.0),
-            (outputRatio, 0.7),
-            (cacheRatio, 0.4),
+            (inputRatio, 0.95),
+            (outputRatio, 0.72),
+            (cacheRatio, 0.48),
         ]
         for (i, bar) in bars.enumerated() {
             let h = max(2, CGFloat(max(0, min(1, bar.ratio))) * maxBarHeight)
             let x = barX + CGFloat(i) * (barWidth + barSpacing)
             let rect = CGRect(x: x, y: barBottom, width: barWidth, height: h)
-            ctx.setFillColor(NSColor.white.withAlphaComponent(bar.alpha).cgColor)
+            ctx.setFillColor(barColor.withAlphaComponent(bar.alpha).cgColor)
             let path = CGPath(roundedRect: rect, cornerWidth: 1, cornerHeight: 1, transform: nil)
             ctx.addPath(path)
             ctx.fillPath()
@@ -55,6 +56,11 @@ struct MenuBarIconRenderer {
         img.unlockFocus()
         img.isTemplate = false // colored dot requires non-template
         return img
+    }
+
+    private static func adaptiveMenuBarGlyphColor() -> NSColor {
+        let appearance = NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua])
+        return appearance == .darkAqua ? .white : .labelColor
     }
 
     static func renderFromSnapshot(
