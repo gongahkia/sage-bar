@@ -267,7 +267,7 @@ private struct SetupWizardView: View {
       Spacer()
 
       if currentStep == .finish {
-        Button("Open Sage Bar") {
+        Button("Show Sage Bar") {
           onFinish()
           Task { @MainActor in
             MenuBarManager.shared.presentPopover()
@@ -600,7 +600,7 @@ private struct SetupWizardView: View {
       readinessRow(
         title: "Menu bar",
         subtitle: "Sage Bar lives in the top-right menu bar area and opens from its status item.",
-        buttonTitle: "Open Sage Bar"
+        buttonTitle: "Show Sage Bar"
       ) {
         Task { @MainActor in
           MenuBarManager.shared.presentPopover()

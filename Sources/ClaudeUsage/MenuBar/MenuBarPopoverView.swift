@@ -696,10 +696,6 @@ struct MenuBarPopoverView: View {
         Button("History") { showHistory = true }
           .controlSize(.small)
       }
-      Button("Dashboard") {
-        DashboardWindowController.shared.showWindow()
-      }
-      .controlSize(.small)
       Menu("More") {
         Button("Export CSV") {
           exportAllActiveAccountsCSV()

@@ -228,10 +228,6 @@ class MenuBarManager {
         exportUsageItem.target = self
         mainMenu.addItem(exportUsageItem)
         mainMenu.addItem(.separator())
-        // open sage bar (lockout-style)
-        let openItem = NSMenuItem(title: "Open Sage Bar…", action: #selector(openSageBar), keyEquivalent: "o")
-        openItem.target = self
-        mainMenu.addItem(openItem)
         let checkItem = NSMenuItem(title: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "")
         checkItem.target = self
         mainMenu.addItem(checkItem)
@@ -241,7 +237,6 @@ class MenuBarManager {
     }
 
     @objc private func refreshNow() { PollingService.shared.forceRefresh() }
-    @objc private func openSageBar() { DashboardWindowController.shared.showWindow() }
     @objc private func runSetupWizard() { OnboardingWindowController.shared.showWindow(force: true) }
     @objc private func openAccountFromMenu(_ sender: NSMenuItem) {
         guard let rawID = sender.representedObject as? String,
