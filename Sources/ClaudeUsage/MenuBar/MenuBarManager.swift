@@ -414,6 +414,88 @@ class MenuBarManager {
         return item
     }
 
+    private struct MenuBarUsageAggregate {
+        let accountCount: Int
+        let totalInputTokens: Int
+        let totalOutputTokens: Int
+        let totalCacheCreationTokens: Int
+        let totalCacheReadTokens: Int
+        let totalCostUSD: Double
+        let latestTimestamp: Date?
+        let modelBreakdown: [ModelUsage]
+        let costConfidence: CostConfidence
+
+        var totalTokens: Int {
+            totalInputTokens + totalOutputTokens
+        }
+
+        var hasData: Bool {
+            latestTimestamp != nil
+        }
+
+        func snapshot() -> UsageSnapshot? {
+            guard let latestTimestamp else { return nil }
+            return UsageSnapshot(
+                accountId: UUID(),
+                timestamp: latestTimestamp,
+                inputTokens: totalInputTokens,
+                outputTokens: totalOutputTokens,
+                cacheCreationTokens: totalCacheCreationTokens,
+                cacheReadTokens: totalCacheReadTokens,
+                totalCostUSD: totalCostUSD,
+                modelBreakdown: modelBreakdown,
+                costConfidence: costConfidence
+            )
+        }
+    }
+
+    private func aggregateToday(for accounts: [Account]) -> MenuBarUsageAggregate {
+        let aggregates = accounts.map { CacheManager.shared.todayAggregate(forAccount: $0.id) }
+        return makeAggregate(accountCount: accounts.count, dailyAggregates: aggregates)
+    }
+
+    private func aggregateTodayAsync(for accounts: [Account]) async -> MenuBarUsageAggregate {
+        var aggregates: [DailyAggregate] = []
+        aggregates.reserveCapacity(accounts.count)
+        for account in accounts {
+            aggregates.append(await CacheManager.shared.todayAggregateAsync(forAccount: account.id))
+        }
+        return makeAggregate(accountCount: accounts.count, dailyAggregates: aggregates)
+    }
+
+    private func makeAggregate(
+        accountCount: Int,
+        dailyAggregates: [DailyAggregate]
+    ) -> MenuBarUsageAggregate {
+        let snapshots = dailyAggregates.flatMap(\.snapshots)
+        let models = Dictionary(grouping: snapshots.flatMap(\.modelBreakdown), by: \.modelId)
+            .map { modelId, rows in
+                ModelUsage(
+                    modelId: modelId,
+                    inputTokens: rows.reduce(0) { $0 + $1.inputTokens },
+                    outputTokens: rows.reduce(0) { $0 + $1.outputTokens },
+                    cacheTokens: rows.reduce(0) { $0 + $1.cacheTokens },
+                    costUSD: rows.reduce(0) { $0 + $1.costUSD }
+                )
+            }
+            .sorted {
+                ($0.inputTokens + $0.outputTokens + $0.cacheTokens)
+                    > ($1.inputTokens + $1.outputTokens + $1.cacheTokens)
+            }
+        let hasEstimatedCost = snapshots.contains { $0.costConfidence == .estimated }
+        return MenuBarUsageAggregate(
+            accountCount: accountCount,
+            totalInputTokens: dailyAggregates.reduce(0) { $0 + $1.totalInputTokens },
+            totalOutputTokens: dailyAggregates.reduce(0) { $0 + $1.totalOutputTokens },
+            totalCacheCreationTokens: snapshots.reduce(0) { $0 + $1.cacheCreationTokens },
+            totalCacheReadTokens: snapshots.reduce(0) { $0 + $1.cacheReadTokens },
+            totalCostUSD: dailyAggregates.reduce(0) { $0 + $1.totalCostUSD },
+            latestTimestamp: snapshots.map(\.timestamp).max(),
+            modelBreakdown: models,
+            costConfidence: hasEstimatedCost ? .estimated : .billingGrade
+        )
+    }
+
     private func currentAccountTitle(_ selected: Account?, active: [Account]) -> String {
         guard let selected else { return "Current Account: None" }
         return "Current: \(selected.displayLabel(among: active))"
