@@ -151,83 +151,49 @@ class MenuBarManager {
         let config = ConfigManager.shared.load()
         let active = Account.activeAccounts(in: config)
         let selected = AccountSelectionService.currentAccount(in: active)
-        // header
-        let titleItem = NSMenuItem(title: "Sage Bar", action: nil, keyEquivalent: "")
-        titleItem.attributedTitle = NSAttributedString(string: "Sage Bar", attributes: [.font: NSFontManager.shared.convert(NSFont.menuFont(ofSize: 13), toHaveTrait: .boldFontMask)])
-        mainMenu.addItem(titleItem)
-        if let date = PollingService.shared.lastPollDate {
-            let fmt = RelativeDateTimeFormatter(); fmt.unitsStyle = .abbreviated
-            let ago = fmt.localizedString(for: date, relativeTo: Date())
-            let sub = NSMenuItem(title: "Last synced: \(ago)", action: nil, keyEquivalent: "")
-            sub.attributedTitle = NSAttributedString(string: "Last synced: \(ago)", attributes: [.font: NSFont.menuFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor])
-            mainMenu.addItem(sub)
-        }
+
+        mainMenu.addItem(disabledMenuItem("Sage Bar", isHeader: true))
+        mainMenu.addItem(disabledMenuItem(currentAccountTitle(selected, active: active)))
+        mainMenu.addItem(disabledMenuItem(todaySummaryTitle(for: selected)))
+        mainMenu.addItem(disabledMenuItem(lastSyncTitle()))
         mainMenu.addItem(.separator())
-        let pinnedAccounts = active.filter(\.isPinned)
-        if !pinnedAccounts.isEmpty {
-            let pinnedHeader = NSMenuItem(title: "Pinned", action: nil, keyEquivalent: "")
-            pinnedHeader.isEnabled = false
-            mainMenu.addItem(pinnedHeader)
-            for account in pinnedAccounts {
-                let item = NSMenuItem(title: account.displayLabel(among: active), action: #selector(openAccountFromMenu(_:)), keyEquivalent: "")
-                item.target = self
-                item.representedObject = account.id.uuidString
-                item.state = account.id == selected?.id ? .on : .off
-                mainMenu.addItem(item)
-            }
-            mainMenu.addItem(.separator())
-        }
-        // per-account usage
-        if active.isEmpty {
-            let noAcct = NSMenuItem(title: "No active accounts", action: nil, keyEquivalent: "")
-            noAcct.isEnabled = false
-            mainMenu.addItem(noAcct)
-        }
-        for account in active {
-            let agg = CacheManager.shared.todayAggregate(forAccount: account.id)
-            let costStr = String(format: "$%.4f", agg.totalCostUSD)
-            let tokens = agg.totalInputTokens + agg.totalOutputTokens
-            let unit: String
-            switch account.type {
-            case .githubCopilot: unit = "activities"
-            case .claudeAI: unit = "messages"
-            default: unit = "tokens"
-            }
-            let tokStr = tokens >= 1000 ? "\(tokens / 1000)k \(unit)" : "\(tokens) \(unit)"
-            let costLabel: String
-            switch account.type {
-            case .githubCopilot, .claudeAI: costLabel = "n/a"
-            case .windsurfEnterprise: costLabel = "\(costStr) est."
-            default: costLabel = costStr
-            }
-            let displayName = account.displayLabel(among: active)
-            let acctItem = NSMenuItem(title: "\(displayName)  —  \(costLabel)", action: nil, keyEquivalent: "")
-            acctItem.attributedTitle = NSAttributedString(string: "\(displayName)  —  \(costLabel)", attributes: [.font: NSFont.menuFont(ofSize: 13)])
-            acctItem.state = account.id == selected?.id ? .on : .off
-            mainMenu.addItem(acctItem)
-            let detail = NSMenuItem(title: "\(tokStr)  ·  \(account.type.rawValue)", action: nil, keyEquivalent: "")
-            detail.attributedTitle = NSAttributedString(string: "\(tokStr)  ·  \(account.type.displayName)", attributes: [.font: NSFont.menuFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor])
-            detail.indentationLevel = 1
-            mainMenu.addItem(detail)
-        }
-        mainMenu.addItem(.separator())
-        // actions
-        let setupItem = NSMenuItem(title: "Run Setup Wizard", action: #selector(runSetupWizard), keyEquivalent: "")
-        setupItem.target = self
-        mainMenu.addItem(setupItem)
-        let nextAccountItem = NSMenuItem(title: "Next Account", action: #selector(selectNextAccountFromMenu), keyEquivalent: "]")
-        nextAccountItem.target = self
-        mainMenu.addItem(nextAccountItem)
-        let previousAccountItem = NSMenuItem(title: "Previous Account", action: #selector(selectPreviousAccountFromMenu), keyEquivalent: "[")
-        previousAccountItem.target = self
-        mainMenu.addItem(previousAccountItem)
+
         let refreshItem = NSMenuItem(title: "Refresh Now", action: #selector(refreshNow), keyEquivalent: "r")
         refreshItem.target = self
         mainMenu.addItem(refreshItem)
-        let exportUsageItem = NSMenuItem(title: "Export All Active Accounts CSV…", action: #selector(exportAllActiveAccountsCSV), keyEquivalent: "")
-        exportUsageItem.target = self
-        mainMenu.addItem(exportUsageItem)
+
+        mainMenu.addItem(submenuItem("Current Account", submenu: accountMenu(active: active, selected: selected)))
+        mainMenu.addItem(submenuItem("Display", submenu: displayMenu(config: config)))
+        mainMenu.addItem(submenuItem("Providers", submenu: providersMenu(active: active)))
+        mainMenu.addItem(submenuItem("Alerts", submenu: alertsMenu(config: config, selected: selected)))
         mainMenu.addItem(.separator())
+
+        let copyItem = NSMenuItem(title: "Copy Today Summary", action: #selector(copyTodaySummary), keyEquivalent: "c")
+        copyItem.keyEquivalentModifierMask = [.command, .shift]
+        copyItem.target = self
+        copyItem.isEnabled = !active.isEmpty
+        mainMenu.addItem(copyItem)
+
+        let exportUsageItem = NSMenuItem(title: "Export CSV…", action: #selector(exportAllActiveAccountsCSV), keyEquivalent: "")
+        exportUsageItem.target = self
+        exportUsageItem.isEnabled = !active.isEmpty
+        mainMenu.addItem(exportUsageItem)
+
+        let historyItem = NSMenuItem(title: "History", action: #selector(showHistory), keyEquivalent: "h")
+        historyItem.keyEquivalentModifierMask = [.command, .shift]
+        historyItem.target = self
+        historyItem.isEnabled = selected != nil
+        mainMenu.addItem(historyItem)
+        mainMenu.addItem(.separator())
+
+        let settingsItem = NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
+        settingsItem.target = self
+        mainMenu.addItem(settingsItem)
+
+        let setupItem = NSMenuItem(title: "Run Setup Wizard", action: #selector(runSetupWizard), keyEquivalent: "")
+        setupItem.target = self
+        mainMenu.addItem(setupItem)
+
         let checkItem = NSMenuItem(title: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "")
         checkItem.target = self
         mainMenu.addItem(checkItem)
@@ -237,18 +203,245 @@ class MenuBarManager {
     }
 
     @objc private func refreshNow() { PollingService.shared.forceRefresh() }
+    @objc private func copyTodaySummary() {
+        let active = Account.activeAccounts(in: ConfigManager.shared.load())
+        guard !active.isEmpty else { return }
+        _ = UsageReportingService.copySummaryToPasteboard(for: active)
+    }
+    @objc private func showHistory() {
+        let active = Account.activeAccounts(in: ConfigManager.shared.load())
+        HistoryWindowController.shared.showWindow(
+            account: AccountSelectionService.currentAccount(in: active) ?? active.first
+        )
+    }
+    @objc private func openSettings() { SettingsWindowController.shared.showWindow() }
     @objc private func runSetupWizard() { OnboardingWindowController.shared.showWindow(force: true) }
     @objc private func openAccountFromMenu(_ sender: NSMenuItem) {
         guard let rawID = sender.representedObject as? String,
               let accountID = UUID(uuidString: rawID) else { return }
         AccountSelectionService.select(accountID: accountID)
-        togglePopover()
+        Task { await updateTitle(config: ConfigManager.shared.load()) }
     }
     @objc private func selectNextAccountFromMenu() {
         selectNextAccountAndPresent()
     }
     @objc private func selectPreviousAccountFromMenu() {
         selectPreviousAccountAndPresent()
+    }
+
+    @objc private func setDisplayStyleFromMenu(_ sender: NSMenuItem) {
+        guard let style = sender.representedObject as? String else { return }
+        var config = ConfigManager.shared.load()
+        config.display.menubarStyle = style
+        _ = ConfigManager.shared.save(config)
+        Task { await updateTitle(config: config) }
+    }
+
+    @objc private func toggleBadgeFromMenu() {
+        var config = ConfigManager.shared.load()
+        config.display.showBadge.toggle()
+        _ = ConfigManager.shared.save(config)
+        Task { await updateTitle(config: config) }
+    }
+
+    @objc private func toggleSparklineFromMenu() {
+        var config = ConfigManager.shared.load()
+        config.sparkline.enabled.toggle()
+        _ = ConfigManager.shared.save(config)
+        Task { await updateTitle(config: config) }
+    }
+
+    @objc private func toggleDualIconFromMenu() {
+        var config = ConfigManager.shared.load()
+        config.display.dualIcon.toggle()
+        _ = ConfigManager.shared.save(config)
+        Task {
+            await updateTitle(config: config)
+            await updateDualIcon(config: config)
+        }
+    }
+
+    @objc private func configureAlerts() {
+        SettingsWindowController.shared.showWindow()
+    }
+
+    private func accountMenu(active: [Account], selected: Account?) -> NSMenu {
+        let menu = NSMenu()
+        guard !active.isEmpty else {
+            menu.addItem(disabledMenuItem("No active accounts"))
+            return menu
+        }
+
+        for account in active {
+            let item = NSMenuItem(
+                title: accountMenuTitle(account, active: active),
+                action: #selector(openAccountFromMenu(_:)),
+                keyEquivalent: ""
+            )
+            item.target = self
+            item.representedObject = account.id.uuidString
+            item.state = account.id == selected?.id ? .on : .off
+            menu.addItem(item)
+        }
+
+        menu.addItem(.separator())
+        let previous = NSMenuItem(title: "Previous Account", action: #selector(selectPreviousAccountFromMenu), keyEquivalent: "[")
+        previous.target = self
+        menu.addItem(previous)
+        let next = NSMenuItem(title: "Next Account", action: #selector(selectNextAccountFromMenu), keyEquivalent: "]")
+        next.target = self
+        menu.addItem(next)
+        return menu
+    }
+
+    private func displayMenu(config: Config) -> NSMenu {
+        let menu = NSMenu()
+        for option in [
+            ("icon", "Icon"),
+            ("cost", "Cost"),
+            ("tokens", "Tokens"),
+        ] {
+            let item = NSMenuItem(title: option.1, action: #selector(setDisplayStyleFromMenu(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = option.0
+            item.state = config.display.menubarStyle == option.0 ? .on : .off
+            menu.addItem(item)
+        }
+        menu.addItem(.separator())
+        let badge = NSMenuItem(title: "Show Status Badge", action: #selector(toggleBadgeFromMenu), keyEquivalent: "")
+        badge.target = self
+        badge.state = config.display.showBadge ? .on : .off
+        menu.addItem(badge)
+
+        let sparkline = NSMenuItem(title: "Show Sparkline", action: #selector(toggleSparklineFromMenu), keyEquivalent: "")
+        sparkline.target = self
+        sparkline.state = config.sparkline.enabled ? .on : .off
+        menu.addItem(sparkline)
+
+        let dualIcon = NSMenuItem(title: "Dual Menu Bar Items", action: #selector(toggleDualIconFromMenu), keyEquivalent: "")
+        dualIcon.target = self
+        dualIcon.state = config.display.dualIcon ? .on : .off
+        dualIcon.isEnabled = Account.activeAccounts(in: config).count <= 2
+        menu.addItem(dualIcon)
+        return menu
+    }
+
+    private func providersMenu(active: [Account]) -> NSMenu {
+        let menu = NSMenu()
+        guard !active.isEmpty else {
+            menu.addItem(disabledMenuItem("No providers active"))
+            return menu
+        }
+
+        let grouped = Dictionary(grouping: active, by: \.type)
+        for type in AccountType.allCases where grouped[type] != nil {
+            let accounts = grouped[type] ?? []
+            let title = accounts.count == 1 ? type.displayName : "\(type.displayName) (\(accounts.count))"
+            let item = disabledMenuItem(title)
+            item.state = .on
+            menu.addItem(item)
+        }
+        menu.addItem(.separator())
+        let settings = NSMenuItem(title: "Manage Providers…", action: #selector(openSettings), keyEquivalent: "")
+        settings.target = self
+        menu.addItem(settings)
+        return menu
+    }
+
+    private func alertsMenu(config: Config, selected: Account?) -> NSMenu {
+        let menu = NSMenu()
+        if let selected {
+            let limitText = selected.costLimitUSD.map { String(format: "$%.2f/day", $0) } ?? "No daily limit"
+            menu.addItem(disabledMenuItem("Daily Limit: \(limitText)"))
+        } else {
+            menu.addItem(disabledMenuItem("Daily Limit: No account"))
+        }
+        menu.addItem(disabledMenuItem(burnRateMenuTitle(config: config, selected: selected)))
+        menu.addItem(disabledMenuItem(claudeAIQuotaMenuTitle(config: config)))
+        menu.addItem(.separator())
+        let configure = NSMenuItem(title: "Configure Alerts…", action: #selector(configureAlerts), keyEquivalent: "")
+        configure.target = self
+        menu.addItem(configure)
+        return menu
+    }
+
+    private func submenuItem(_ title: String, submenu: NSMenu) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        item.submenu = submenu
+        return item
+    }
+
+    private func disabledMenuItem(_ title: String, isHeader: Bool = false) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        item.isEnabled = false
+        let font = isHeader
+            ? NSFontManager.shared.convert(NSFont.menuFont(ofSize: 13), toHaveTrait: .boldFontMask)
+            : NSFont.menuFont(ofSize: 12)
+        item.attributedTitle = NSAttributedString(
+            string: title,
+            attributes: [
+                .font: font,
+                .foregroundColor: isHeader ? NSColor.labelColor : NSColor.secondaryLabelColor,
+            ]
+        )
+        return item
+    }
+
+    private func currentAccountTitle(_ selected: Account?, active: [Account]) -> String {
+        guard let selected else { return "Current Account: None" }
+        return "Current: \(selected.displayLabel(among: active))"
+    }
+
+    private func todaySummaryTitle(for account: Account?) -> String {
+        guard let account else { return "Today: No data" }
+        let aggregate = CacheManager.shared.todayAggregate(forAccount: account.id)
+        let tokens = aggregate.totalInputTokens + aggregate.totalOutputTokens
+        return "\(String(format: "$%.4f", aggregate.totalCostUSD)) today, \(formatCount(tokens)) tokens"
+    }
+
+    private func lastSyncTitle() -> String {
+        guard let date = PollingService.shared.lastPollDate else { return "Last synced: Never" }
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        return "Last synced: \(formatter.localizedString(for: date, relativeTo: Date()))"
+    }
+
+    private func accountMenuTitle(_ account: Account, active: [Account]) -> String {
+        let aggregate = CacheManager.shared.todayAggregate(forAccount: account.id)
+        let cost = account.type == .githubCopilot || account.type == .claudeAI
+            ? "n/a"
+            : String(format: "$%.2f", aggregate.totalCostUSD)
+        return "\(account.displayLabel(among: active))  \(cost)"
+    }
+
+    private func burnRateMenuTitle(config: Config, selected: Account?) -> String {
+        guard config.burnRate.enabled else { return "Burn Rate: Off" }
+        guard let selected else { return "Burn Rate: No account" }
+        let current = PollingService.shared.burnRateUSDPerHourByAccount[selected.id]
+        let threshold = PollingService.shared.burnRateThresholdUSDPerHourByAccount[selected.id]
+            ?? config.burnRate.perAccountUSDPerHourThreshold[selected.id.uuidString]
+            ?? config.burnRate.defaultUSDPerHourThreshold
+        let currentText = current.map { String(format: "$%.2f/h", $0) } ?? "No data"
+        return "Burn Rate: \(currentText) / \(String(format: "$%.2f/h", threshold))"
+    }
+
+    private func claudeAIQuotaMenuTitle(config: Config) -> String {
+        let claudeAccounts = Account.activeAccounts(in: config).filter { $0.type == .claudeAI }
+        guard !claudeAccounts.isEmpty else { return "Claude AI Quota: No account" }
+        let threshold = config.claudeAI.lowMessagesThreshold
+        return config.claudeAI.notifyOnLowMessages
+            ? "Claude AI Quota: On (≤\(threshold))"
+            : "Claude AI Quota: Off"
+    }
+
+    private func formatCount(_ value: Int) -> String {
+        if value >= 1_000_000 {
+            return String(format: "%.1fM", Double(value) / 1_000_000)
+        }
+        if value >= 1_000 {
+            return "\(value / 1_000)k"
+        }
+        return "\(value)"
     }
 
     private func onUsageUpdate(_ notif: Notification) async {
