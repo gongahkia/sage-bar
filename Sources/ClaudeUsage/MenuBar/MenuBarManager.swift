@@ -468,20 +468,22 @@ class MenuBarManager {
         dailyAggregates: [DailyAggregate]
     ) -> MenuBarUsageAggregate {
         let snapshots = dailyAggregates.flatMap(\.snapshots)
-        let models = Dictionary(grouping: snapshots.flatMap(\.modelBreakdown), by: \.modelId)
-            .map { modelId, rows in
-                ModelUsage(
-                    modelId: modelId,
-                    inputTokens: rows.reduce(0) { $0 + $1.inputTokens },
-                    outputTokens: rows.reduce(0) { $0 + $1.outputTokens },
-                    cacheTokens: rows.reduce(0) { $0 + $1.cacheTokens },
-                    costUSD: rows.reduce(0) { $0 + $1.costUSD }
-                )
-            }
-            .sorted {
-                ($0.inputTokens + $0.outputTokens + $0.cacheTokens)
-                    > ($1.inputTokens + $1.outputTokens + $1.cacheTokens)
-            }
+        let modelRows = snapshots.flatMap { $0.modelBreakdown }
+        let groupedModels = Dictionary(grouping: modelRows) { $0.modelId }
+        let unsortedModels = groupedModels.map { modelId, rows in
+            ModelUsage(
+                modelId: modelId,
+                inputTokens: rows.reduce(0) { $0 + $1.inputTokens },
+                outputTokens: rows.reduce(0) { $0 + $1.outputTokens },
+                cacheTokens: rows.reduce(0) { $0 + $1.cacheTokens },
+                costUSD: rows.reduce(0) { $0 + $1.costUSD }
+            )
+        }
+        let models = unsortedModels.sorted { lhs, rhs in
+            let lhsTokens = lhs.inputTokens + lhs.outputTokens + lhs.cacheTokens
+            let rhsTokens = rhs.inputTokens + rhs.outputTokens + rhs.cacheTokens
+            return lhsTokens > rhsTokens
+        }
         let hasEstimatedCost = snapshots.contains { $0.costConfidence == .estimated }
         return MenuBarUsageAggregate(
             accountCount: accountCount,
