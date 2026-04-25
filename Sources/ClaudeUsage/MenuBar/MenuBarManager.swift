@@ -514,7 +514,7 @@ class MenuBarManager {
     }
 
     private func selectedAccountTitle(_ selected: Account?, active: [Account]) -> String {
-        guard let selected else { return "Current Account: None" }
+        guard let selected else { return "Selected: None" }
         return "Selected: \(selected.displayLabel(among: active))"
     }
 
