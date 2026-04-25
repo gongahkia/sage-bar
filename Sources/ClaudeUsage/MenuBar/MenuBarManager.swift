@@ -167,10 +167,10 @@ class MenuBarManager {
         refreshItem.target = self
         mainMenu.addItem(refreshItem)
 
-        mainMenu.addItem(submenuItem("Current Account", submenu: accountMenu(active: active, selected: selected)))
+        mainMenu.addItem(submenuItem("Accounts", submenu: accountMenu(active: active, selected: selected)))
         mainMenu.addItem(submenuItem("Display", submenu: displayMenu(config: config)))
         mainMenu.addItem(submenuItem("Providers", submenu: providersMenu(active: active)))
-        mainMenu.addItem(submenuItem("Insights", submenu: insightsMenu(config: config, selected: selected)))
+        mainMenu.addItem(submenuItem("Insights", submenu: insightsMenu(config: config, active: active, aggregate: aggregate)))
         mainMenu.addItem(submenuItem("Alerts", submenu: alertsMenu(config: config, selected: selected)))
         mainMenu.addItem(.separator())
 
@@ -366,15 +366,15 @@ class MenuBarManager {
         return menu
     }
 
-    private func insightsMenu(config: Config, selected: Account?) -> NSMenu {
+    private func insightsMenu(config: Config, active: [Account], aggregate: MenuBarUsageAggregate) -> NSMenu {
         let menu = NSMenu()
-        menu.addItem(disabledMenuItem(topModelTitle(for: selected)))
-        menu.addItem(disabledMenuItem(budgetRemainingTitle(for: selected)))
-        menu.addItem(disabledMenuItem(dataHealthTitle(config: config, selected: selected)))
+        menu.addItem(disabledMenuItem(topModelTitle(aggregate: aggregate)))
+        menu.addItem(disabledMenuItem(budgetRemainingTitle(active: active, aggregate: aggregate)))
+        menu.addItem(disabledMenuItem(dataHealthTitle(config: config, aggregate: aggregate)))
         menu.addItem(.separator())
         let copy = NSMenuItem(title: "Copy Summary", action: #selector(copyTodaySummary), keyEquivalent: "")
         copy.target = self
-        copy.isEnabled = selected != nil
+        copy.isEnabled = !active.isEmpty
         menu.addItem(copy)
         return menu
     }
@@ -542,31 +542,24 @@ class MenuBarManager {
         return "\(account.displayLabel(among: active))  \(cost)"
     }
 
-    private func topModelTitle(for account: Account?) -> String {
-        guard let account,
-              let latest = CacheManager.shared.latest(forAccount: account.id),
-              let model = latest.modelBreakdown.max(by: { lhs, rhs in
-                  (lhs.inputTokens + lhs.outputTokens + lhs.cacheTokens)
-                    < (rhs.inputTokens + rhs.outputTokens + rhs.cacheTokens)
-              }) else {
+    private func topModelTitle(aggregate: MenuBarUsageAggregate) -> String {
+        guard let model = aggregate.modelBreakdown.first else {
             return "Top Model: No data"
         }
         return "Top Model: \(shortModelName(model.modelId))"
     }
 
-    private func budgetRemainingTitle(for account: Account?) -> String {
-        guard let account else { return "Budget: No account" }
-        guard let limit = account.costLimitUSD else { return "Budget: No daily limit" }
-        let spend = CacheManager.shared.todayAggregate(forAccount: account.id).totalCostUSD
-        return "Budget Left: \(String(format: "$%.2f", max(0, limit - spend)))"
+    private func budgetRemainingTitle(active: [Account], aggregate: MenuBarUsageAggregate) -> String {
+        let totalLimit = active.compactMap(\.costLimitUSD).reduce(0, +)
+        guard totalLimit > 0 else { return "Budget: No daily limits" }
+        return "Budget Left: \(String(format: "$%.2f", max(0, totalLimit - aggregate.totalCostUSD)))"
     }
 
-    private func dataHealthTitle(config: Config, selected: Account?) -> String {
-        guard let selected,
-              let latest = CacheManager.shared.latest(forAccount: selected.id) else {
+    private func dataHealthTitle(config: Config, aggregate: MenuBarUsageAggregate) -> String {
+        guard let latestTimestamp = aggregate.latestTimestamp else {
             return "Data Health: No data"
         }
-        let age = Date().timeIntervalSince(latest.timestamp)
+        let age = Date().timeIntervalSince(latestTimestamp)
         let threshold = TimeInterval(config.pollIntervalSeconds * 2)
         return age > threshold ? "Data Health: Stale" : "Data Health: Current"
     }
