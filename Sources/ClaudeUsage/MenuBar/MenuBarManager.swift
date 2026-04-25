@@ -165,6 +165,7 @@ class MenuBarManager {
         mainMenu.addItem(submenuItem("Current Account", submenu: accountMenu(active: active, selected: selected)))
         mainMenu.addItem(submenuItem("Display", submenu: displayMenu(config: config)))
         mainMenu.addItem(submenuItem("Providers", submenu: providersMenu(active: active)))
+        mainMenu.addItem(submenuItem("Insights", submenu: insightsMenu(config: config, selected: selected)))
         mainMenu.addItem(submenuItem("Alerts", submenu: alertsMenu(config: config, selected: selected)))
         mainMenu.addItem(.separator())
 
@@ -179,12 +180,21 @@ class MenuBarManager {
         exportUsageItem.isEnabled = !active.isEmpty
         mainMenu.addItem(exportUsageItem)
 
+        let diagnosticsItem = NSMenuItem(title: "Export Diagnostics…", action: #selector(exportDiagnostics), keyEquivalent: "")
+        diagnosticsItem.target = self
+        mainMenu.addItem(diagnosticsItem)
+
         let historyItem = NSMenuItem(title: "History", action: #selector(showHistory), keyEquivalent: "h")
         historyItem.keyEquivalentModifierMask = [.command, .shift]
         historyItem.target = self
         historyItem.isEnabled = selected != nil
         mainMenu.addItem(historyItem)
         mainMenu.addItem(.separator())
+
+        let revealDataItem = NSMenuItem(title: "Reveal Data Folder", action: #selector(revealDataFolder), keyEquivalent: "")
+        revealDataItem.target = self
+        mainMenu.addItem(revealDataItem)
+        mainMenu.addItem(disabledMenuItem(versionTitle()))
 
         let settingsItem = NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
         settingsItem.target = self
@@ -215,6 +225,9 @@ class MenuBarManager {
         )
     }
     @objc private func openSettings() { SettingsWindowController.shared.showWindow() }
+    @objc private func revealDataFolder() {
+        NSWorkspace.shared.activateFileViewerSelecting([AppConstants.sharedContainerURL])
+    }
     @objc private func runSetupWizard() { OnboardingWindowController.shared.showWindow(force: true) }
     @objc private func openAccountFromMenu(_ sender: NSMenuItem) {
         guard let rawID = sender.representedObject as? String,
@@ -348,6 +361,19 @@ class MenuBarManager {
         return menu
     }
 
+    private func insightsMenu(config: Config, selected: Account?) -> NSMenu {
+        let menu = NSMenu()
+        menu.addItem(disabledMenuItem(topModelTitle(for: selected)))
+        menu.addItem(disabledMenuItem(budgetRemainingTitle(for: selected)))
+        menu.addItem(disabledMenuItem(dataHealthTitle(config: config, selected: selected)))
+        menu.addItem(.separator())
+        let copy = NSMenuItem(title: "Copy Summary", action: #selector(copyTodaySummary), keyEquivalent: "")
+        copy.target = self
+        copy.isEnabled = selected != nil
+        menu.addItem(copy)
+        return menu
+    }
+
     private func alertsMenu(config: Config, selected: Account?) -> NSMenu {
         let menu = NSMenu()
         if let selected {
@@ -406,12 +432,46 @@ class MenuBarManager {
         return "Last synced: \(formatter.localizedString(for: date, relativeTo: Date()))"
     }
 
+    private func versionTitle() -> String {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+        return "Version \(version?.isEmpty == false ? version! : "1.0.0")"
+    }
+
     private func accountMenuTitle(_ account: Account, active: [Account]) -> String {
         let aggregate = CacheManager.shared.todayAggregate(forAccount: account.id)
         let cost = account.type == .githubCopilot || account.type == .claudeAI
             ? "n/a"
             : String(format: "$%.2f", aggregate.totalCostUSD)
         return "\(account.displayLabel(among: active))  \(cost)"
+    }
+
+    private func topModelTitle(for account: Account?) -> String {
+        guard let account,
+              let latest = CacheManager.shared.latest(forAccount: account.id),
+              let model = latest.modelBreakdown.max(by: { lhs, rhs in
+                  (lhs.inputTokens + lhs.outputTokens + lhs.cacheTokens)
+                    < (rhs.inputTokens + rhs.outputTokens + rhs.cacheTokens)
+              }) else {
+            return "Top Model: No data"
+        }
+        return "Top Model: \(shortModelName(model.modelId))"
+    }
+
+    private func budgetRemainingTitle(for account: Account?) -> String {
+        guard let account else { return "Budget: No account" }
+        guard let limit = account.costLimitUSD else { return "Budget: No daily limit" }
+        let spend = CacheManager.shared.todayAggregate(forAccount: account.id).totalCostUSD
+        return "Budget Left: \(String(format: "$%.2f", max(0, limit - spend)))"
+    }
+
+    private func dataHealthTitle(config: Config, selected: Account?) -> String {
+        guard let selected,
+              let latest = CacheManager.shared.latest(forAccount: selected.id) else {
+            return "Data Health: No data"
+        }
+        let age = Date().timeIntervalSince(latest.timestamp)
+        let threshold = TimeInterval(config.pollIntervalSeconds * 2)
+        return age > threshold ? "Data Health: Stale" : "Data Health: Current"
     }
 
     private func burnRateMenuTitle(config: Config, selected: Account?) -> String {
@@ -442,6 +502,14 @@ class MenuBarManager {
             return "\(value / 1_000)k"
         }
         return "\(value)"
+    }
+
+    private func shortModelName(_ modelID: String) -> String {
+        let cleaned = modelID
+            .replacingOccurrences(of: "claude-", with: "")
+            .replacingOccurrences(of: "-latest", with: "")
+            .replacingOccurrences(of: "models/", with: "")
+        return cleaned.count > 24 ? "\(cleaned.prefix(21))…" : cleaned
     }
 
     private func onUsageUpdate(_ notif: Notification) async {
