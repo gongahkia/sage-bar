@@ -2,8 +2,8 @@ import SwiftUI
 
 struct SettingsView: View {
   enum SettingsPane: String, CaseIterable, Identifiable {
-    case accounts
     case display
+    case accounts
     case polling
     case analytics
     case integrations
@@ -17,7 +17,7 @@ struct SettingsView: View {
     var title: String {
       switch self {
       case .accounts: return "Accounts"
-      case .display: return "Display"
+      case .display: return "General"
       case .polling: return "Polling"
       case .analytics: return "Analytics"
       case .integrations: return "Integrations"
@@ -32,33 +32,32 @@ struct SettingsView: View {
     var subtitle: String {
       switch self {
       case .accounts:
-        return
-          "Manage providers, validate connections, and control how each account participates in Sage Bar."
+        return "Manage providers and account participation."
       case .display:
-        return "Tune menu bar presentation, sparkline behavior, and the global keyboard shortcut."
+        return "Tune menu bar presentation and launch behavior."
       case .polling:
-        return "Adjust refresh cadence for the app globally or on a per-provider basis."
+        return "Adjust refresh cadence."
       case .analytics:
-        return "Configure forecasts, burn-rate alerts, reporting, and model-optimizer guidance."
+        return "Forecasts, reporting, and cost guidance."
       case .integrations:
-        return "Review outgoing integrations and webhook-related behavior."
+        return "Outgoing integrations and webhooks."
       case .automations:
-        return "Define the rules that trigger commands, alerts, and follow-up actions."
+        return "Rules that trigger actions."
       case .hotkey:
-        return "Inspect the current shortcut state and adjust advanced hotkey behavior."
+        return "Keyboard shortcut behavior."
       case .sync:
-        return "Manage iCloud sync and the data-sharing behavior between Sage Bar instances."
+        return "iCloud and data sharing."
       case .diagnostics:
-        return "Inspect runtime signals, health information, and local debugging output."
+        return "Runtime health and logs."
       case .about:
-        return "Versioning, authorship, and project links for the current build."
+        return "Version and project links."
       }
     }
 
     var systemImage: String {
       switch self {
       case .accounts: return "person.2"
-      case .display: return "display"
+      case .display: return "menubar.rectangle"
       case .polling: return "clock"
       case .analytics: return "chart.bar"
       case .integrations: return "link"
@@ -71,32 +70,37 @@ struct SettingsView: View {
     }
   }
 
-  @State private var selectedPane: SettingsPane? = .accounts
-
-  private var activePane: SettingsPane {
-    selectedPane ?? .accounts
-  }
+  @State private var selectedPane: SettingsPane = .display
 
   var body: some View {
-    NavigationSplitView {
-      List(SettingsPane.allCases, selection: $selectedPane) { pane in
-        Label(pane.title, systemImage: pane.systemImage)
-          .tag(Optional(pane))
-          .padding(.vertical, 4)
+    VStack(spacing: 0) {
+      VStack(spacing: 14) {
+        Text(selectedPane.title)
+          .font(.system(size: 18, weight: .semibold))
+
+        HStack(alignment: .top, spacing: 10) {
+          ForEach(SettingsPane.allCases) { pane in
+            SettingsToolbarItem(
+              pane: pane,
+              isSelected: pane == selectedPane
+            ) {
+              selectedPane = pane
+            }
+          }
+        }
       }
-      .listStyle(.sidebar)
-      .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 260)
-    } detail: {
-      VStack(spacing: 0) {
-        SettingsPaneHeader(pane: activePane)
-        Divider()
-        detailView(for: activePane)
-          .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-      }
-      .background(Color(nsColor: .windowBackgroundColor))
+      .padding(.top, 12)
+      .padding(.bottom, 14)
+      .frame(maxWidth: .infinity)
+      .background(.bar)
+
+      Divider()
+
+      detailView(for: selectedPane)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(Color(nsColor: .windowBackgroundColor))
     }
-    .navigationSplitViewStyle(.balanced)
-    .frame(width: 960, height: 620)
+    .frame(width: 880, height: 580)
     .background(Color(nsColor: .windowBackgroundColor))
   }
 
@@ -117,33 +121,36 @@ struct SettingsView: View {
   }
 }
 
-private struct SettingsPaneHeader: View {
+private struct SettingsToolbarItem: View {
   let pane: SettingsView.SettingsPane
+  let isSelected: Bool
+  let action: () -> Void
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 12) {
-      Label(pane.title, systemImage: pane.systemImage)
-        .font(.system(size: 24, weight: .semibold))
+    Button(action: action) {
+      VStack(spacing: 6) {
+        Image(systemName: pane.systemImage)
+          .font(.system(size: 21, weight: .semibold))
+          .symbolRenderingMode(.monochrome)
+          .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+          .frame(width: 34, height: 34)
+          .background(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+              .fill(isSelected ? Color.accentColor.opacity(0.12) : Color.clear)
+          )
 
-      Text(pane.subtitle)
-        .font(.callout)
-        .foregroundColor(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
-    }
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .padding(.horizontal, 28)
-    .padding(.vertical, 24)
-    .background(
-      LinearGradient(
-        colors: [
-          Color.accentColor.opacity(0.14),
-          Color.accentColor.opacity(0.04),
-          // swiftlint:disable:next trailing_comma
-          Color.clear,
-        ],
-        startPoint: .topLeading,
-        endPoint: .bottomTrailing
+        Text(pane.title)
+          .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
+          .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+          .lineLimit(1)
+      }
+      .frame(width: 72)
+      .padding(.vertical, 6)
+      .background(
+        RoundedRectangle(cornerRadius: 10, style: .continuous)
+          .fill(isSelected ? Color(nsColor: .controlBackgroundColor) : Color.clear)
       )
-    )
+    }
+    .buttonStyle(.plain)
   }
 }
