@@ -125,7 +125,6 @@ class MenuBarManager {
     }
 
     @objc func togglePopover() {
-        guard statusItem.button != nil else { return }
         if popover.isShown {
             popover.performClose(nil)
         } else {
@@ -134,12 +133,14 @@ class MenuBarManager {
     }
 
     @objc func presentPopover() {
-        guard let btn = statusItem.button else { return }
-        popover.show(relativeTo: btn.bounds, of: btn, preferredEdge: .minY)
-        NSApp.activate(ignoringOtherApps: true)
+        showStatusMenu()
     }
 
     @objc private func handleStatusItemClick(_ sender: NSStatusBarButton) {
+        showStatusMenu()
+    }
+
+    private func showStatusMenu() {
         rebuildMainMenu()
         statusItem.menu = mainMenu
         statusItem.button?.performClick(nil)
