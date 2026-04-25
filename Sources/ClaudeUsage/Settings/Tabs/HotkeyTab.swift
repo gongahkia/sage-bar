@@ -7,25 +7,82 @@ struct HotkeyTab: View {
     @State private var hasAccessibility = AXIsProcessTrusted()
 
     var body: some View {
-        Form {
-            Toggle("Enable global hotkey", isOn: $config.hotkey.enabled)
+        ScrollView {
+            VStack(spacing: 20) {
+                HotkeySettingsGroup {
+                    HStack(spacing: 14) {
+                        Image(systemName: "keyboard")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 32, height: 32)
+                            .background(
+                                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                    .fill(Color.purple.gradient)
+                            )
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Toggle Sage Bar")
+                                .font(.system(size: 15))
+                            Text("Current shortcut: \(hotkeySummary)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer()
+
+                        Toggle("", isOn: $config.hotkey.enabled)
+                            .labelsHidden()
+                    }
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 13)
+                }
+
+                if config.hotkey.enabled {
+                    HotkeySettingsGroup {
+                        VStack(alignment: .leading, spacing: 14) {
+                            HStack {
+                                Text("Shortcut")
+                                    .font(.system(size: 15, weight: .medium))
+                                Spacer()
+                                TextField("Key", text: $config.hotkey.key)
+                                    .frame(width: 64)
+                            }
+                            MultiPicker(
+                                label: "Modifiers",
+                                options: ["command", "option", "shift", "control"],
+                                selection: $config.hotkey.modifiers
+                            )
+                            Divider()
+                            HotkeyRecorderControl(config: $config.hotkeyConfig)
+                        }
+                        .padding(18)
+                    }
+                }
+
             if !hasAccessibility {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Accessibility access required for global hotkey.")
-                        .foregroundColor(.orange).font(.caption)
-                    Button("Grant Accessibility Access…") {
-                        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
+                    HotkeySettingsGroup {
+                        HStack(spacing: 14) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 17, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .frame(width: 32, height: 32)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                        .fill(Color.orange.gradient)
+                                )
+                            Text("Accessibility access is required for global shortcuts.")
+                            Spacer()
+                            Button("Grant Access…") {
+                                NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
+                            }
+                        }
+                        .padding(18)
                     }
                 }
             }
-            if config.hotkey.enabled {
-                TextField("Key", text: $config.hotkey.key)
-                MultiPicker(label: "Modifiers", options: ["command","option","shift","control"], selection: $config.hotkey.modifiers)
-                Divider()
-                Section("Hotkey Recorder") {
-                    HotkeyRecorderControl(config: $config.hotkeyConfig)
-                }
-            }
+            .padding(32)
+            .frame(maxWidth: 760)
+            .frame(maxWidth: .infinity)
         }
         .onAppear { hasAccessibility = AXIsProcessTrusted() }
         .onChange(of: config.hotkey) { _ in
@@ -36,7 +93,37 @@ struct HotkeyTab: View {
             ConfigManager.shared.save(config)
             HotkeyManager.shared.register(config: config.hotkey, advancedConfig: config.hotkeyConfig)
         }
-        .padding()
+    }
+
+    private var hotkeySummary: String {
+        let modifiers = config.hotkey.modifiers.map {
+            switch $0 {
+            case "command": return "⌘"
+            case "shift": return "⇧"
+            case "option": return "⌥"
+            case "control": return "⌃"
+            default: return $0
+            }
+        }.joined()
+        return "\(modifiers)\(config.hotkey.key.uppercased())"
+    }
+}
+
+private struct HotkeySettingsGroup<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(spacing: 0) {
+            content
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color(nsColor: .controlBackgroundColor))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(Color(nsColor: .separatorColor).opacity(0.35), lineWidth: 1)
+        )
     }
 }
 
