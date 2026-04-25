@@ -6,14 +6,14 @@ final class SettingsWindowController: NSWindowController {
 
     private init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 960, height: 620),
+            contentRect: NSRect(x: 0, y: 0, width: 880, height: 580),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
         window.title = "Sage Bar Settings"
-        window.minSize = NSSize(width: 820, height: 560)
-        window.toolbarStyle = .unified
+        window.minSize = NSSize(width: 760, height: 500)
+        window.toolbarStyle = .unifiedCompact
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.isReleasedWhenClosed = false
